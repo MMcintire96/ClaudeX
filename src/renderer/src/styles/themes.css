@@ -1,0 +1,150 @@
+:root,
+[data-theme="dark"] {
+  --bg-primary: #0d0d0d;
+  --bg-secondary: #161616;
+  --bg-tertiary: #1e1e1e;
+  --bg-surface: #1a1a1a;
+  --bg-hover: #252525;
+  --bg-input: #1a1a1a;
+
+  --text-primary: #e5e5e5;
+  --text-secondary: #999999;
+  --text-muted: #666666;
+
+  --accent: #ffffff;
+  --accent-hover: #e0e0e0;
+  --accent-secondary: #333333;
+
+  --border: #2a2a2a;
+  --border-light: #222222;
+
+  --success: #4caf50;
+  --warning: #ff9800;
+  --danger: #ef4444;
+
+  --user-bubble: #1e1e1e;
+  --assistant-bubble: transparent;
+  --tool-bg: #141414;
+  --tool-border: #2a2a2a;
+  --tool-result-bg: #111111;
+
+  --code-bg: #111111;
+  --diff-add: #1a2e1a;
+  --diff-remove: #2e1a1a;
+
+  /* GitHub-style diff */
+  --diff-header-bg: #161b22;
+  --diff-header-hover: #1c2129;
+  --diff-ln-bg: #0d1117;
+  --diff-hunk-bg: rgba(56, 139, 253, 0.1);
+  --diff-hunk-text: rgba(139, 180, 240, 0.7);
+  --diff-add-line-bg: rgba(46, 160, 67, 0.12);
+  --diff-add-ln-bg: rgba(46, 160, 67, 0.18);
+  --diff-add-ln-text: #7ee787;
+  --diff-add-code-text: #aff5b4;
+  --diff-add-text: #3fb950;
+  --diff-add-badge-bg: rgba(46, 160, 67, 0.15);
+  --diff-del-line-bg: rgba(248, 81, 73, 0.12);
+  --diff-del-ln-bg: rgba(248, 81, 73, 0.18);
+  --diff-del-ln-text: #ffa198;
+  --diff-del-code-text: #ffa198;
+  --diff-del-text: #f85149;
+  --diff-del-badge-bg: rgba(248, 81, 73, 0.15);
+
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.5);
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #333333;
+
+  --radius: 8px;
+  --radius-sm: 4px;
+  --radius-lg: 12px;
+
+  --send-bg: #ffffff;
+  --send-color: #000000;
+  --send-hover: #e0e0e0;
+
+  --sidebar-bg: #161616;
+  --sidebar-active: #222222;
+  --sidebar-hover: #1e1e1e;
+
+  --nav-icon: #888888;
+  --nav-text: #aaaaaa;
+  --nav-active-text: #ffffff;
+}
+
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f7f7;
+  --bg-tertiary: #eeeeee;
+  --bg-surface: #f5f5f5;
+  --bg-hover: #ebebeb;
+  --bg-input: #ffffff;
+
+  --text-primary: #1a1a1a;
+  --text-secondary: #555555;
+  --text-muted: #999999;
+
+  --accent: #1a1a1a;
+  --accent-hover: #333333;
+  --accent-secondary: #e0e0e0;
+
+  --border: #e5e5e5;
+  --border-light: #f0f0f0;
+
+  --success: #27ae60;
+  --warning: #f39c12;
+  --danger: #e74c3c;
+
+  --user-bubble: #f0f0f0;
+  --assistant-bubble: transparent;
+  --tool-bg: #f8f8f8;
+  --tool-border: #e5e5e5;
+  --tool-result-bg: #fafafa;
+
+  --code-bg: #f4f4f4;
+  --diff-add: #e6ffed;
+  --diff-remove: #ffeef0;
+
+  /* GitHub-style diff */
+  --diff-header-bg: #f6f8fa;
+  --diff-header-hover: #eef0f3;
+  --diff-ln-bg: #fafbfc;
+  --diff-hunk-bg: rgba(54, 123, 245, 0.08);
+  --diff-hunk-text: rgba(57, 100, 170, 0.7);
+  --diff-add-line-bg: rgba(46, 160, 67, 0.10);
+  --diff-add-ln-bg: rgba(46, 160, 67, 0.18);
+  --diff-add-ln-text: #116329;
+  --diff-add-code-text: #24292f;
+  --diff-add-text: #1a7f37;
+  --diff-add-badge-bg: rgba(46, 160, 67, 0.12);
+  --diff-del-line-bg: rgba(255, 129, 130, 0.10);
+  --diff-del-ln-bg: rgba(255, 129, 130, 0.18);
+  --diff-del-ln-text: #82071e;
+  --diff-del-code-text: #24292f;
+  --diff-del-text: #cf222e;
+  --diff-del-badge-bg: rgba(255, 129, 130, 0.12);
+
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #cccccc;
+
+  --radius: 8px;
+  --radius-sm: 4px;
+  --radius-lg: 12px;
+
+  --send-bg: #1a1a1a;
+  --send-color: #ffffff;
+  --send-hover: #333333;
+
+  --sidebar-bg: #f7f7f7;
+  --sidebar-active: #eeeeee;
+  --sidebar-hover: #f0f0f0;
+
+  --nav-icon: #888888;
+  --nav-text: #555555;
+  --nav-active-text: #1a1a1a;
+}
