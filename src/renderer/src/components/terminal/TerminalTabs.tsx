@@ -1,6 +1,45 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useState, useRef, useEffect } from 'react'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useProjectStore } from '../../stores/projectStore'
+
+function InlineRename({ value, onCommit, onCancel }: {
+  value: string
+  onCommit: (name: string) => void
+  onCancel: () => void
+}) {
+  const [text, setText] = useState(value)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  const commit = () => {
+    const trimmed = text.trim()
+    if (trimmed && trimmed !== value) {
+      onCommit(trimmed)
+    } else {
+      onCancel()
+    }
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      className="terminal-tab-rename-input"
+      value={text}
+      onChange={e => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => {
+        if (e.key === 'Enter') commit()
+        if (e.key === 'Escape') onCancel()
+      }}
+      onClick={e => e.stopPropagation()}
+      onDoubleClick={e => e.stopPropagation()}
+    />
+  )
+}
 
 export default function TerminalTabs() {
   const terminals = useTerminalStore(s => s.terminals)
@@ -8,7 +47,13 @@ export default function TerminalTabs() {
   const setActiveTerminal = useTerminalStore(s => s.setActiveTerminal)
   const removeTerminal = useTerminalStore(s => s.removeTerminal)
   const addTerminal = useTerminalStore(s => s.addTerminal)
+  const renameTerminal = useTerminalStore(s => s.renameTerminal)
+  const togglePanel = useTerminalStore(s => s.togglePanel)
   const currentPath = useProjectStore(s => s.currentPath)
+
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+
+  const projectTerminals = terminals.filter(t => t.projectPath === currentPath && t.type !== 'claude')
 
   const handleNew = useCallback(async () => {
     if (!currentPath) return
@@ -29,23 +74,48 @@ export default function TerminalTabs() {
 
   return (
     <div className="terminal-tabs">
-      {terminals.map((t, i) => (
-        <button
-          key={t.id}
-          className={`terminal-tab ${t.id === activeTerminalId ? 'active' : ''}`}
-          onClick={() => setActiveTerminal(t.id)}
-        >
-          <span className="terminal-tab-label">Terminal {i + 1}</span>
-          <span
-            className="terminal-tab-close"
-            onClick={(e) => handleClose(e, t.id)}
+      {projectTerminals.map((t, i) => {
+        const displayName = t.name || `Terminal ${i + 1}`
+        const isRenaming = renamingId === t.id
+        return (
+          <button
+            key={t.id}
+            className={`terminal-tab ${t.id === activeTerminalId ? 'active' : ''}`}
+            onClick={() => setActiveTerminal(t.id)}
+            onDoubleClick={() => setRenamingId(t.id)}
           >
-            &times;
-          </span>
-        </button>
-      ))}
-      <button className="terminal-tab terminal-tab-new" onClick={handleNew}>
+            {isRenaming ? (
+              <InlineRename
+                value={displayName}
+                onCommit={(name) => {
+                  renameTerminal(t.id, name)
+                  setRenamingId(null)
+                }}
+                onCancel={() => setRenamingId(null)}
+              />
+            ) : (
+              <span className="terminal-tab-label">{displayName}</span>
+            )}
+            <span
+              className="terminal-tab-close"
+              onClick={(e) => handleClose(e, t.id)}
+            >
+              &times;
+            </span>
+          </button>
+        )
+      })}
+      <button className="terminal-tab terminal-tab-new" onClick={handleNew} title="New terminal">
         +
+      </button>
+      <button
+        className="terminal-tab terminal-tab-hide"
+        onClick={togglePanel}
+        title="Hide terminal"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
       </button>
     </div>
   )

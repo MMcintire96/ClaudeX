@@ -1,5 +1,6 @@
 import React, { useCallback, useRef } from 'react'
 import { useTerminalStore } from '../../stores/terminalStore'
+import { useProjectStore } from '../../stores/projectStore'
 import TerminalTabs from './TerminalTabs'
 import TerminalView from './TerminalView'
 
@@ -8,6 +9,7 @@ export default function TerminalPanel() {
   const activeTerminalId = useTerminalStore(s => s.activeTerminalId)
   const panelHeight = useTerminalStore(s => s.panelHeight)
   const setPanelHeight = useTerminalStore(s => s.setPanelHeight)
+  const currentPath = useProjectStore(s => s.currentPath)
 
   const dragging = useRef(false)
   const startY = useRef(0)
@@ -47,11 +49,11 @@ export default function TerminalPanel() {
       <div className="terminal-resize-handle" onMouseDown={onResizeMouseDown} />
       <TerminalTabs />
       <div className="terminal-views">
-        {terminals.map(t => (
+        {terminals.filter(t => t.type !== 'claude').map(t => (
           <TerminalView
             key={t.id}
             terminalId={t.id}
-            visible={t.id === activeTerminalId}
+            visible={t.id === activeTerminalId && t.projectPath === currentPath}
           />
         ))}
       </div>

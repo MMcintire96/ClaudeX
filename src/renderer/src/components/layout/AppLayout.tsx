@@ -1,6 +1,7 @@
 import React, { useCallback, useRef } from 'react'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
+import { useProjectStore } from '../../stores/projectStore'
 import Sidebar from './Sidebar'
 import MainPanel from './MainPanel'
 import SidePanel from './SidePanel'
@@ -58,7 +59,8 @@ export default function AppLayout() {
   const setSidebarWidth = useUIStore(s => s.setSidebarWidth)
   const setSidePanelWidth = useUIStore(s => s.setSidePanelWidth)
   const terminalPanelVisible = useTerminalStore(s => s.panelVisible)
-  const terminalCount = useTerminalStore(s => s.terminals.length)
+  const terminals = useTerminalStore(s => s.terminals)
+  const currentPath = useProjectStore(s => s.currentPath)
 
   const handleSidebarResize = useCallback(
     (delta: number) => setSidebarWidth(sidebarWidth + delta),
@@ -76,7 +78,9 @@ export default function AppLayout() {
     sidePanelView ? `${sidePanelWidth}px` : '0'
   ].join(' ')
 
-  const showTerminal = terminalPanelVisible && terminalCount > 0
+  const togglePanel = useTerminalStore(s => s.togglePanel)
+  const hasShellTerminals = terminals.some(t => t.projectPath === currentPath && t.type !== 'claude')
+  const showTerminal = terminalPanelVisible && hasShellTerminals
 
   return (
     <div className="app-layout">
@@ -96,6 +100,14 @@ export default function AppLayout() {
         )}
       </div>
       {showTerminal && <TerminalPanel />}
+      {!terminalPanelVisible && hasShellTerminals && (
+        <button className="terminal-collapsed-bar" onClick={togglePanel} title="Show terminal">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 15 12 9 18 15"/>
+          </svg>
+          <span>Terminal</span>
+        </button>
+      )}
     </div>
   )
 }

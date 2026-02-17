@@ -35,4 +35,13 @@ export class GitService {
   async diffFile(filePath: string): Promise<string> {
     return this.git.diff([filePath])
   }
+
+  async branch(): Promise<string | null> {
+    try {
+      const summary = await this.git.branchLocal()
+      return summary.current || null
+    } catch {
+      return null
+    }
+  }
 }

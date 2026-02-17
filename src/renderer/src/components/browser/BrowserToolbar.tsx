@@ -6,9 +6,10 @@ interface Props {
   onBack: () => void
   onForward: () => void
   onReload: () => void
+  onInspect: () => void
 }
 
-export default function BrowserToolbar({ url, onNavigate, onBack, onForward, onReload }: Props) {
+export default function BrowserToolbar({ url, onNavigate, onBack, onForward, onReload, onInspect }: Props) {
   const [inputUrl, setInputUrl] = useState(url)
 
   // Sync external URL changes
@@ -41,6 +42,7 @@ export default function BrowserToolbar({ url, onNavigate, onBack, onForward, onR
         placeholder="Enter URL..."
       />
       <button className="btn btn-sm" onClick={handleNavigate}>Go</button>
+      <button className="btn btn-sm btn-icon" onClick={onInspect} title="Inspect element">{'{}'}</button>
     </div>
   )
 }

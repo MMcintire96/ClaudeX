@@ -3,6 +3,11 @@ productName: Claude Codex
 npmRebuild: true
 directories:
   buildResources: build
+extraResources:
+  - from: resources/
+    to: ./
+    filter:
+      - 'codex-mcp-server.js'
 files:
   - '!**/.vscode/*'
   - '!src/*'

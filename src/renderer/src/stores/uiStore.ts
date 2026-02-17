@@ -15,8 +15,12 @@ interface UIState {
   // Per-project memory: remembers last side panel per project
   projectSidePanelMemory: Record<string, 'browser' | 'diff'>
 
+  // Pending URL for browser panel to navigate to after mount
+  pendingBrowserUrl: string | null
+
   toggleSidebar: () => void
   setSidePanelView: (view: SidePanelView | null) => void
+  setPendingBrowserUrl: (url: string | null) => void
   toggleTheme: () => void
   setSidebarWidth: (w: number) => void
   setSidePanelWidth: (w: number) => void
@@ -29,6 +33,11 @@ export const useUIStore = create<UIState>((set) => ({
   sidebarWidth: 240,
   sidePanelWidth: 480,
   projectSidePanelMemory: {},
+  pendingBrowserUrl: null,
+
+  setPendingBrowserUrl: (url: string | null): void => {
+    set({ pendingBrowserUrl: url })
+  },
 
   toggleSidebar: (): void => {
     set(state => ({ sidebarVisible: !state.sidebarVisible }))
@@ -64,6 +73,7 @@ export const useUIStore = create<UIState>((set) => ({
   },
 
   setSidePanelWidth: (w: number): void => {
-    set({ sidePanelWidth: Math.max(300, Math.min(900, w)) })
+    const maxW = Math.max(300, window.innerWidth - 300)
+    set({ sidePanelWidth: Math.max(300, Math.min(maxW, w)) })
   }
 }))

@@ -85,6 +85,7 @@ interface SessionStore {
   setProcessing: (sessionId: string, processing: boolean) => void
   setError: (sessionId: string, error: string | null) => void
   setSelectedModel: (sessionId: string, model: string | null) => void
+  renameSession: (sessionId: string, name: string) => void
   getSessionsForProject: (projectPath: string) => SessionState[]
 }
 
@@ -372,6 +373,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         sessions: {
           ...s.sessions,
           [sessionId]: { ...s.sessions[sessionId], selectedModel: model }
+        }
+      }
+    })
+  },
+
+  renameSession: (sessionId: string, name: string): void => {
+    set(s => {
+      if (!s.sessions[sessionId]) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: { ...s.sessions[sessionId], name }
         }
       }
     })

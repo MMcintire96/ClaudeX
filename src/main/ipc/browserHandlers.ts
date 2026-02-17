@@ -26,6 +26,11 @@ export function registerBrowserHandlers(browserManager: BrowserManager): void {
     return { success: true }
   })
 
+  ipcMain.handle('browser:open-devtools', () => {
+    browserManager.openDevTools()
+    return { success: true }
+  })
+
   ipcMain.handle('browser:set-bounds', (_event, bounds: BrowserBounds) => {
     browserManager.setBounds(bounds)
     return { success: true }
@@ -46,12 +51,29 @@ export function registerBrowserHandlers(browserManager: BrowserManager): void {
   })
 
   ipcMain.handle('browser:switch-project', (_event, projectPath: string) => {
-    const currentUrl = browserManager.switchProject(projectPath)
-    return currentUrl
+    return browserManager.switchProject(projectPath)
   })
 
   ipcMain.handle('browser:destroy', () => {
     browserManager.destroy()
     return { success: true }
+  })
+
+  ipcMain.handle('browser:new-tab', (_event, url?: string) => {
+    return browserManager.newTab(url)
+  })
+
+  ipcMain.handle('browser:switch-tab', (_event, tabId: string) => {
+    browserManager.switchTab(tabId)
+    return { success: true }
+  })
+
+  ipcMain.handle('browser:close-tab', (_event, tabId: string) => {
+    browserManager.closeTab(tabId)
+    return { success: true }
+  })
+
+  ipcMain.handle('browser:get-tabs', () => {
+    return browserManager.getTabs()
   })
 }

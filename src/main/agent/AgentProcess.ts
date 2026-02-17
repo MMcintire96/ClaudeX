@@ -9,6 +9,8 @@ export interface AgentProcessOptions {
   projectPath: string
   sessionId?: string
   model?: string | null
+  mcpConfigPath?: string | null
+  systemPromptAppend?: string | null
 }
 
 /**
@@ -16,7 +18,7 @@ export interface AgentProcessOptions {
  * Electron processes often have a stripped-down PATH that doesn't include
  * ~/.local/bin or other user dirs, so we search common locations.
  */
-function findClaudeBinary(): string {
+export function findClaudeBinary(): string {
   // 1. Try common install locations directly
   const home = process.env.HOME || process.env.USERPROFILE || ''
   const candidates = [
@@ -57,7 +59,7 @@ function getClaudePath(): string {
 /**
  * Build a PATH that includes common user binary directories.
  */
-function getEnhancedEnv(): NodeJS.ProcessEnv {
+export function getEnhancedEnv(): NodeJS.ProcessEnv {
   const home = process.env.HOME || ''
   const extraPaths = [
     `${home}/.local/bin`,
@@ -86,6 +88,8 @@ export class AgentProcess extends EventEmitter {
   private _sessionId: string
   private _projectPath: string
   private _model: string | null
+  private _mcpConfigPath: string | null
+  private _systemPromptAppend: string | null
   private _isRunning = false
   private _hasCompletedFirstTurn = false
   private stderrBuffer = ''
@@ -111,6 +115,8 @@ export class AgentProcess extends EventEmitter {
     this._sessionId = options.sessionId ?? uuidv4()
     this._projectPath = options.projectPath
     this._model = options.model ?? null
+    this._mcpConfigPath = options.mcpConfigPath ?? null
+    this._systemPromptAppend = options.systemPromptAppend ?? null
     this.parser = new StreamParser()
 
     this.parser.on('event', (event: AgentEvent) => {
@@ -136,6 +142,12 @@ export class AgentProcess extends EventEmitter {
     ]
     if (this._model) {
       args.push('--model', this._model)
+    }
+    if (this._mcpConfigPath) {
+      args.push('--mcp-config', this._mcpConfigPath)
+    }
+    if (this._systemPromptAppend) {
+      args.push('--append-system-prompt', this._systemPromptAppend)
     }
     return args
   }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { useUIStore } from '../../stores/uiStore'
@@ -6,6 +6,7 @@ import { useUIStore } from '../../stores/uiStore'
 interface Props {
   terminalId: string
   visible: boolean
+  background?: string
 }
 
 const DARK_THEME = {
@@ -54,11 +55,43 @@ const LIGHT_THEME = {
   brightWhite: '#1a1a1a'
 }
 
-export default function TerminalView({ terminalId, visible }: Props) {
+export default function TerminalView({ terminalId, visible, background }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const theme = useUIStore(s => s.theme)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const handleCopy = useCallback(() => {
+    const term = termRef.current
+    if (!term) return
+    const selection = term.getSelection()
+    if (selection) {
+      navigator.clipboard.writeText(selection)
+    }
+  }, [])
+
+  const handlePaste = useCallback(async () => {
+    const term = termRef.current
+    if (!term) return
+    const text = await navigator.clipboard.readText()
+    if (text) {
+      window.api.terminal.write(terminalId, text)
+    }
+  }, [terminalId])
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setContextMenu(null)
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [contextMenu])
 
   // Initialize terminal
   useEffect(() => {
@@ -67,10 +100,13 @@ export default function TerminalView({ terminalId, visible }: Props) {
     const term = new Terminal({
       fontSize: 13,
       fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
-      theme: theme === 'dark' ? DARK_THEME : LIGHT_THEME,
+      theme: background
+        ? { ...(theme === 'dark' ? DARK_THEME : LIGHT_THEME), background }
+        : theme === 'dark' ? DARK_THEME : LIGHT_THEME,
       cursorBlink: true,
       scrollback: 5000,
-      allowProposedApi: true
+      allowProposedApi: true,
+      rightClickSelectsWord: true
     })
 
     const fitAddon = new FitAddon()
@@ -88,6 +124,24 @@ export default function TerminalView({ terminalId, visible }: Props) {
 
     termRef.current = term
     fitAddonRef.current = fitAddon
+
+    // Ctrl+Shift+C = copy, Ctrl+Shift+V = paste
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.type === 'keydown' && e.ctrlKey && e.shiftKey) {
+        if (e.key === 'C' || e.code === 'KeyC') {
+          const selection = term.getSelection()
+          if (selection) navigator.clipboard.writeText(selection)
+          return false
+        }
+        if (e.key === 'V' || e.code === 'KeyV') {
+          navigator.clipboard.readText().then(text => {
+            if (text) window.api.terminal.write(terminalId, text)
+          })
+          return false
+        }
+      }
+      return true
+    })
 
     // User keystrokes → PTY
     const onDataDisposable = term.onData((data: string) => {
@@ -134,10 +188,14 @@ export default function TerminalView({ terminalId, visible }: Props) {
 
   // Update theme without re-creating terminal
   useEffect(() => {
-    if (termRef.current) {
-      termRef.current.options.theme = theme === 'dark' ? DARK_THEME : LIGHT_THEME
+    const term = termRef.current
+    if (term) {
+      const base = theme === 'dark' ? DARK_THEME : LIGHT_THEME
+      term.options.theme = background ? { ...base, background } : base
+      // Force a full repaint so existing content picks up the new colors
+      term.refresh(0, term.rows - 1)
     }
-  }, [theme])
+  }, [theme, background])
 
   // Re-fit when visibility changes
   useEffect(() => {
@@ -155,8 +213,33 @@ export default function TerminalView({ terminalId, visible }: Props) {
   return (
     <div
       className="terminal-view"
-      style={{ display: visible ? 'block' : 'none' }}
+      style={{ display: visible ? 'block' : 'none', position: 'relative' }}
       ref={containerRef}
-    />
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setContextMenu({ x: e.clientX, y: e.clientY })
+      }}
+    >
+      {contextMenu && (
+        <div
+          ref={menuRef}
+          className="context-menu"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            className="context-menu-item"
+            onClick={() => { handleCopy(); setContextMenu(null) }}
+          >
+            Copy
+          </button>
+          <button
+            className="context-menu-item"
+            onClick={() => { handlePaste(); setContextMenu(null) }}
+          >
+            Paste
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

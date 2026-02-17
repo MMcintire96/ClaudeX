@@ -65,6 +65,32 @@ export class ProjectManager {
     return this.recentProjects
   }
 
+  getRecentPaths(): string[] {
+    return this.recentProjects.map(p => p.path)
+  }
+
+  async reorderRecent(paths: string[]): Promise<void> {
+    const byPath = new Map(this.recentProjects.map(p => [p.path, p]))
+    const reordered: RecentProject[] = []
+    for (const path of paths) {
+      const proj = byPath.get(path)
+      if (proj) reordered.push(proj)
+    }
+    // Append any that weren't in the new order (shouldn't happen, but safe)
+    for (const proj of this.recentProjects) {
+      if (!reordered.some(r => r.path === proj.path)) {
+        reordered.push(proj)
+      }
+    }
+    this.recentProjects = reordered
+    await this.persist()
+  }
+
+  async removeRecent(projectPath: string): Promise<void> {
+    this.recentProjects = this.recentProjects.filter(p => p.path !== projectPath)
+    await this.persist()
+  }
+
   private async persist(): Promise<void> {
     try {
       const dir = join(app.getPath('userData'))
