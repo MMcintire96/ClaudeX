@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
 import AppLayout from './components/layout/AppLayout'
+import ErrorBoundary from './components/common/ErrorBoundary'
 import HotkeysModal from './components/common/HotkeysModal'
 import { useSessionStore } from './stores/sessionStore'
 import { useUIStore } from './stores/uiStore'
 import { useTerminalStore } from './stores/terminalStore'
 import { useProjectStore } from './stores/projectStore'
 import { useSettingsStore } from './stores/settingsStore'
+import { validateTheme } from './lib/themes'
 
 export default function App() {
   const processEvent = useSessionStore(s => s.processEvent)
@@ -81,10 +83,34 @@ export default function App() {
     return unsub
   }, [autoRenameTerminal])
 
-  // Session restore listener — recreate Claude terminals with --resume
+  // Session restore listener — recreate Claude terminals with --resume and restore UI state
   useEffect(() => {
     const unsub = window.api.session.onRestore((state: unknown) => {
-      const s = state as { sessions?: Array<{ claudeSessionId?: string; projectPath: string; name: string }> }
+      const s = state as {
+        sessions?: Array<{ claudeSessionId?: string; projectPath: string; name: string }>
+        theme?: string
+        sidebarWidth?: number
+        activeProjectPath?: string | null
+        expandedProjects?: string[]
+      }
+
+      // Restore UI state
+      if (s.theme) {
+        useUIStore.getState().setTheme(validateTheme(s.theme))
+      }
+      if (s.sidebarWidth && s.sidebarWidth !== 240) {
+        useUIStore.getState().setSidebarWidth(s.sidebarWidth)
+      }
+      if (s.expandedProjects && s.expandedProjects.length > 0) {
+        for (const path of s.expandedProjects) {
+          useProjectStore.getState().setProjectExpanded(path, true)
+        }
+      }
+      if (s.activeProjectPath) {
+        // Select the project (isGitRepo will be re-detected on load)
+        useProjectStore.getState().setProject(s.activeProjectPath, false)
+      }
+
       if (!s.sessions || s.sessions.length === 0) return
       for (const session of s.sessions) {
         if (!session.claudeSessionId) continue
@@ -107,6 +133,21 @@ export default function App() {
     })
     return unsub
   }, [terminalAddTerminal])
+
+  // Before-close handler: send UI snapshot to main process
+  useEffect(() => {
+    const unsub = window.api.app.onBeforeClose(() => {
+      const uiState = useUIStore.getState()
+      const projectState = useProjectStore.getState()
+      window.api.app.sendUiSnapshot({
+        theme: uiState.theme,
+        sidebarWidth: uiState.sidebarWidth,
+        activeProjectPath: projectState.currentPath,
+        expandedProjects: projectState.expandedProjects
+      })
+    })
+    return unsub
+  }, [])
 
   // Agent spawn/complete listeners
   useEffect(() => {
@@ -259,10 +300,10 @@ export default function App() {
         return
       }
 
-      // Mod+L — Toggle theme
+      // Mod+L — Cycle color scheme
       if (key === 'l') {
         e.preventDefault()
-        useUIStore.getState().toggleTheme()
+        useUIStore.getState().cycleTheme()
         return
       }
 
@@ -326,11 +367,11 @@ export default function App() {
   }, [terminalTerminals, currentPath, terminalTogglePanel, terminalAddTerminal, modKey])
 
   return (
-    <>
+    <ErrorBoundary>
       <AppLayout />
       {hotkeysOpen && (
         <HotkeysModal modKey={modKey} onClose={() => setHotkeysOpen(false)} />
       )}
-    </>
+    </ErrorBoundary>
   )
 }

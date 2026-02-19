@@ -16,7 +16,7 @@ export interface PersistedAppState {
   activeProjectPath: string | null
   expandedProjects: string[]
   sessions: PersistedSession[]
-  theme: 'dark' | 'light'
+  theme: string
   sidebarWidth: number
 }
 

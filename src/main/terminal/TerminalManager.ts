@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, Notification } from 'electron'
 import * as pty from 'node-pty'
 import { v4 as uuidv4 } from 'uuid'
 import * as os from 'os'
@@ -41,6 +41,7 @@ export class TerminalManager {
   private terminalNames: Map<string, string> = new Map()
   private claudeSessionIds: Map<string, string> = new Map()
   private createdAt: Map<string, number> = new Map()
+  private lastNotificationTime: Map<string, number> = new Map()
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
@@ -136,6 +137,26 @@ export class TerminalManager {
       }
     } catch {
       // Window destroyed during shutdown
+    }
+    // Desktop notification when attention is needed and window is not focused
+    if (status === 'attention' && this.mainWindow && !this.mainWindow.isDestroyed() && !this.mainWindow.isFocused()) {
+      const now = Date.now()
+      const lastTime = this.lastNotificationTime.get(id) || 0
+      if (now - lastTime > 30000) {
+        this.lastNotificationTime.set(id, now)
+        const termName = this.terminalNames.get(id) || 'Claude Code'
+        const notification = new Notification({
+          title: 'Claude needs your attention',
+          body: termName
+        })
+        notification.on('click', () => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            if (this.mainWindow.isMinimized()) this.mainWindow.restore()
+            this.mainWindow.focus()
+          }
+        })
+        notification.show()
+      }
     }
     // Track idle cycles (running → idle/attention transitions)
     if (meta.hasBeenRunning && prevStatus === 'running' && (status === 'idle' || status === 'attention')) {
@@ -363,6 +384,7 @@ export class TerminalManager {
         if (meta.silenceTimer) clearTimeout(meta.silenceTimer)
         this.emitClaudeStatus(id, 'done')
         this.claudeMeta.delete(id)
+        this.lastNotificationTime.delete(id)
       }
 
       const pt = this.terminals.get(projectPath)
@@ -403,6 +425,7 @@ export class TerminalManager {
     managed.pty.kill()
     this.terminalNames.delete(id)
     this.createdAt.delete(id)
+    this.lastNotificationTime.delete(id)
     const pt = this.terminals.get(managed.projectPath)
     if (pt) {
       pt.delete(id)
@@ -429,6 +452,7 @@ export class TerminalManager {
       if (meta.silenceTimer) clearTimeout(meta.silenceTimer)
     }
     this.claudeMeta.clear()
+    this.lastNotificationTime.clear()
     for (const [, projectTerminals] of this.terminals) {
       for (const [, managed] of projectTerminals) {
         try {

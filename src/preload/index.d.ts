@@ -71,6 +71,10 @@ export interface ElectronAPI {
     onEntries: (callback: (terminalId: string, entries: unknown[]) => void) => () => void
     onReset: (callback: (terminalId: string, entries: unknown[]) => void) => () => void
   }
+  app: {
+    onBeforeClose: (callback: () => void) => () => void
+    sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[] }) => void
+  }
   browser: {
     navigate: (url: string) => Promise<{ success: boolean; error?: string }>
     back: () => Promise<{ success: boolean }>

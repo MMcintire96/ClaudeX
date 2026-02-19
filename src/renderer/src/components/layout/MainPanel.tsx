@@ -67,6 +67,9 @@ export default function MainPanel() {
   const subAgents = useTerminalStore(s => s.subAgents)
   const claudeViewMode = useTerminalStore(s => s.claudeViewMode)
   const setClaudeViewMode = useTerminalStore(s => s.setClaudeViewMode)
+  const claudeSplitIds = useTerminalStore(s => s.claudeSplitIds)
+  const splitClaude = useTerminalStore(s => s.splitClaude)
+  const unsplitClaude = useTerminalStore(s => s.unsplitClaude)
 
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null)
   const [claudeSessionIds, setClaudeSessionIds] = useState<Record<string, string>>({})
@@ -75,6 +78,9 @@ export default function MainPanel() {
     ? terminals.filter(t => t.type === 'claude' && t.projectPath === currentPath)
     : []
   const activeId = currentPath ? activeClaudeId[currentPath] : null
+
+  const currentSplitIds = currentPath ? claudeSplitIds[currentPath] || [] : []
+  const isSplitActive = currentSplitIds.length === 2
 
   const isBrowserActive = sidePanelView?.type === 'browser' && sidePanelView?.projectPath === currentPath
   const isDiffActive = sidePanelView?.type === 'diff' && sidePanelView?.projectPath === currentPath
@@ -104,6 +110,26 @@ export default function MainPanel() {
       setActiveClaudeId(currentPath, result.id)
     }
   }, [currentPath, terminals, addTerminal, setActiveClaudeId])
+
+  const handleSplitClaude = useCallback(async () => {
+    if (!currentPath) return
+    if (isSplitActive) {
+      unsplitClaude(currentPath)
+      return
+    }
+    const result = await window.api.terminal.createClaude(currentPath)
+    if (result.success && result.id) {
+      const count = terminals.filter(t => t.type === 'claude' && t.projectPath === currentPath).length
+      addTerminal({
+        id: result.id,
+        projectPath: result.projectPath!,
+        pid: result.pid!,
+        name: `Claude Code${count > 0 ? ` ${count + 1}` : ''}`,
+        type: 'claude'
+      })
+      splitClaude(currentPath, result.id)
+    }
+  }, [currentPath, isSplitActive, terminals, addTerminal, splitClaude, unsplitClaude])
 
   const handleCloseClaudeTab = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation()
@@ -239,8 +265,20 @@ export default function MainPanel() {
               return (
                 <button
                   key={t.id}
-                  className={`claude-tab ${t.id === activeId ? 'active' : ''}`}
-                  onClick={() => currentPath && setActiveClaudeId(currentPath, t.id)}
+                  className={`claude-tab ${t.id === activeId ? 'active' : ''} ${isSplitActive && currentSplitIds.includes(t.id) ? 'split-active' : ''}`}
+                  onClick={() => {
+                    if (!currentPath) return
+                    if (isSplitActive && t.id !== currentSplitIds[0]) {
+                      // Replace right pane in split mode
+                      useTerminalStore.setState(state => ({
+                        claudeSplitIds: {
+                          ...state.claudeSplitIds,
+                          [currentPath]: [currentSplitIds[0], t.id]
+                        }
+                      }))
+                    }
+                    setActiveClaudeId(currentPath, t.id)
+                  }}
                   onDoubleClick={() => setRenamingTabId(t.id)}
                 >
                   <span
@@ -271,6 +309,16 @@ export default function MainPanel() {
             <button className="claude-tab claude-tab-new" onClick={handleLaunchClaude} title="New Claude terminal">
               +
             </button>
+            <button
+              className={`claude-tab claude-tab-split ${isSplitActive ? 'active' : ''}`}
+              onClick={handleSplitClaude}
+              title={isSplitActive ? 'Unsplit' : 'Split terminal'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="3" y="3" width="8" height="18" rx="1"/>
+                <rect x="13" y="3" width="8" height="18" rx="1"/>
+              </svg>
+            </button>
             {activeId && (
               <div className="claude-view-toggle">
                 <button
@@ -300,14 +348,39 @@ export default function MainPanel() {
             </div>
           )}
           <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-            {claudeTerminals.map(t => (
-              <TerminalView
-                key={t.id}
-                terminalId={t.id}
-                visible={t.id === activeId && (claudeViewMode[t.id] || 'terminal') === 'terminal'}
-                background={undefined}
-              />
-            ))}
+            {isSplitActive ? (
+              <div className="terminal-split-container">
+                <div className="terminal-split-pane">
+                  <TerminalView
+                    key={currentSplitIds[0]}
+                    terminalId={currentSplitIds[0]}
+                    visible={true}
+                    active={currentSplitIds[0] === activeId}
+                    background={undefined}
+                  />
+                </div>
+                <div className="terminal-split-divider" />
+                <div className="terminal-split-pane">
+                  <TerminalView
+                    key={currentSplitIds[1]}
+                    terminalId={currentSplitIds[1]}
+                    visible={true}
+                    active={currentSplitIds[1] === activeId}
+                    background={undefined}
+                  />
+                </div>
+              </div>
+            ) : (
+              claudeTerminals.map(t => (
+                <TerminalView
+                  key={t.id}
+                  terminalId={t.id}
+                  visible={t.id === activeId && (claudeViewMode[t.id] || 'terminal') === 'terminal'}
+                  active={t.id === activeId}
+                  background={undefined}
+                />
+              ))
+            )}
             {activeId && activeViewMode === 'chat' && (
               claudeSessionIds[activeId] ? (
                 <ChatView

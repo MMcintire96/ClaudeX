@@ -28,6 +28,8 @@ interface TerminalState {
   manuallyRenamed: Record<string, boolean>
   subAgents: Record<string, SubAgentInfo[]>
   claudeViewMode: Record<string, 'terminal' | 'chat'>
+  claudeSplitIds: Record<string, string[]>
+  shellSplitIds: string[]
 
   addTerminal: (tab: TerminalTab) => void
   removeTerminal: (id: string) => void
@@ -43,6 +45,10 @@ interface TerminalState {
   addSubAgent: (parentId: string, agent: SubAgentInfo) => void
   completeSubAgent: (parentId: string) => void
   setClaudeViewMode: (id: string, mode: 'terminal' | 'chat') => void
+  splitClaude: (projectPath: string, newId: string) => void
+  unsplitClaude: (projectPath: string) => void
+  splitShell: (newId: string) => void
+  unsplitShell: () => void
 }
 
 export const useTerminalStore = create<TerminalState>((set) => ({
@@ -56,6 +62,8 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   manuallyRenamed: {},
   subAgents: {},
   claudeViewMode: {},
+  claudeSplitIds: {},
+  shellSplitIds: [],
 
   addTerminal: (tab: TerminalTab): void => {
     set(state => {
@@ -96,13 +104,33 @@ export const useTerminalStore = create<TerminalState>((set) => ({
           }
         }
       }
+      // Clean up claude split state
+      const claudeSplits = { ...state.claudeSplitIds }
+      for (const [proj, ids] of Object.entries(claudeSplits)) {
+        if (ids.includes(id)) {
+          const remaining = ids.filter(sid => sid !== id)
+          if (remaining.length <= 1) {
+            delete claudeSplits[proj]
+          } else {
+            claudeSplits[proj] = remaining
+          }
+        }
+      }
+      // Clean up shell split state
+      let shellSplits = state.shellSplitIds
+      if (shellSplits.includes(id)) {
+        const remaining = shellSplits.filter(sid => sid !== id)
+        shellSplits = remaining.length <= 1 ? [] : remaining
+      }
       return {
         terminals: next,
         activeTerminalId: activeId,
         panelVisible: shellTerminals.length > 0 ? state.panelVisible : false,
         claudeStatuses: statuses,
         activeClaudeId: activeClaudeIds,
-        manuallyRenamed: renamed
+        manuallyRenamed: renamed,
+        claudeSplitIds: claudeSplits,
+        shellSplitIds: shellSplits
       }
     })
   },
@@ -205,5 +233,52 @@ export const useTerminalStore = create<TerminalState>((set) => ({
     set(state => ({
       claudeViewMode: { ...state.claudeViewMode, [id]: mode }
     }))
+  },
+
+  splitClaude: (projectPath: string, newId: string): void => {
+    set(state => {
+      const activeId = state.activeClaudeId[projectPath]
+      if (!activeId) return {}
+      return {
+        claudeSplitIds: {
+          ...state.claudeSplitIds,
+          [projectPath]: [activeId, newId]
+        }
+      }
+    })
+  },
+
+  unsplitClaude: (projectPath: string): void => {
+    set(state => {
+      const splits = state.claudeSplitIds[projectPath]
+      const newSplits = { ...state.claudeSplitIds }
+      delete newSplits[projectPath]
+      return {
+        claudeSplitIds: newSplits,
+        activeClaudeId: splits && splits.length > 0
+          ? { ...state.activeClaudeId, [projectPath]: splits[0] }
+          : state.activeClaudeId
+      }
+    })
+  },
+
+  splitShell: (newId: string): void => {
+    set(state => {
+      const activeId = state.activeTerminalId
+      if (!activeId) return {}
+      return {
+        shellSplitIds: [activeId, newId]
+      }
+    })
+  },
+
+  unsplitShell: (): void => {
+    set(state => {
+      const first = state.shellSplitIds[0]
+      return {
+        shellSplitIds: [],
+        activeTerminalId: first || state.activeTerminalId
+      }
+    })
   }
 }))

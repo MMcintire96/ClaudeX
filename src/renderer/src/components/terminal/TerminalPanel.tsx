@@ -10,6 +10,8 @@ export default function TerminalPanel() {
   const panelHeight = useTerminalStore(s => s.panelHeight)
   const setPanelHeight = useTerminalStore(s => s.setPanelHeight)
   const currentPath = useProjectStore(s => s.currentPath)
+  const shellSplitIds = useTerminalStore(s => s.shellSplitIds)
+  const isShellSplit = shellSplitIds.length === 2
 
   const dragging = useRef(false)
   const startY = useRef(0)
@@ -49,13 +51,33 @@ export default function TerminalPanel() {
       <div className="terminal-resize-handle" onMouseDown={onResizeMouseDown} />
       <TerminalTabs />
       <div className="terminal-views">
-        {terminals.filter(t => t.type !== 'claude').map(t => (
-          <TerminalView
-            key={t.id}
-            terminalId={t.id}
-            visible={t.id === activeTerminalId && t.projectPath === currentPath}
-          />
-        ))}
+        {isShellSplit ? (
+          <div className="terminal-split-container">
+            <div className="terminal-split-pane">
+              <TerminalView
+                key={shellSplitIds[0]}
+                terminalId={shellSplitIds[0]}
+                visible={true}
+              />
+            </div>
+            <div className="terminal-split-divider" />
+            <div className="terminal-split-pane">
+              <TerminalView
+                key={shellSplitIds[1]}
+                terminalId={shellSplitIds[1]}
+                visible={true}
+              />
+            </div>
+          </div>
+        ) : (
+          terminals.filter(t => t.type !== 'claude').map(t => (
+            <TerminalView
+              key={t.id}
+              terminalId={t.id}
+              visible={t.id === activeTerminalId && t.projectPath === currentPath}
+            />
+          ))
+        )}
       </div>
     </div>
   )

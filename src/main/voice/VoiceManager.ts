@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
+import type { AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
 import { join } from 'path'
 
 const MODEL_ID = 'onnx-community/whisper-tiny.en'
@@ -15,6 +15,7 @@ export class VoiceManager {
 
     this.loading = (async () => {
       const cacheDir = join(app.getPath('userData'), 'whisper-models')
+      const { pipeline } = await import('@huggingface/transformers')
       const t = await pipeline('automatic-speech-recognition', MODEL_ID, {
         cache_dir: cacheDir,
         dtype: 'fp32'

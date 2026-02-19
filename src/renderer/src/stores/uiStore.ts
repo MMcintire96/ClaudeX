@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { ThemeName, THEME_LIST, DEFAULT_THEME } from '../lib/themes'
 
 interface SidePanelView {
   type: 'browser' | 'diff'
@@ -8,7 +9,7 @@ interface SidePanelView {
 interface UIState {
   sidebarVisible: boolean
   sidePanelView: SidePanelView | null
-  theme: 'dark' | 'light'
+  theme: ThemeName
   sidebarWidth: number
   sidePanelWidth: number
 
@@ -22,6 +23,8 @@ interface UIState {
   setSidePanelView: (view: SidePanelView | null) => void
   setPendingBrowserUrl: (url: string | null) => void
   toggleTheme: () => void
+  cycleTheme: () => void
+  setTheme: (theme: ThemeName) => void
   setSidebarWidth: (w: number) => void
   setSidePanelWidth: (w: number) => void
 }
@@ -29,7 +32,7 @@ interface UIState {
 export const useUIStore = create<UIState>((set) => ({
   sidebarVisible: true,
   sidePanelView: null,
-  theme: 'dark',
+  theme: DEFAULT_THEME,
   sidebarWidth: 240,
   sidePanelWidth: 480,
   projectSidePanelMemory: {},
@@ -62,10 +65,25 @@ export const useUIStore = create<UIState>((set) => ({
     })
   },
 
+  cycleTheme: (): void => {
+    set(state => {
+      const idx = THEME_LIST.indexOf(state.theme)
+      const next = THEME_LIST[(idx + 1) % THEME_LIST.length]
+      return { theme: next }
+    })
+  },
+
   toggleTheme: (): void => {
-    set(state => ({
-      theme: state.theme === 'dark' ? 'light' : 'dark'
-    }))
+    // Kept for compatibility — now cycles through all themes
+    set(state => {
+      const idx = THEME_LIST.indexOf(state.theme)
+      const next = THEME_LIST[(idx + 1) % THEME_LIST.length]
+      return { theme: next }
+    })
+  },
+
+  setTheme: (theme: ThemeName): void => {
+    set({ theme })
   },
 
   setSidebarWidth: (w: number): void => {

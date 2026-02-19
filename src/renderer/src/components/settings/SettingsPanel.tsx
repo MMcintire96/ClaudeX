@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useUIStore } from '../../stores/uiStore'
+import { THEME_META } from '../../lib/themes'
+import type { ThemeName } from '../../lib/themes'
 
 const MOD_KEY_LABELS: Record<string, string> = {
   Ctrl: 'Ctrl',
@@ -11,8 +13,10 @@ const MOD_KEY_LABELS: Record<string, string> = {
 
 export default function SettingsPanel() {
   const { claude, modKey, vimMode, updateSettings } = useSettingsStore()
-  const { theme, toggleTheme } = useUIStore()
+  const { theme, setTheme } = useUIStore()
   const [capturing, setCapturing] = useState(false)
+
+  const currentMeta = THEME_META.find(m => m.id === theme)
 
   return (
     <div className="settings-panel">
@@ -38,14 +42,21 @@ export default function SettingsPanel() {
 
         <div className="settings-row">
           <div className="settings-label">
-            <span>Theme</span>
+            <span>Color scheme</span>
             <span className="settings-description">
-              {theme === 'dark' ? 'Dark' : 'Light'} mode
+              {currentMeta?.label ?? 'Dark'}
             </span>
           </div>
-          <button className="btn btn-sm" onClick={toggleTheme}>
-            {theme === 'dark' ? 'Light' : 'Dark'}
-          </button>
+          <select
+            className="settings-select"
+            value={theme}
+            onChange={(e) => setTheme(e.target.value as ThemeName)}
+            style={{ borderLeft: `3px solid ${currentMeta?.previewColors.accent ?? '#fff'}` }}
+          >
+            {THEME_META.map(m => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
         </div>
 
         <div className="settings-row">

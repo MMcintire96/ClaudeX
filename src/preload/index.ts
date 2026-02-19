@@ -165,6 +165,15 @@ const api = {
       return () => ipcRenderer.removeListener('session-file:reset', handler)
     }
   },
+  app: {
+    onBeforeClose: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('app:before-close', handler)
+      return () => ipcRenderer.removeListener('app:before-close', handler)
+    },
+    sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[] }) =>
+      ipcRenderer.send('app:ui-snapshot', snapshot)
+  },
   browser: {
     navigate: (url: string) =>
       ipcRenderer.invoke('browser:navigate', url),

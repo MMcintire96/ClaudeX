@@ -49,11 +49,15 @@ export default function TerminalTabs() {
   const addTerminal = useTerminalStore(s => s.addTerminal)
   const renameTerminal = useTerminalStore(s => s.renameTerminal)
   const togglePanel = useTerminalStore(s => s.togglePanel)
+  const shellSplitIds = useTerminalStore(s => s.shellSplitIds)
+  const splitShell = useTerminalStore(s => s.splitShell)
+  const unsplitShell = useTerminalStore(s => s.unsplitShell)
   const currentPath = useProjectStore(s => s.currentPath)
 
   const [renamingId, setRenamingId] = useState<string | null>(null)
 
   const projectTerminals = terminals.filter(t => t.projectPath === currentPath && t.type !== 'claude')
+  const isShellSplit = shellSplitIds.length === 2
 
   const handleNew = useCallback(async () => {
     if (!currentPath) return
@@ -62,6 +66,21 @@ export default function TerminalTabs() {
       addTerminal({ id: result.id, projectPath: result.projectPath, pid: result.pid })
     }
   }, [currentPath, addTerminal])
+
+  const handleSplitShell = useCallback(async () => {
+    if (isShellSplit) {
+      unsplitShell()
+      return
+    }
+    if (!currentPath || !activeTerminalId) return
+    const leftId = activeTerminalId
+    const result = await window.api.terminal.create(currentPath)
+    if (result.success) {
+      addTerminal({ id: result.id, projectPath: result.projectPath, pid: result.pid })
+      // Manually set split IDs since addTerminal changes activeTerminalId
+      useTerminalStore.setState({ shellSplitIds: [leftId, result.id] })
+    }
+  }, [currentPath, isShellSplit, activeTerminalId, addTerminal, unsplitShell])
 
   const handleClose = useCallback(
     (e: React.MouseEvent, id: string) => {
@@ -72,6 +91,14 @@ export default function TerminalTabs() {
     [removeTerminal]
   )
 
+  const handleTabClick = useCallback((id: string) => {
+    if (isShellSplit && id !== shellSplitIds[0]) {
+      // Replace right pane in split mode
+      useTerminalStore.setState({ shellSplitIds: [shellSplitIds[0], id] })
+    }
+    setActiveTerminal(id)
+  }, [isShellSplit, shellSplitIds, setActiveTerminal])
+
   return (
     <div className="terminal-tabs">
       {projectTerminals.map((t, i) => {
@@ -80,8 +107,8 @@ export default function TerminalTabs() {
         return (
           <button
             key={t.id}
-            className={`terminal-tab ${t.id === activeTerminalId ? 'active' : ''}`}
-            onClick={() => setActiveTerminal(t.id)}
+            className={`terminal-tab ${t.id === activeTerminalId ? 'active' : ''} ${isShellSplit && shellSplitIds.includes(t.id) ? 'split-active' : ''}`}
+            onClick={() => handleTabClick(t.id)}
             onDoubleClick={() => setRenamingId(t.id)}
           >
             {isRenaming ? (
@@ -107,6 +134,16 @@ export default function TerminalTabs() {
       })}
       <button className="terminal-tab terminal-tab-new" onClick={handleNew} title="New terminal">
         +
+      </button>
+      <button
+        className={`terminal-tab terminal-tab-split ${isShellSplit ? 'active' : ''}`}
+        onClick={handleSplitShell}
+        title={isShellSplit ? 'Unsplit' : 'Split terminal'}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="3" y="3" width="8" height="18" rx="1"/>
+          <rect x="13" y="3" width="8" height="18" rx="1"/>
+        </svg>
       </button>
       <button
         className="terminal-tab terminal-tab-hide"

@@ -75,6 +75,11 @@ function createWindow(): void {
   terminalManager.setMainWindow(mainWindow)
   sessionFileWatcher.setMainWindow(mainWindow)
 
+  // Prevent the window from navigating away (e.g. when a file is dropped)
+  mainWindow.webContents.on('will-navigate', (e) => {
+    e.preventDefault()
+  })
+
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
@@ -96,19 +101,18 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  mainWindow.on('close', () => {
-    // Save session state before window closes
+  // Deferred close: request UI snapshot from renderer before saving
+  let isClosing = false
+  ipcMain.on('app:ui-snapshot', (_event, snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[] }) => {
+    if (!isClosing) return
     try {
-      // Gather current claude terminal sessions for persistence
       const sessions: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; lastActiveAt: number }> = []
-      // Iterate over all known project terminals
       for (const projPath of projectManager.getRecentPaths()) {
         const terms = terminalManager.list(projPath)
         for (const t of terms) {
           const claudeSessionId = terminalManager.getClaudeSessionId(t.id)
           if (claudeSessionId) {
             const createdAt = terminalManager.getCreatedAt(t.id)
-            // Add exiting Claude sessions to history
             sessionPersistence.addToHistory({
               id: t.id,
               claudeSessionId,
@@ -130,21 +134,79 @@ function createWindow(): void {
       }
       sessionPersistence.saveState({
         version: 1,
-        activeProjectPath: null, // Will be set by renderer before close ideally
-        expandedProjects: [],
+        activeProjectPath: snapshot.activeProjectPath,
+        expandedProjects: snapshot.expandedProjects,
         sessions,
-        theme: 'dark',
-        sidebarWidth: 240
+        theme: snapshot.theme || 'dark',
+        sidebarWidth: snapshot.sidebarWidth || 240
       })
     } catch (err) {
       console.error('[Main] Failed to save session state:', err)
     }
-
-    // Tear down managers *before* the window is destroyed
-    // so they don't try to send to a destroyed webContents
     agentManager.stopAgent()
     terminalManager.destroy()
     browserManager.destroy()
+    mainWindow?.destroy()
+  })
+
+  mainWindow.on('close', (e) => {
+    if (isClosing) return
+    e.preventDefault()
+    isClosing = true
+
+    // Ask renderer for UI snapshot
+    try {
+      mainWindow?.webContents.send('app:before-close')
+    } catch {
+      // If send fails, just destroy
+    }
+
+    // Timeout fallback: if renderer doesn't respond in 300ms, save defaults and destroy
+    setTimeout(() => {
+      if (!mainWindow) return
+      try {
+        const sessions: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; lastActiveAt: number }> = []
+        for (const projPath of projectManager.getRecentPaths()) {
+          const terms = terminalManager.list(projPath)
+          for (const t of terms) {
+            const claudeSessionId = terminalManager.getClaudeSessionId(t.id)
+            if (claudeSessionId) {
+              const createdAt = terminalManager.getCreatedAt(t.id)
+              sessionPersistence.addToHistory({
+                id: t.id,
+                claudeSessionId,
+                projectPath: t.projectPath,
+                name: terminalManager.getTerminalName(t.id) || 'Claude Code',
+                createdAt,
+                endedAt: Date.now()
+              })
+              sessions.push({
+                id: t.id,
+                claudeSessionId,
+                projectPath: t.projectPath,
+                name: terminalManager.getTerminalName(t.id) || 'Claude Code',
+                createdAt,
+                lastActiveAt: Date.now()
+              })
+            }
+          }
+        }
+        sessionPersistence.saveState({
+          version: 1,
+          activeProjectPath: null,
+          expandedProjects: [],
+          sessions,
+          theme: 'dark',
+          sidebarWidth: 240
+        })
+      } catch (err) {
+        console.error('[Main] Failed to save session state on timeout:', err)
+      }
+      agentManager.stopAgent()
+      terminalManager.destroy()
+      browserManager.destroy()
+      mainWindow?.destroy()
+    }, 300)
   })
 
   mainWindow.on('closed', () => {

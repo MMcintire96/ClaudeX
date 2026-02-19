@@ -13,7 +13,7 @@ const HOTKEYS = [
   { key: 'B', label: 'Toggle browser panel' },
   { key: 'D', label: 'Toggle diff panel' },
   { key: 'S', label: 'Toggle sidebar' },
-  { key: 'L', label: 'Toggle theme' },
+  { key: 'L', label: 'Cycle color scheme' },
   { key: 'V', label: 'Voice input' },
   { key: 'W', label: 'Close active Claude tab' },
   { key: '1–9', label: 'Switch to Claude tab N' }
