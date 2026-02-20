@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import DiffView from './DiffView'
+import CommitModal from '../git/CommitModal'
 import { useTerminalStore } from '../../stores/terminalStore'
 
 
@@ -59,6 +60,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [showCommitModal, setShowCommitModal] = useState(false)
 
   const toggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
 
@@ -321,7 +323,26 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     <div className="diff-panel">
       {/* Top control bar */}
       <div className="diff-panel-topbar">
+        <input
+          className="diff-search-input"
+          type="text"
+          placeholder="Search files..."
+          value={searchFilter}
+          onChange={e => setSearchFilter(e.target.value)}
+        />
+        <button
+          className="btn btn-sm btn-icon"
+          onClick={() => window.api.project.openInEditor(diffPath)}
+          title="Open in $EDITOR"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </button>
         <button className="btn btn-sm" onClick={handleRefresh}>Refresh</button>
+        <button className="btn btn-sm btn-primary" onClick={() => setShowCommitModal(true)}>Commit</button>
         <button
           className={`btn btn-sm btn-icon diff-sidebar-toggle ${!sidebarCollapsed ? 'active' : ''}`}
           onClick={toggleSidebar}
@@ -362,23 +383,13 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
           {loading ? (
             <div className="diff-loading">Loading...</div>
           ) : (
-            <DiffView diff={displayDiff} onAddToClaude={handleAddToClaude} />
+            <DiffView diff={displayDiff} onAddToClaude={handleAddToClaude} onOpenInEditor={(filePath) => window.api.project.openInEditor(diffPath, filePath)} />
           )}
         </div>
 
         {/* Right: file tree sidebar */}
         {!sidebarCollapsed && (
           <div className="diff-sidebar">
-            <div className="diff-sidebar-header">
-              <input
-                className="diff-search-input"
-                type="text"
-                placeholder="Filter files..."
-                value={searchFilter}
-                onChange={e => setSearchFilter(e.target.value)}
-              />
-            </div>
-
             <div className="diff-sidebar-tree">
               {filteredFiles.length > 0 ? (
                 fileTree.map(node => renderTreeNode(node, 0))
@@ -392,11 +403,28 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
         )}
       </div>
 
+      {showCommitModal && (
+        <CommitModal
+          projectPath={diffPath}
+          onClose={() => setShowCommitModal(false)}
+          onCommitted={handleRefresh}
+        />
+      )}
+
       {contextMenu && (
         <div
           className="context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              window.api.project.openInEditor(diffPath, contextMenu.filePath)
+              setContextMenu(null)
+            }}
+          >
+            Open in editor
+          </button>
           <button
             className="context-menu-item"
             onClick={() => handleAddToClaude(contextMenu.filePath)}

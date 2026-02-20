@@ -15,7 +15,7 @@ export interface BridgeInfo {
 }
 
 const CC_SYSTEM_PROMPT =
-  'You are running inside Claude Codex, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
+  'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
   'Terminal commands and browser navigation are visible to the user in real-time. ' +
   'Use terminal_execute to run commands and terminal_read to check output. ' +
   'Use browser_navigate, browser_content, and browser_screenshot to interact with web pages. ' +
@@ -24,9 +24,9 @@ const CC_SYSTEM_PROMPT =
 
 function getMcpServerPath(): string {
   if (app.isPackaged) {
-    return join(process.resourcesPath, 'codex-mcp-server.js')
+    return join(process.resourcesPath, 'claudex-mcp-server.js')
   }
-  return join(app.getAppPath(), 'resources', 'codex-mcp-server.js')
+  return join(app.getAppPath(), 'resources', 'claudex-mcp-server.js')
 }
 
 // Track temp files for cleanup
@@ -68,21 +68,21 @@ export function registerTerminalHandlers(
         if (existsSync(mcpServerPath)) {
           const config = {
             mcpServers: {
-              'codex-bridge': {
+              'claudex-bridge': {
                 command: 'node',
                 args: [mcpServerPath],
                 env: {
-                  CODEX_BRIDGE_PORT: String(bridgeInfo.bridgePort),
-                  CODEX_BRIDGE_TOKEN: bridgeInfo.bridgeToken,
-                  CODEX_PROJECT_PATH: projectPath,
-                  CODEX_SESSION_ID: terminalId
+                  CLAUDEX_BRIDGE_PORT: String(bridgeInfo.bridgePort),
+                  CLAUDEX_BRIDGE_TOKEN: bridgeInfo.bridgeToken,
+                  CLAUDEX_PROJECT_PATH: projectPath,
+                  CLAUDEX_SESSION_ID: terminalId
                 }
               }
             }
           }
           tmpPath = join(
             tmpdir(),
-            `codex-cc-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
+            `claudex-cc-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
           )
           writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8')
           args.push('--mcp-config', tmpPath)
@@ -136,21 +136,21 @@ export function registerTerminalHandlers(
         if (existsSync(mcpServerPath)) {
           const config = {
             mcpServers: {
-              'codex-bridge': {
+              'claudex-bridge': {
                 command: 'node',
                 args: [mcpServerPath],
                 env: {
-                  CODEX_BRIDGE_PORT: String(bridgeInfo.bridgePort),
-                  CODEX_BRIDGE_TOKEN: bridgeInfo.bridgeToken,
-                  CODEX_PROJECT_PATH: projectPath,
-                  CODEX_SESSION_ID: terminalId
+                  CLAUDEX_BRIDGE_PORT: String(bridgeInfo.bridgePort),
+                  CLAUDEX_BRIDGE_TOKEN: bridgeInfo.bridgeToken,
+                  CLAUDEX_PROJECT_PATH: projectPath,
+                  CLAUDEX_SESSION_ID: terminalId
                 }
               }
             }
           }
           tmpPath = join(
             tmpdir(),
-            `codex-cc-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
+            `claudex-cc-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
           )
           writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8')
           args.push('--mcp-config', tmpPath)

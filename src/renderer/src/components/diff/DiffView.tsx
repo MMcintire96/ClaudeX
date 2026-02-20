@@ -4,9 +4,10 @@ import { parse as diffParse } from 'diff2html'
 interface Props {
   diff: string
   onAddToClaude?: (filePath: string) => void
+  onOpenInEditor?: (filePath: string) => void
 }
 
-export default function DiffView({ diff, onAddToClaude }: Props) {
+export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props) {
   const files = useMemo(() => {
     if (!diff.trim()) return []
     try {
@@ -67,6 +68,7 @@ export default function DiffView({ diff, onAddToClaude }: Props) {
           collapsed={collapsedMap[i] ?? false}
           onToggle={() => toggleFile(i)}
           onAddToClaude={onAddToClaude}
+          onOpenInEditor={onOpenInEditor}
         />
       ))}
     </div>
@@ -77,12 +79,14 @@ function DiffFileBlock({
   file,
   collapsed,
   onToggle,
-  onAddToClaude
+  onAddToClaude,
+  onOpenInEditor
 }: {
   file: ReturnType<typeof diffParse>[number]
   collapsed: boolean
   onToggle: () => void
   onAddToClaude?: (filePath: string) => void
+  onOpenInEditor?: (filePath: string) => void
 }) {
   const fileName = file.newName !== '/dev/null' ? file.newName : file.oldName
   const isNew = file.oldName === '/dev/null'
@@ -104,7 +108,7 @@ function DiffFileBlock({
         className="gh-diff-file-header"
         onClick={onToggle}
         onContextMenu={(e) => {
-          if (!onAddToClaude) return
+          if (!onAddToClaude && !onOpenInEditor) return
           e.preventDefault()
           setContextMenu({ x: e.clientX, y: e.clientY })
         }}
@@ -178,15 +182,28 @@ function DiffFileBlock({
           className="context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button
-            className="context-menu-item"
-            onClick={() => {
-              onAddToClaude?.(fileName)
-              setContextMenu(null)
-            }}
-          >
-            Add to Claude
-          </button>
+          {onOpenInEditor && (
+            <button
+              className="context-menu-item"
+              onClick={() => {
+                onOpenInEditor(fileName.replace(/^[ab]\//, ''))
+                setContextMenu(null)
+              }}
+            >
+              Open in editor
+            </button>
+          )}
+          {onAddToClaude && (
+            <button
+              className="context-menu-item"
+              onClick={() => {
+                onAddToClaude(fileName)
+                setContextMenu(null)
+              }}
+            >
+              Add to Claude
+            </button>
+          )}
         </div>
       )}
     </div>

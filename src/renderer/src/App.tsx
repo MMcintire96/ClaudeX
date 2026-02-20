@@ -73,9 +73,12 @@ export default function App() {
     }
   }, [])
 
-  // Apply theme to document
+  // Apply theme to document + broadcast to popout windows
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
+    const channel = new BroadcastChannel('claudex-theme')
+    channel.postMessage({ type: 'theme-changed', theme })
+    channel.close()
   }, [theme])
 
   // Terminal exit listener
@@ -91,6 +94,11 @@ export default function App() {
   useEffect(() => {
     const unsub = window.api.terminal.onClaudeSessionId((terminalId, sessionId) => {
       useTerminalStore.getState().setClaudeSessionId(terminalId, sessionId)
+
+      // Skip if the session is already initialized (e.g. resume handler already set it up).
+      // Re-running loadEntries with [] would wipe existing messages.
+      if (useSessionStore.getState().sessions[sessionId]) return
+
       const terminal = useTerminalStore.getState().terminals.find(t => t.id === terminalId)
       if (terminal) {
         // For worktree terminals, use the worktree path for session file lookup
@@ -160,6 +168,10 @@ export default function App() {
   useEffect(() => {
     const unsub = window.api.terminal.onClaudeStatus((id: string, status: string) => {
       setClaudeStatus(id, status as 'running' | 'idle' | 'attention' | 'done')
+      // Clear permission request when Claude resumes running (user already responded)
+      if (status === 'running') {
+        useTerminalStore.getState().clearPermissionRequest(id)
+      }
     })
     return unsub
   }, [setClaudeStatus])
@@ -171,6 +183,14 @@ export default function App() {
     })
     return unsub
   }, [autoRenameTerminal])
+
+  // Permission request listener — surface CLI permission prompts in ChatView
+  useEffect(() => {
+    const unsub = window.api.terminal.onPermissionRequest((terminalId, permissionText, promptType) => {
+      useTerminalStore.getState().setPermissionRequest(terminalId, permissionText, promptType as 'yn' | 'enter')
+    })
+    return unsub
+  }, [])
 
   // Context usage listener
   useEffect(() => {
@@ -399,6 +419,13 @@ export default function App() {
       if (key === 'l') {
         e.preventDefault()
         useUIStore.getState().cycleTheme()
+        return
+      }
+
+      // Mod+P — Toggle chat pop-out
+      if (key === 'p' && !e.shiftKey) {
+        e.preventDefault()
+        useUIStore.getState().toggleChatDetached()
         return
       }
 

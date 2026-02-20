@@ -1,8 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import type { UIToolUseMessage } from '../../stores/sessionStore'
 
 interface Props {
   message: UIToolUseMessage
+  awaitingPermission?: boolean
+  terminalId?: string
 }
 
 function formatInput(input: Record<string, unknown>): string {
@@ -19,11 +21,32 @@ function formatInput(input: Record<string, unknown>): string {
   return parts.join('\n')
 }
 
-export default function ToolUseBlock({ message }: Props) {
+export default function ToolUseBlock({ message, awaitingPermission, terminalId }: Props) {
   const [expanded, setExpanded] = useState(false)
+  const [responded, setResponded] = useState(false)
+
+  const handleAllow = useCallback(async () => {
+    if (!terminalId || responded) return
+    setResponded(true)
+    await window.api.terminal.write(terminalId, '\r')
+  }, [terminalId, responded])
+
+  const handleAllowAlways = useCallback(async () => {
+    if (!terminalId || responded) return
+    setResponded(true)
+    await window.api.terminal.write(terminalId, '2')
+    await new Promise(r => setTimeout(r, 50))
+    await window.api.terminal.write(terminalId, '\r')
+  }, [terminalId, responded])
+
+  const handleDeny = useCallback(async () => {
+    if (!terminalId || responded) return
+    setResponded(true)
+    await window.api.terminal.write(terminalId, '\x1b')
+  }, [terminalId, responded])
 
   return (
-    <div className="tool-use-block">
+    <div className={`tool-use-block${awaitingPermission && !responded ? ' awaiting-permission' : ''}`}>
       <button
         className="tool-use-header"
         onClick={() => setExpanded(!expanded)}
@@ -41,6 +64,16 @@ export default function ToolUseBlock({ message }: Props) {
               <pre>{JSON.stringify(message.input, null, 2)}</pre>
             </details>
           )}
+        </div>
+      )}
+      {awaitingPermission && !responded && (
+        <div className="permission-request-inline">
+          <span className="permission-request-label">This action requires approval</span>
+          <div className="permission-request-actions">
+            <button className="btn btn-sm btn-deny" onClick={handleDeny}>Deny</button>
+            <button className="btn btn-sm btn-allow-always" onClick={handleAllowAlways}>Allow always</button>
+            <button className="btn btn-sm btn-allow" onClick={handleAllow}>Allow</button>
+          </div>
         </div>
       )}
     </div>

@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import type { UIToolUseMessage, UIToolResultMessage } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 
 interface Props {
   message: UIToolUseMessage
   result?: UIToolResultMessage | null
+  awaitingPermission?: boolean
+  terminalId?: string
 }
 
 // Tool icons as simple SVG components
@@ -84,10 +86,33 @@ export function isFileEditTool(toolName: string): boolean {
   return FILE_TOOLS.has(toolName)
 }
 
-export default function FileEditBlock({ message, result }: Props) {
+export default function FileEditBlock({ message, result, awaitingPermission, terminalId }: Props) {
   const autoExpand = useSettingsStore(s => s.autoExpandEdits)
   const isEditTool = message.toolName === 'Edit' || message.toolName === 'Write'
   const [expanded, setExpanded] = useState(autoExpand && isEditTool)
+  const [permissionResponded, setPermissionResponded] = useState(false)
+
+  const handleAllow = useCallback(async () => {
+    if (!terminalId || permissionResponded) return
+    setPermissionResponded(true)
+    // Option 1: Yes
+    await window.api.terminal.write(terminalId, '\r')
+  }, [terminalId, permissionResponded])
+
+  const handleAllowAlways = useCallback(async () => {
+    if (!terminalId || permissionResponded) return
+    setPermissionResponded(true)
+    // Option 2: Yes, and don't ask again
+    await window.api.terminal.write(terminalId, '2')
+    await new Promise(r => setTimeout(r, 50))
+    await window.api.terminal.write(terminalId, '\r')
+  }, [terminalId, permissionResponded])
+
+  const handleDeny = useCallback(async () => {
+    if (!terminalId || permissionResponded) return
+    setPermissionResponded(true)
+    await window.api.terminal.write(terminalId, '\x1b')
+  }, [terminalId, permissionResponded])
   const input = message.input
 
   const filePath = (input.file_path || input.path || '') as string
@@ -128,7 +153,7 @@ export default function FileEditBlock({ message, result }: Props) {
   }, [result])
 
   return (
-    <div className={`file-edit-block ${hasError ? 'file-edit-error' : ''}`}>
+    <div className={`file-edit-block ${hasError ? 'file-edit-error' : ''}${awaitingPermission && !permissionResponded ? ' awaiting-permission' : ''}`}>
       <button
         className="file-edit-header"
         onClick={() => setExpanded(!expanded)}
@@ -208,6 +233,16 @@ export default function FileEditBlock({ message, result }: Props) {
               <pre>{resultPreview}</pre>
             </div>
           )}
+        </div>
+      )}
+      {awaitingPermission && !permissionResponded && (
+        <div className="permission-request-inline">
+          <span className="permission-request-label">This action requires approval</span>
+          <div className="permission-request-actions">
+            <button className="btn btn-sm btn-deny" onClick={handleDeny}>Deny</button>
+            <button className="btn btn-sm btn-allow-always" onClick={handleAllowAlways}>Allow always</button>
+            <button className="btn btn-sm btn-allow" onClick={handleAllow}>Allow</button>
+          </div>
         </div>
       )}
     </div>

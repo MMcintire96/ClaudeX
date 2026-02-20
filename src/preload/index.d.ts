@@ -36,6 +36,15 @@ export interface ElectronAPI {
     hasStartConfig: (projectPath: string) => Promise<boolean>
     runStart: (projectPath: string, cwdOverride?: string) => Promise<{ success: boolean; terminalIds?: string[]; browserUrl?: string | null; error?: string }>
     listFiles: (projectPath: string) => Promise<{ success: boolean; files: string[]; error?: string }>
+    openInEditor: (projectPath: string, filePath?: string) => Promise<{ success: boolean; error?: string }>
+    gitBranches: (projectPath: string) => Promise<{ success: boolean; current?: string; branches?: string[]; error?: string }>
+    gitCheckout: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>
+    gitAdd: (projectPath: string, files?: string[]) => Promise<{ success: boolean; error?: string }>
+    gitCommit: (projectPath: string, message: string) => Promise<{ success: boolean; commit?: string; error?: string }>
+    gitPush: (projectPath: string) => Promise<{ success: boolean; error?: string }>
+    gitLog: (projectPath: string, maxCount?: number) => Promise<{ success: boolean; log?: unknown; error?: string }>
+    gitRemotes: (projectPath: string) => Promise<{ success: boolean; remotes?: Array<{ name: string; refs: { fetch: string; push: string } }>; error?: string }>
+    gitDiffSummary: (projectPath: string, staged?: boolean) => Promise<{ success: boolean; summary?: { changed: number; insertions: number; deletions: number; files: Array<{ file: string; changes: number; insertions: number; deletions: number }> }; error?: string }>
   }
   terminal: {
     create: (projectPath: string) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; error?: string }>
@@ -58,6 +67,7 @@ export interface ElectronAPI {
     getTmuxInfo: () => Promise<{ available: boolean; sessionName: string | null }>
     onClaudeSessionId: (callback: (id: string, sessionId: string) => void) => () => void
     onSystemMessage: (callback: (terminalId: string, message: string) => void) => () => void
+    onPermissionRequest: (callback: (terminalId: string, permissionText: string, promptType: string) => void) => () => void
   }
   session: {
     history: (projectPath: string) => Promise<Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>>
@@ -93,6 +103,11 @@ export interface ElectronAPI {
     onBeforeClose: (callback: () => void) => () => void
     sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[] }) => void
   }
+  popout: {
+    create: (terminalId: string, projectPath: string, theme?: string) => Promise<{ success: boolean }>
+    close: () => Promise<{ success: boolean }>
+    onClosed: (callback: () => void) => () => void
+  }
   browser: {
     navigate: (url: string) => Promise<{ success: boolean; error?: string }>
     back: () => Promise<{ success: boolean }>
@@ -123,6 +138,9 @@ export interface ElectronAPI {
     syncToLocal: (sessionId: string, mode: 'overwrite' | 'apply') => Promise<{ success: boolean; error?: string }>
     syncFromLocal: (sessionId: string, mode: 'overwrite' | 'apply') => Promise<{ success: boolean; error?: string }>
     openInEditor: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+  }
+  utils: {
+    getPathForFile: (file: File) => string
   }
 }
 

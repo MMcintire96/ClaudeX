@@ -9,6 +9,7 @@ interface AppSettings {
   autoExpandEdits: boolean
   notificationSounds: boolean
   vimChatMode: boolean
+  preventSleep: boolean
 }
 
 interface SettingsState extends AppSettings {
@@ -26,6 +27,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   autoExpandEdits: false,
   notificationSounds: true,
   vimChatMode: false,
+  preventSleep: true,
   loaded: false,
 
   loadSettings: async (): Promise<void> => {

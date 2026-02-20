@@ -7,7 +7,7 @@ import simpleGit, { SimpleGit } from 'simple-git'
 
 /** Write patch to a temp file, apply it with git apply, then clean up */
 async function applyPatch(git: SimpleGit, patch: string, threeWay = false): Promise<void> {
-  const tmpPath = join(tmpdir(), `codex-patch-${Date.now()}-${Math.random().toString(36).slice(2)}.patch`)
+  const tmpPath = join(tmpdir(), `claudex-patch-${Date.now()}-${Math.random().toString(36).slice(2)}.patch`)
   try {
     writeFileSync(tmpPath, patch, 'utf-8')
     const args = ['apply']

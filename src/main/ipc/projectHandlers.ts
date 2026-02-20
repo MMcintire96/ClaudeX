@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { resolve } from 'path'
-import { execFile } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import { ProjectManager } from '../project/ProjectManager'
 import { GitService } from '../project/GitService'
@@ -104,6 +104,26 @@ export function registerProjectHandlers(
     }
   })
 
+  ipcMain.handle('project:git-branches', async (_event, projectPath: string) => {
+    try {
+      const git = new GitService(projectPath)
+      const result = await git.branchList()
+      return { success: true, current: result.current, branches: result.all }
+    } catch (err) {
+      return { success: false, error: (err as Error).message, branches: [] }
+    }
+  })
+
+  ipcMain.handle('project:git-checkout', async (_event, projectPath: string, branchName: string) => {
+    try {
+      const git = new GitService(projectPath)
+      await git.checkout(branchName)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
   // Start config handlers
   ipcMain.handle('project:get-start-config', (_event, projectPath: string) => {
     if (!projectConfigManager) return null
@@ -138,6 +158,106 @@ export function registerProjectHandlers(
     }
 
     return { success: true, terminals, terminalIds: terminals.map(t => t.id), browserUrl: config.browserUrl || null }
+  })
+
+  ipcMain.handle('project:open-in-editor', (_event, projectPath: string, filePath?: string) => {
+    const editor = process.env.VISUAL || process.env.EDITOR || 'code'
+    const bin = editor.split('/').pop() || editor
+    const tuiEditors = ['vi', 'vim', 'nvim', 'neovim', 'nano', 'helix', 'hx', 'emacs', 'micro', 'kakoune', 'kak']
+    const isTui = tuiEditors.includes(bin)
+    const target = filePath ? resolve(projectPath, filePath) : projectPath
+
+    return new Promise<{ success: boolean; error?: string }>((res) => {
+      let cmd: string
+      let args: string[]
+      if (isTui) {
+        cmd = process.env.TERMINAL || 'alacritty'
+        args = ['--working-directory', projectPath, '-e', editor, target]
+      } else {
+        cmd = editor
+        args = [target]
+      }
+      const child = spawn(cmd, args, { cwd: projectPath, detached: true, stdio: 'ignore' })
+      child.on('error', (err) => {
+        res({ success: false, error: err.message })
+      })
+      child.on('spawn', () => {
+        child.unref()
+        res({ success: true })
+      })
+    })
+  })
+
+  ipcMain.handle('project:git-add', async (_event, projectPath: string, files?: string[]) => {
+    try {
+      const git = new GitService(projectPath)
+      if (files && files.length > 0) {
+        await git.add(files)
+      } else {
+        await git.addAll()
+      }
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('project:git-commit', async (_event, projectPath: string, message: string) => {
+    try {
+      const git = new GitService(projectPath)
+      const commit = await git.commit(message)
+      return { success: true, commit }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('project:git-push', async (_event, projectPath: string) => {
+    try {
+      const git = new GitService(projectPath)
+      await git.push()
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('project:git-log', async (_event, projectPath: string, maxCount?: number) => {
+    try {
+      const git = new GitService(projectPath)
+      const log = await git.log(maxCount || 10)
+      return { success: true, log }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('project:git-remotes', async (_event, projectPath: string) => {
+    try {
+      const git = new GitService(projectPath)
+      const remotes = await git.getRemotes()
+      return { success: true, remotes }
+    } catch (err) {
+      return { success: false, error: (err as Error).message, remotes: [] }
+    }
+  })
+
+  ipcMain.handle('project:git-diff-summary', async (_event, projectPath: string, staged?: boolean) => {
+    try {
+      const git = new GitService(projectPath)
+      const summary = await git.diffSummary(staged)
+      return {
+        success: true,
+        summary: {
+          changed: summary.changed,
+          insertions: summary.insertions,
+          deletions: summary.deletions,
+          files: summary.files.map(f => ({ file: f.file, changes: f.changes, insertions: f.insertions, deletions: f.deletions }))
+        }
+      }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
   })
 
   ipcMain.handle('project:list-files', async (_event, projectPath: string) => {

@@ -1,8 +1,8 @@
 {
-  "name": "claude-codex",
+  "name": "claudex",
   "version": "1.0.0",
   "author": "Michael",
-  "homepage": "https://github.com/michael/claude-codex",
+  "homepage": "https://github.com/michael/claudex",
   "description": "Desktop app for Claude Code - manage AI coding agents",
   "main": "./out/main/index.js",
   "scripts": {

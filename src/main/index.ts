@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, globalShortcut, session, Menu, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, globalShortcut, session, Menu, ipcMain, powerSaveBlocker } from 'electron'
 import { join } from 'path'
 import { AgentManager } from './agent/AgentManager'
 import { ProjectManager } from './project/ProjectManager'
@@ -9,9 +9,10 @@ import { VoiceManager } from './voice/VoiceManager'
 import { SessionPersistence } from './session/SessionPersistence'
 import { SessionFileWatcher } from './session/SessionFileWatcher'
 import { ProjectConfigManager } from './project/ProjectConfigManager'
-import { CodexBridgeServer } from './bridge/CodexBridgeServer'
+import { ClaudexBridgeServer } from './bridge/ClaudexBridgeServer'
 import { registerAllHandlers } from './ipc'
 import { WorktreeManager } from './worktree/WorktreeManager'
+import { addBroadcastWindow, removeBroadcastWindow } from './broadcast'
 
 const agentManager = new AgentManager()
 const projectManager = new ProjectManager()
@@ -23,9 +24,26 @@ const sessionPersistence = new SessionPersistence()
 const sessionFileWatcher = new SessionFileWatcher()
 const projectConfigManager = new ProjectConfigManager()
 const worktreeManager = new WorktreeManager()
-const bridgeServer = new CodexBridgeServer(terminalManager, browserManager)
+const bridgeServer = new ClaudexBridgeServer(terminalManager, browserManager)
 
 let mainWindow: BrowserWindow | null = null
+let sleepBlockerId: number | null = null
+
+/** Start blocking sleep if not already blocking */
+function startSleepBlock(): void {
+  if (sleepBlockerId !== null && powerSaveBlocker.isStarted(sleepBlockerId)) return
+  sleepBlockerId = powerSaveBlocker.start('prevent-app-suspension')
+  console.log('[Main] Sleep prevention started')
+}
+
+/** Stop blocking sleep */
+function stopSleepBlock(): void {
+  if (sleepBlockerId !== null && powerSaveBlocker.isStarted(sleepBlockerId)) {
+    powerSaveBlocker.stop(sleepBlockerId)
+    console.log('[Main] Sleep prevention stopped')
+  }
+  sleepBlockerId = null
+}
 
 function createWindow(): void {
   // Remove GTK/native menu bar
@@ -38,7 +56,7 @@ function createWindow(): void {
     height: 900,
     minWidth: 800,
     minHeight: 600,
-    title: 'Claude Codex',
+    title: 'ClaudeX',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -236,6 +254,74 @@ function createWindow(): void {
   })
 }
 
+// Popout chat window management
+let popoutWindow: BrowserWindow | null = null
+
+function createPopoutWindow(terminalId: string, projectPath: string, theme?: string): BrowserWindow {
+  // Close existing popout if any
+  if (popoutWindow && !popoutWindow.isDestroyed()) {
+    popoutWindow.close()
+  }
+
+  const popout = new BrowserWindow({
+    width: 480,
+    height: 650,
+    minWidth: 360,
+    minHeight: 300,
+    title: 'Chat',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false
+    },
+    frame: true,
+    alwaysOnTop: false,
+  })
+
+  // Prevent navigation away
+  popout.webContents.on('will-navigate', (e) => e.preventDefault())
+  popout.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
+  // Register for broadcast
+  addBroadcastWindow(popout)
+
+  popout.on('closed', () => {
+    removeBroadcastWindow(popout)
+    if (popoutWindow === popout) popoutWindow = null
+    // Notify main window that popout was closed
+    mainWindow?.webContents.send('popout:closed')
+  })
+
+  // Load renderer with popout query params
+  const params = `?popout=true&terminalId=${encodeURIComponent(terminalId)}&projectPath=${encodeURIComponent(projectPath)}${theme ? `&theme=${encodeURIComponent(theme)}` : ''}`
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    popout.loadURL(process.env['ELECTRON_RENDERER_URL'] + params)
+  } else {
+    popout.loadFile(join(__dirname, '../renderer/index.html'), {
+      search: params
+    })
+  }
+
+  popoutWindow = popout
+  return popout
+}
+
+ipcMain.handle('popout:create', (_event, terminalId: string, projectPath: string, theme?: string) => {
+  createPopoutWindow(terminalId, projectPath, theme)
+  return { success: true }
+})
+
+ipcMain.handle('popout:close', () => {
+  if (popoutWindow && !popoutWindow.isDestroyed()) {
+    popoutWindow.close()
+  }
+  return { success: true }
+})
+
 app.whenReady().then(async () => {
   // Permission handling: only grant what's needed
   const ALLOWED_PERMISSIONS = new Set(['media', 'clipboard-read', 'clipboard-sanitized-write'])
@@ -255,6 +341,28 @@ app.whenReady().then(async () => {
     bridgePort: bridgeServer.port,
     bridgeToken: bridgeServer.token
   }, sessionPersistence, projectConfigManager, sessionFileWatcher, worktreeManager)
+
+  // Sleep prevention: listen for Claude terminal status changes
+  // Track which terminals are actively running Claude
+  const runningClaudeTerminals = new Set<string>()
+  ipcMain.on('__claude-status-internal', (_event, id: string, status: string) => {
+    if (status === 'running') {
+      runningClaudeTerminals.add(id)
+    } else {
+      runningClaudeTerminals.delete(id)
+    }
+    const settings = settingsManager.get()
+    if (settings.preventSleep && runningClaudeTerminals.size > 0) {
+      startSleepBlock()
+    } else {
+      stopSleepBlock()
+    }
+  })
+  // Hook into the terminal manager's status emissions
+  terminalManager.onClaudeStatusChange((id: string, status: string) => {
+    ipcMain.emit('__claude-status-internal', {}, id, status)
+  })
+
   createWindow()
 
   app.on('activate', () => {
@@ -274,6 +382,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  stopSleepBlock()
   agentManager.stopAgent()
   terminalManager.destroy()
   voiceManager.destroy()

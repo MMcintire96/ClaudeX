@@ -171,6 +171,8 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
   const claudeMode = useTerminalStore(s => s.claudeModes[terminalId] || 'execute') as ClaudeMode
   const claudeModel = useTerminalStore(s => s.claudeModels[terminalId] || '')
   const claudeStatus = useTerminalStore(s => s.claudeStatuses[terminalId] || 'idle')
+  const pendingPermission = useTerminalStore(s => s.pendingPermissions[terminalId])
+  const clearPermissionRequest = useTerminalStore(s => s.clearPermissionRequest)
   const contextUsage = useTerminalStore(s => s.contextUsage[terminalId] || 0)
   const toggleClaudeMode = useTerminalStore(s => s.toggleClaudeMode)
   const setClaudeModel = useTerminalStore(s => s.setClaudeModel)
@@ -182,6 +184,11 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
   const setActiveClaudeId = useTerminalStore(s => s.setActiveClaudeId)
   const [worktreeMode, setWorktreeMode] = useState<'local' | 'worktree'>('local')
   const [worktreeDropdownOpen, setWorktreeDropdownOpen] = useState(false)
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false)
+  const [branchList, setBranchList] = useState<string[]>([])
+  const [branchSwitching, setBranchSwitching] = useState(false)
+  const [branchFilter, setBranchFilter] = useState('')
+  const branchFilterRef = useRef<HTMLInputElement>(null)
   const [worktreeLocked, setWorktreeLocked] = useState(false)
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null)
   const [messageQueue, setMessageQueue] = useState<string[]>([])
@@ -200,6 +207,52 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       slashCommandActiveRef.current = false
     }
   }, [claudeStatus])
+
+  // Branch picker: load branches when opened
+  const setGitBranch = useProjectStore(s => s.setGitBranch)
+
+  const openBranchPicker = useCallback(async () => {
+    const result = await window.api.project.gitBranches(projectPath)
+    if (result.success && result.branches) {
+      setBranchList(result.branches)
+    }
+    setBranchFilter('')
+    setBranchPickerOpen(true)
+    setTimeout(() => branchFilterRef.current?.focus(), 50)
+  }, [projectPath])
+
+  const handleBranchSwitch = useCallback(async (branch: string) => {
+    if (branch === gitBranch) {
+      setBranchPickerOpen(false)
+      return
+    }
+    setBranchSwitching(true)
+    const result = await window.api.project.gitCheckout(projectPath, branch)
+    if (result.success) {
+      setGitBranch(projectPath, branch)
+    }
+    setBranchSwitching(false)
+    setBranchPickerOpen(false)
+  }, [projectPath, gitBranch, setGitBranch])
+
+  // Close branch picker on outside click
+  useEffect(() => {
+    if (!branchPickerOpen) return
+    const close = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.branch-picker')) {
+        setBranchPickerOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [branchPickerOpen])
+
+  const filteredBranches = useMemo(() => {
+    if (!branchFilter.trim()) return branchList
+    const q = branchFilter.toLowerCase()
+    return branchList.filter(b => b.toLowerCase().includes(q))
+  }, [branchList, branchFilter])
 
   // Input history
   const historyRef = useRef<string[]>([])
@@ -489,6 +542,32 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       listRef.current.scrollTop = listRef.current.scrollHeight
     }
   }, [messages, messageQueue, pendingUserMessage, searchOpen, searchQuery])
+
+  const handlePermissionAllow = useCallback(async () => {
+    const perm = pendingPermission
+    clearPermissionRequest(terminalId)
+    if (perm?.promptType === 'enter') {
+      // Enter/Esc style prompt — press Enter to confirm
+      await window.api.terminal.write(terminalId, '\r')
+    } else {
+      // y/n style prompt
+      await window.api.terminal.write(terminalId, 'y')
+      await window.api.terminal.write(terminalId, '\r')
+    }
+  }, [terminalId, clearPermissionRequest, pendingPermission])
+
+  const handlePermissionDeny = useCallback(async () => {
+    const perm = pendingPermission
+    clearPermissionRequest(terminalId)
+    if (perm?.promptType === 'enter') {
+      // Enter/Esc style prompt — press Esc to cancel
+      await window.api.terminal.write(terminalId, '\x1b')
+    } else {
+      // y/n style prompt
+      await window.api.terminal.write(terminalId, 'n')
+      await window.api.terminal.write(terminalId, '\r')
+    }
+  }, [terminalId, clearPermissionRequest, pendingPermission])
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim()
@@ -877,24 +956,36 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
 
     const paths: string[] = []
     for (let i = 0; i < files.length; i++) {
-      const file = files[i] as any
-      // Electron provides the full path via file.path
-      const filePath = file.path as string | undefined
+      const file = files[i]
+      // Electron 40+: use webUtils.getPathForFile() via preload bridge
+      const filePath = window.api.utils.getPathForFile(file)
       if (filePath) {
         // Make path relative to project if it's inside the project
         const relativePath = filePath.startsWith(projectPath + '/')
           ? filePath.slice(projectPath.length + 1)
           : filePath
         paths.push(relativePath)
+      } else if (file.name) {
+        paths.push(file.name)
       }
     }
 
     if (paths.length > 0) {
+      const refs = paths.map(p => '@' + p).join(' ')
       setInputText(prev => {
         const prefix = prev.length > 0 && !prev.endsWith(' ') ? prev + ' ' : prev
-        return prefix + paths.map(p => '@' + p).join(' ') + ' '
+        return prefix + refs + ' '
       })
-      textareaRef.current?.focus()
+      // Focus textarea and trigger resize
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        requestAnimationFrame(() => {
+          if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto'
+            textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
+          }
+        })
+      }
     }
   }, [projectPath])
 
@@ -986,9 +1077,15 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
                 }
                 if (isFileEditTool(toolMsg.toolName)) {
                   const pairedResult = toolResultByToolUseId.get(toolMsg.toolId)
-                  return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult ?? null} /></div>
+                  const hasResult = !!pairedResult
+                  const isLast = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
+                  const needsPermission = !hasResult && isLast
+                  return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult ?? null} awaitingPermission={needsPermission} terminalId={terminalId} /></div>
                 }
-                return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolUseBlock message={toolMsg} /></div>
+                const hasToolResult = toolResultByToolUseId.has(toolMsg.toolId)
+                const isLastToolUse = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
+                const awaitingPermission = !hasToolResult && isLastToolUse
+                return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolUseBlock message={toolMsg} awaitingPermission={awaitingPermission} terminalId={terminalId} /></div>
               } else if (msg.type === 'tool_result') {
                 const resultMsg = msg as UIToolResultMessage
                 const parentTool = toolUseById.get(resultMsg.toolUseId)
@@ -1228,15 +1325,58 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
               </span>
             )}
             {gitBranch && (
-              <span className="input-footer-branch" title={`Branch: ${gitBranch}`}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="6" y1="3" x2="6" y2="15" />
-                  <circle cx="18" cy="6" r="3" />
-                  <circle cx="6" cy="18" r="3" />
-                  <path d="M18 9a9 9 0 0 1-9 9" />
-                </svg>
-                {gitBranch}
-              </span>
+              <div className="branch-picker">
+                <button
+                  className="branch-picker-btn"
+                  onClick={openBranchPicker}
+                  title={`Branch: ${gitBranch} (click to switch)`}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="6" y1="3" x2="6" y2="15" />
+                    <circle cx="18" cy="6" r="3" />
+                    <circle cx="6" cy="18" r="3" />
+                    <path d="M18 9a9 9 0 0 1-9 9" />
+                  </svg>
+                  {gitBranch}
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                {branchPickerOpen && (
+                  <div className="branch-picker-dropdown">
+                    <input
+                      ref={branchFilterRef}
+                      className="branch-picker-search"
+                      type="text"
+                      placeholder="Filter branches..."
+                      value={branchFilter}
+                      onChange={e => setBranchFilter(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Escape') setBranchPickerOpen(false)
+                        if (e.key === 'Enter' && filteredBranches.length > 0) {
+                          handleBranchSwitch(filteredBranches[0])
+                        }
+                      }}
+                    />
+                    <div className="branch-picker-list">
+                      {filteredBranches.map(b => (
+                        <button
+                          key={b}
+                          className={`branch-picker-option ${b === gitBranch ? 'active' : ''}`}
+                          onClick={() => handleBranchSwitch(b)}
+                          disabled={branchSwitching}
+                        >
+                          <span className="branch-picker-option-name">{b}</span>
+                          {b === gitBranch && <span className="branch-picker-check">&#10003;</span>}
+                        </button>
+                      ))}
+                      {filteredBranches.length === 0 && (
+                        <div className="branch-picker-empty">No matching branches</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
           <div className="input-footer-right">

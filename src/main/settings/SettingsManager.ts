@@ -11,6 +11,7 @@ export interface AppSettings {
   autoExpandEdits: boolean
   notificationSounds: boolean
   vimChatMode: boolean
+  preventSleep: boolean
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -21,7 +22,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   vimMode: true,
   autoExpandEdits: false,
   notificationSounds: true,
-  vimChatMode: false
+  vimChatMode: false,
+  preventSleep: true
 }
 
 /**
@@ -46,7 +48,8 @@ export class SettingsManager {
         vimMode: loaded.vimMode ?? DEFAULT_SETTINGS.vimMode,
         autoExpandEdits: loaded.autoExpandEdits ?? DEFAULT_SETTINGS.autoExpandEdits,
         notificationSounds: loaded.notificationSounds ?? DEFAULT_SETTINGS.notificationSounds,
-        vimChatMode: loaded.vimChatMode ?? DEFAULT_SETTINGS.vimChatMode
+        vimChatMode: loaded.vimChatMode ?? DEFAULT_SETTINGS.vimChatMode,
+        preventSleep: loaded.preventSleep ?? DEFAULT_SETTINGS.preventSleep
       }
     } catch {
       this.settings = structuredClone(DEFAULT_SETTINGS)
@@ -75,6 +78,9 @@ export class SettingsManager {
     }
     if (partial.vimChatMode !== undefined) {
       this.settings.vimChatMode = partial.vimChatMode
+    }
+    if (partial.preventSleep !== undefined) {
+      this.settings.preventSleep = partial.preventSleep
     }
     await this.persist()
     return this.settings

@@ -244,9 +244,9 @@ export default function ProjectTree({
               ) : (
                 <span className="tree-item-label">
                   {displayName}
-                  <WorktreeBadge terminalId={t.id} />
                 </span>
               )}
+              <WorktreeBadge terminalId={t.id} />
               <span className="thread-time"></span>
             </button>
           )

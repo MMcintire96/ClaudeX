@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 const api = {
   agent: {
@@ -66,7 +66,25 @@ const api = {
     runStart: (projectPath: string, cwdOverride?: string) =>
       ipcRenderer.invoke('project:run-start', projectPath, cwdOverride),
     listFiles: (projectPath: string) =>
-      ipcRenderer.invoke('project:list-files', projectPath)
+      ipcRenderer.invoke('project:list-files', projectPath),
+    openInEditor: (projectPath: string, filePath?: string) =>
+      ipcRenderer.invoke('project:open-in-editor', projectPath, filePath),
+    gitBranches: (projectPath: string) =>
+      ipcRenderer.invoke('project:git-branches', projectPath),
+    gitCheckout: (projectPath: string, branchName: string) =>
+      ipcRenderer.invoke('project:git-checkout', projectPath, branchName),
+    gitAdd: (projectPath: string, files?: string[]) =>
+      ipcRenderer.invoke('project:git-add', projectPath, files),
+    gitCommit: (projectPath: string, message: string) =>
+      ipcRenderer.invoke('project:git-commit', projectPath, message),
+    gitPush: (projectPath: string) =>
+      ipcRenderer.invoke('project:git-push', projectPath),
+    gitLog: (projectPath: string, maxCount?: number) =>
+      ipcRenderer.invoke('project:git-log', projectPath, maxCount),
+    gitRemotes: (projectPath: string) =>
+      ipcRenderer.invoke('project:git-remotes', projectPath),
+    gitDiffSummary: (projectPath: string, staged?: boolean) =>
+      ipcRenderer.invoke('project:git-diff-summary', projectPath, staged)
   },
   terminal: {
     create: (projectPath: string) =>
@@ -135,6 +153,11 @@ const api = {
       const handler = (_: unknown, terminalId: string, message: string) => callback(terminalId, message)
       ipcRenderer.on('terminal:system-message', handler)
       return () => ipcRenderer.removeListener('terminal:system-message', handler)
+    },
+    onPermissionRequest: (callback: (terminalId: string, permissionText: string, promptType: string) => void) => {
+      const handler = (_: unknown, terminalId: string, permissionText: string, promptType: string) => callback(terminalId, permissionText, promptType)
+      ipcRenderer.on('terminal:permission-request', handler)
+      return () => ipcRenderer.removeListener('terminal:permission-request', handler)
     }
   },
   session: {
@@ -202,6 +225,17 @@ const api = {
     sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[] }) =>
       ipcRenderer.send('app:ui-snapshot', snapshot)
   },
+  popout: {
+    create: (terminalId: string, projectPath: string, theme?: string) =>
+      ipcRenderer.invoke('popout:create', terminalId, projectPath, theme),
+    close: () =>
+      ipcRenderer.invoke('popout:close'),
+    onClosed: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('popout:closed', handler)
+      return () => ipcRenderer.removeListener('popout:closed', handler)
+    }
+  },
   browser: {
     navigate: (url: string) =>
       ipcRenderer.invoke('browser:navigate', url),
@@ -268,6 +302,15 @@ const api = {
       ipcRenderer.invoke('worktree:sync-from-local', sessionId, mode),
     openInEditor: (sessionId: string) =>
       ipcRenderer.invoke('worktree:open-in-editor', sessionId)
+  },
+  utils: {
+    getPathForFile: (file: File): string => {
+      try {
+        return webUtils.getPathForFile(file)
+      } catch {
+        return ''
+      }
+    }
   }
 }
 

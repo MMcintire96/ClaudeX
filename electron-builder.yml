@@ -1,5 +1,5 @@
-appId: com.claude-codex.app
-productName: Claude Codex
+appId: com.claudex.app
+productName: ClaudeX
 npmRebuild: true
 directories:
   buildResources: build
@@ -7,7 +7,7 @@ extraResources:
   - from: resources/
     to: ./
     filter:
-      - 'codex-mcp-server.js'
+      - 'claudex-mcp-server.js'
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -20,7 +20,7 @@ linux:
   target:
     - AppImage
     - deb
-  maintainer: claude-codex
+  maintainer: claudex
   category: Development
 mac:
   target:

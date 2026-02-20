@@ -19,6 +19,9 @@ interface UIState {
   // Pending URL for browser panel to navigate to after mount
   pendingBrowserUrl: string | null
 
+  // Chat popped out to separate window
+  chatDetached: boolean
+
   toggleSidebar: () => void
   setSidePanelView: (view: SidePanelView | null) => void
   setPendingBrowserUrl: (url: string | null) => void
@@ -27,6 +30,7 @@ interface UIState {
   setTheme: (theme: ThemeName) => void
   setSidebarWidth: (w: number) => void
   setSidePanelWidth: (w: number) => void
+  toggleChatDetached: () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -37,6 +41,7 @@ export const useUIStore = create<UIState>((set) => ({
   sidePanelWidth: 480,
   projectSidePanelMemory: {},
   pendingBrowserUrl: null,
+  chatDetached: false,
 
   setPendingBrowserUrl: (url: string | null): void => {
     set({ pendingBrowserUrl: url })
@@ -93,5 +98,9 @@ export const useUIStore = create<UIState>((set) => ({
   setSidePanelWidth: (w: number): void => {
     const maxW = Math.max(300, window.innerWidth - 300)
     set({ sidePanelWidth: Math.max(300, Math.min(maxW, w)) })
+  },
+
+  toggleChatDetached: (): void => {
+    set(state => ({ chatDetached: !state.chatDetached }))
   }
 }))

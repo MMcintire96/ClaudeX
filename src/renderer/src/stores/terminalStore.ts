@@ -36,6 +36,7 @@ interface TerminalState {
   contextUsage: Record<string, number>
   claudeSessionIds: Record<string, string>
   worktreeNextThread: Record<string, { enabled: boolean; includeChanges: boolean }>
+  pendingPermissions: Record<string, { text: string; promptType: 'yn' | 'enter' }>
 
   addTerminal: (tab: TerminalTab) => void
   removeTerminal: (id: string) => void
@@ -59,6 +60,8 @@ interface TerminalState {
   setClaudeSessionId: (terminalId: string, sessionId: string) => void
   setWorktreeNextThread: (projectPath: string, enabled: boolean, includeChanges: boolean) => void
   setTerminalWorktree: (terminalId: string, worktreePath: string) => void
+  setPermissionRequest: (terminalId: string, text: string, promptType: 'yn' | 'enter') => void
+  clearPermissionRequest: (terminalId: string) => void
 }
 
 export const useTerminalStore = create<TerminalState>((set) => ({
@@ -77,6 +80,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   contextUsage: {},
   claudeSessionIds: {},
   worktreeNextThread: {},
+  pendingPermissions: {},
 
   addTerminal: (tab: TerminalTab): void => {
     set(state => {
@@ -293,5 +297,19 @@ export const useTerminalStore = create<TerminalState>((set) => ({
         t.id === terminalId ? { ...t, worktreePath } : t
       )
     }))
+  },
+
+  setPermissionRequest: (terminalId: string, text: string, promptType: 'yn' | 'enter'): void => {
+    set(state => ({
+      pendingPermissions: { ...state.pendingPermissions, [terminalId]: { text, promptType } }
+    }))
+  },
+
+  clearPermissionRequest: (terminalId: string): void => {
+    set(state => {
+      const next = { ...state.pendingPermissions }
+      delete next[terminalId]
+      return { pendingPermissions: next }
+    })
   }
 }))

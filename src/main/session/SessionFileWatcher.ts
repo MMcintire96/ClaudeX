@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
 import * as fs from 'fs'
+import { broadcastSend } from '../broadcast'
 
 interface WatcherState {
   projectDir: string
@@ -254,15 +255,11 @@ export class SessionFileWatcher {
   }
 
   private sendEntries(terminalId: string, entries: SessionFileEntry[]): void {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('session-file:entries', terminalId, entries)
-    }
+    broadcastSend(this.mainWindow, 'session-file:entries', terminalId, entries)
   }
 
   private sendReset(terminalId: string, entries: SessionFileEntry[]): void {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('session-file:reset', terminalId, entries)
-    }
+    broadcastSend(this.mainWindow, 'session-file:reset', terminalId, entries)
   }
 
   findLatestSessionId(projectPath: string, _afterTimestamp?: number): string | null {

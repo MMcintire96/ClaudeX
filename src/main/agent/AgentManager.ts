@@ -4,9 +4,10 @@ import { writeFileSync, unlinkSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { AgentProcess, AgentProcessOptions } from './AgentProcess'
 import type { AgentEvent, StreamEvent } from './types'
+import { broadcastSend } from '../broadcast'
 
 const SYSTEM_PROMPT_APPEND =
-  'You are running inside Claude Codex, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
+  'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
   'Terminal commands and browser navigation are visible to the user in real-time. ' +
   'Use terminal_execute to run commands and terminal_read to check output. ' +
   'Use browser_navigate, browser_content, and browser_screenshot to interact with web pages.'
@@ -37,9 +38,9 @@ export class AgentManager {
     // In development: resources/ at project root
     // In packaged app: process.resourcesPath
     if (app.isPackaged) {
-      return join(process.resourcesPath, 'codex-mcp-server.js')
+      return join(process.resourcesPath, 'claudex-mcp-server.js')
     }
-    return join(app.getAppPath(), 'resources', 'codex-mcp-server.js')
+    return join(app.getAppPath(), 'resources', 'claudex-mcp-server.js')
   }
 
   private createMcpConfig(projectPath: string): string | null {
@@ -53,19 +54,19 @@ export class AgentManager {
 
     const config = {
       mcpServers: {
-        'codex-bridge': {
+        'claudex-bridge': {
           command: 'node',
           args: [mcpServerPath],
           env: {
-            CODEX_BRIDGE_PORT: String(this.bridgePort),
-            CODEX_BRIDGE_TOKEN: this.bridgeToken,
-            CODEX_PROJECT_PATH: projectPath
+            CLAUDEX_BRIDGE_PORT: String(this.bridgePort),
+            CLAUDEX_BRIDGE_TOKEN: this.bridgeToken,
+            CLAUDEX_PROJECT_PATH: projectPath
           }
         }
       }
     }
 
-    const tmpPath = join(tmpdir(), `codex-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}.json`)
+    const tmpPath = join(tmpdir(), `claudex-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}.json`)
     writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8')
     return tmpPath
   }
@@ -87,7 +88,7 @@ export class AgentManager {
     if (!events || events.length === 0) return
     this.deltaBuffer.delete(sessionId)
     this.deltaFlushPending.delete(sessionId)
-    this.mainWindow?.webContents.send('agent:events', { sessionId, events })
+    broadcastSend(this.mainWindow,'agent:events', { sessionId, events })
   }
 
   private wireEvents(sessionId: string, agent: AgentProcess): void {
@@ -110,23 +111,23 @@ export class AgentManager {
         if (pending && pending.length > 0) {
           this.deltaBuffer.delete(sessionId)
           this.deltaFlushPending.delete(sessionId)
-          this.mainWindow?.webContents.send('agent:events', { sessionId, events: pending })
+          broadcastSend(this.mainWindow,'agent:events', { sessionId, events: pending })
         }
-        this.mainWindow?.webContents.send('agent:event', { sessionId, event })
+        broadcastSend(this.mainWindow,'agent:event', { sessionId, event })
       }
     })
 
     agent.on('close', (code: number | null) => {
       this.flushDeltas(sessionId)
-      this.mainWindow?.webContents.send('agent:closed', { sessionId, code })
+      broadcastSend(this.mainWindow,'agent:closed', { sessionId, code })
     })
 
     agent.on('error', (err: Error) => {
-      this.mainWindow?.webContents.send('agent:error', { sessionId, error: err.message })
+      broadcastSend(this.mainWindow,'agent:error', { sessionId, error: err.message })
     })
 
     agent.on('stderr', (data: string) => {
-      this.mainWindow?.webContents.send('agent:stderr', { sessionId, data })
+      broadcastSend(this.mainWindow,'agent:stderr', { sessionId, data })
     })
   }
 

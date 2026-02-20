@@ -1,7 +1,9 @@
-import React, { useEffect, useCallback, useState } from 'react'
+import React, { useEffect, useCallback, useState, useRef } from 'react'
 import { useProjectStore } from '../../stores/projectStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
+import { useSessionStore } from '../../stores/sessionStore'
+import type { SessionFileEntry } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import CostTracker from '../common/CostTracker'
 import ProjectTree from './ProjectTree'
@@ -10,7 +12,7 @@ export default function Sidebar() {
   const [creatingThread, setCreatingThread] = useState(false)
   const {
     currentPath, isGitRepo, recentProjects,
-    setProject, setRecent, removeProject,
+    setProject, setRecent, removeProject, reorderProjects,
     gitBranches, setGitBranch
   } = useProjectStore()
   const {
@@ -69,7 +71,6 @@ export default function Sidebar() {
     setCreatingThread(true)
     try {
       const cleanName = entry.name.replace(/^[^\w\s]+\s*/, '') || entry.name
-      // If this was a worktree session, resume in the worktree path if it still exists
       const resumePath = entry.worktreePath || entry.projectPath
       const result = await window.api.terminal.createClaudeResume(
         resumePath,
@@ -85,10 +86,25 @@ export default function Sidebar() {
           type: 'claude',
           worktreePath: entry.worktreePath || undefined
         })
-        // Preserve the old name — prevent OSC title sequences from overwriting
         manualRenameTerminal(result.id, cleanName)
         setActiveClaudeId(entry.projectPath, result.id)
-        // Remove from history so it doesn't show as duplicate
+
+        // Explicitly set session ID and start watching the session file.
+        // The onClaudeSessionId listener may have fired before addTerminal,
+        // missing the terminal lookup and skipping the file watcher setup.
+        const watchPath = entry.worktreePath || entry.projectPath
+        useTerminalStore.getState().setClaudeSessionId(result.id, entry.claudeSessionId)
+        useSessionStore.getState().loadEntries(entry.claudeSessionId, watchPath, [])
+        window.api.sessionFile.watch(result.id, entry.claudeSessionId, watchPath).then(watchResult => {
+          if (watchResult.success && watchResult.entries && (watchResult.entries as unknown[]).length > 0) {
+            useSessionStore.getState().loadEntries(
+              entry.claudeSessionId,
+              watchPath,
+              watchResult.entries as SessionFileEntry[]
+            )
+          }
+        })
+
         setHistoryByProject(prev => ({
           ...prev,
           [entry.projectPath]: (prev[entry.projectPath] || []).filter(e => e.claudeSessionId !== entry.claudeSessionId)
@@ -107,7 +123,6 @@ export default function Sidebar() {
     terminals.filter(t => t.projectPath === projectPath && t.type === 'claude')
 
   const ensureClaudeTerminal = useCallback(async (projectPath: string) => {
-    // Read fresh from store to avoid stale closure (e.g. after resume adds a terminal)
     const current = useTerminalStore.getState().terminals
     const existing = current.filter(t => t.type === 'claude' && t.projectPath === projectPath)
     if (existing.length > 0) return
@@ -208,6 +223,44 @@ export default function Sidebar() {
     })
   }
 
+  // --- Drag-to-reorder state ---
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const dragNodeRef = useRef<HTMLDivElement | null>(null)
+
+  const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+    setDragIndex(index)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(index))
+    // Use the project-tree node as drag image
+    if (dragNodeRef.current) {
+      e.dataTransfer.setDragImage(dragNodeRef.current, 0, 0)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverIndex(index)
+  }, [])
+
+  const handleDragEnd = useCallback(() => {
+    if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
+      const reordered = [...projectList]
+      const [moved] = reordered.splice(dragIndex, 1)
+      reordered.splice(dragOverIndex, 0, moved)
+      const newPaths = reordered.map(p => p.path)
+      reorderProjects(newPaths)
+      window.api.project.reorderRecent(newPaths)
+    }
+    setDragIndex(null)
+    setDragOverIndex(null)
+  }, [dragIndex, dragOverIndex, projectList, reorderProjects])
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverIndex(null)
+  }, [])
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -235,25 +288,35 @@ export default function Sidebar() {
       <div className="sidebar-projects">
         <div className="sidebar-section-label">Threads</div>
 
-        {projectList.map(proj => (
-          <ProjectTree
+        {projectList.map((proj, index) => (
+          <div
             key={proj.path}
-            projectPath={proj.path}
-            projectName={proj.name}
-            isCurrentProject={proj.isCurrent}
-            isGitRepo={proj.isGitRepo}
-            claudeTerminals={getClaudeTerminalsForProject(proj.path)}
-            claudeStatuses={claudeStatuses}
-            activeClaudeId={activeClaudeId[proj.path] || null}
-            onSwitchToProject={() => switchToProject(proj.path)}
-            onSelectClaudeTerminal={handleSelectClaudeTerminal}
-            onRenameClaudeTerminal={manualRenameTerminal}
-            onCloseTerminal={handleCloseTerminal}
-            onNewThread={() => handleNewClaudeTerminal(proj.path)}
-            onRemoveProject={() => handleRemoveProject(proj.path)}
-            historyEntries={historyByProject[proj.path] || []}
-            onResumeHistory={handleResumeHistory}
-          />
+            className={`sidebar-project-drag-wrapper${dragOverIndex === index && dragIndex !== index ? ' drag-over' : ''}${dragIndex === index ? ' dragging' : ''}`}
+            draggable
+            onDragStart={(e) => handleDragStart(e, index)}
+            onDragOver={(e) => handleDragOver(e, index)}
+            onDragEnd={handleDragEnd}
+            onDragLeave={handleDragLeave}
+            ref={dragIndex === index ? dragNodeRef : undefined}
+          >
+            <ProjectTree
+              projectPath={proj.path}
+              projectName={proj.name}
+              isCurrentProject={proj.isCurrent}
+              isGitRepo={proj.isGitRepo}
+              claudeTerminals={getClaudeTerminalsForProject(proj.path)}
+              claudeStatuses={claudeStatuses}
+              activeClaudeId={activeClaudeId[proj.path] || null}
+              onSwitchToProject={() => switchToProject(proj.path)}
+              onSelectClaudeTerminal={handleSelectClaudeTerminal}
+              onRenameClaudeTerminal={manualRenameTerminal}
+              onCloseTerminal={handleCloseTerminal}
+              onNewThread={() => handleNewClaudeTerminal(proj.path)}
+              onRemoveProject={() => handleRemoveProject(proj.path)}
+              historyEntries={historyByProject[proj.path] || []}
+              onResumeHistory={handleResumeHistory}
+            />
+          </div>
         ))}
 
         {projectList.length === 0 && (

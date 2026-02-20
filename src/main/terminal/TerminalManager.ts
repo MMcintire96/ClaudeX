@@ -6,6 +6,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { spawn } from 'child_process'
 import { TmuxSession } from './TmuxSession'
+import { broadcastSend } from '../broadcast'
 
 export interface TerminalInfo {
   id: string
@@ -28,12 +29,19 @@ interface ClaudeMeta {
   lastDataTimestamp: number
   status: ClaudeStatus
   silenceTimer: ReturnType<typeof setTimeout> | null
+  windowCheckTimer: ReturnType<typeof setInterval> | null
   hasBeenRunning: boolean
   autoRenamed: boolean
   idleCycleCount: number
 }
 
-const ATTENTION_PATTERNS = /\b(allow|approve|permission|accept)\b|\(y\/n\)|\(yes\/no\)|do you want|would you like/i
+const ATTENTION_PATTERNS = /\b(allow|approve|permission|accept|trust|confirm|proceed)\b|\(y\/n\)|\(yes\/no\)|do you want|would you like|Enter to confirm|Esc to cancel|Tab to amend/i
+
+/** Patterns that indicate a Claude CLI permission prompt specifically */
+const PERMISSION_PROMPT_PATTERNS = /do you want to proceed|do you want to allow|Enter to confirm|Esc to cancel|Tab to amend|trust this folder|safety check|\(y\/n\)|\(yes\/no\)|wants to (?:run|execute|read|write|delete|create|modify|access)/i
+
+/** Detect whether this is an Esc-to-cancel / numbered-option style prompt (vs y/n) */
+const ESC_CANCEL_PATTERN = /Esc to cancel|Tab to amend/i
 
 /**
  * Manages per-project PTY terminal instances.
@@ -45,12 +53,14 @@ export class TerminalManager {
   private claudeMeta: Map<string, ClaudeMeta> = new Map()
   private terminalNames: Map<string, string> = new Map()
   private claudeSessionIds: Map<string, string> = new Map()
+  private pinnedSessionIds: Set<string> = new Set() // resumed sessions — don't clear on screen-clear
   private createdAt: Map<string, number> = new Map()
   private lastNotificationTime: Map<string, number> = new Map()
   private contextUsage: Map<string, number> = new Map()
   private settingsManager: { get(): { notificationSounds?: boolean } } | null = null
   private tmuxSession: TmuxSession | null = null
   private tmuxAvailable = false
+  private claudeStatusCallbacks: Array<(id: string, status: string) => void> = []
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
@@ -60,6 +70,11 @@ export class TerminalManager {
     this.settingsManager = sm
   }
 
+  /** Register a callback for Claude terminal status changes (used for sleep prevention) */
+  onClaudeStatusChange(callback: (id: string, status: string) => void): void {
+    this.claudeStatusCallbacks.push(callback)
+  }
+
   /** Initialize tmux session if tmux is available. Call at startup. */
   async init(): Promise<void> {
     this.tmuxAvailable = TmuxSession.isAvailable()
@@ -67,7 +82,7 @@ export class TerminalManager {
       console.log('[TerminalManager] tmux not found, using direct pty mode')
       return
     }
-    const sessionName = `codex-${process.pid}`
+    const sessionName = `claudex-${process.pid}`
     this.tmuxSession = new TmuxSession(sessionName)
     try {
       this.tmuxSession.init()
@@ -84,7 +99,10 @@ export class TerminalManager {
   }
 
   getTmuxWindowName(id: string): string | null {
-    return this.findTerminal(id)?.tmuxWindow ?? null
+    const managed = this.findTerminal(id)
+    if (!managed?.tmuxWindow || !this.tmuxSession) return null
+    // Return the display name, not the internal window ID
+    return this.tmuxSession.getWindowName(managed.tmuxWindow) ?? managed.tmuxWindow
   }
 
   isTmuxEnabled(): boolean {
@@ -111,9 +129,9 @@ export class TerminalManager {
 
     if (this.tmuxSession) {
       const windowName = this.tmuxWindowName(projectPath, `shell-${id.slice(0, 6)}`)
-      this.tmuxSession.createShellWindow(windowName, projectPath)
-      const attachPty = this.tmuxSession.attachWindow(windowName)
-      return this._registerPty(id, projectPath, attachPty, windowName)
+      const windowId = this.tmuxSession.createShellWindow(windowName, projectPath)
+      const attachPty = this.tmuxSession.attachWindow(windowId)
+      return this._registerPty(id, projectPath, attachPty, windowId)
     }
 
     const ptyProcess = pty.spawn(shell, [], {
@@ -141,12 +159,17 @@ export class TerminalManager {
 
     if (this.tmuxSession) {
       const windowName = this.tmuxWindowName(projectPath, `Claude-${id.slice(0, 6)}`)
-      this.tmuxSession.createCommandWindow(windowName, projectPath, command, args, mergedEnv)
-      const attachPty = this.tmuxSession.attachWindow(windowName)
+      const windowId = this.tmuxSession.createCommandWindow(windowName, projectPath, command, args, mergedEnv)
+      // Keep window alive after command exits so the tmux client doesn't silently
+      // switch to another window (which would cause writes to go to the wrong place).
+      // We detect the dead pane state and clean up explicitly.
+      this.tmuxSession.setWindowOption(windowId, 'remain-on-exit', 'on')
+      this.tmuxSession.setWindowOption(windowId, 'automatic-rename', 'off')
+      const attachPty = this.tmuxSession.attachWindow(windowId)
       if (onExit) {
         attachPty.onExit(() => onExit())
       }
-      return this._registerPty(id, projectPath, attachPty, windowName)
+      return this._registerPty(id, projectPath, attachPty, windowId)
     }
 
     const ptyProcess = pty.spawn(command, args, {
@@ -166,16 +189,7 @@ export class TerminalManager {
 
   setTerminalName(id: string, name: string): void {
     this.terminalNames.set(id, name)
-    // Also rename tmux window to projectName:chatName
-    const managed = this.findTerminal(id)
-    if (managed?.tmuxWindow && this.tmuxSession) {
-      const newWindowName = this.tmuxWindowName(managed.projectPath, name)
-      if (newWindowName) {
-        const oldName = managed.tmuxWindow
-        this.tmuxSession.renameWindow(oldName, newWindowName)
-        managed.tmuxWindow = newWindowName
-      }
-    }
+    // Don't rename the tmux window — it causes name drift issues and breaks targeting.
   }
 
   getTerminalName(id: string): string | null {
@@ -197,7 +211,7 @@ export class TerminalManager {
   private emitClaudeSessionId(terminalId: string, sessionId: string): void {
     try {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('terminal:claude-session-id', terminalId, sessionId)
+        broadcastSend(this.mainWindow,'terminal:claude-session-id', terminalId, sessionId)
       }
     } catch {
       // Window destroyed
@@ -210,7 +224,7 @@ export class TerminalManager {
     this.contextUsage.set(id, percent)
     try {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('terminal:context-usage', id, percent)
+        broadcastSend(this.mainWindow,'terminal:context-usage', id, percent)
       }
     } catch {
       // Window destroyed
@@ -218,21 +232,41 @@ export class TerminalManager {
   }
 
   registerClaudeTerminal(id: string, knownSessionId?: string): void {
+    const managed = this.findTerminal(id)
+
+    // Periodic dead-pane check for tmux Claude terminals.
+    // With remain-on-exit on, when Claude exits the pane becomes "dead" but
+    // the window persists (preventing the tmux client from switching to another
+    // window). We poll for this state and trigger cleanup.
+    let windowCheckTimer: ReturnType<typeof setInterval> | null = null
+    if (managed?.tmuxWindow && this.tmuxSession) {
+      windowCheckTimer = setInterval(() => {
+        // Use managed.tmuxWindow (current value, survives renames) not a captured const
+        if (managed.tmuxWindow && this.tmuxSession?.paneIsDead(managed.tmuxWindow)) {
+          console.log(`[TerminalManager] dead pane detected for Claude terminal ${id}, cleaning up`)
+          this.killDeadTmuxTerminal(managed, id)
+        }
+      }, 5000)
+    }
+
     this.claudeMeta.set(id, {
       lastDataTimestamp: Date.now(),
       status: 'idle',
       silenceTimer: null,
+      windowCheckTimer,
       hasBeenRunning: false,
       autoRenamed: false,
       idleCycleCount: 0
     })
 
     if (knownSessionId) {
-      // Session ID already known (e.g. resumed session) — emit immediately
+      // Session ID already known (e.g. resumed session) — emit immediately.
+      // Pin it so screen-clear during startup doesn't wipe it.
       this.claudeSessionIds.set(id, knownSessionId)
+      this.pinnedSessionIds.add(id)
       try {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send('terminal:claude-session-id', id, knownSessionId)
+          broadcastSend(this.mainWindow,'terminal:claude-session-id', id, knownSessionId)
         }
       } catch { /* window destroyed */ }
     } else {
@@ -349,9 +383,13 @@ export class TerminalManager {
     if (status === 'running') {
       meta.hasBeenRunning = true
     }
+    // Notify sleep prevention callbacks
+    for (const cb of this.claudeStatusCallbacks) {
+      try { cb(id, status) } catch { /* ignore */ }
+    }
     try {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('terminal:claude-status', id, status)
+        broadcastSend(this.mainWindow,'terminal:claude-status', id, status)
       }
     } catch {
       // Window destroyed during shutdown
@@ -412,7 +450,7 @@ export class TerminalManager {
     this.setTerminalName(id, taskName)
     try {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('terminal:claude-rename', id, taskName)
+        broadcastSend(this.mainWindow,'terminal:claude-rename', id, taskName)
       }
     } catch {
       // Window destroyed
@@ -446,15 +484,38 @@ export class TerminalManager {
     if (!meta) return
     if (meta.silenceTimer) clearTimeout(meta.silenceTimer)
     meta.silenceTimer = setTimeout(() => {
-      // Read last 5 lines and check for attention patterns
-      const lines = this.readOutput(id, 5)
+      // Read last 10 lines and check for attention patterns
+      const lines = this.readOutput(id, 10)
       const text = lines.join('\n')
       if (ATTENTION_PATTERNS.test(text)) {
         this.emitClaudeStatus(id, 'attention')
+        // If it looks like a permission prompt, emit structured permission request
+        if (PERMISSION_PROMPT_PATTERNS.test(text)) {
+          this.emitPermissionRequest(id, lines)
+        }
       } else {
         this.emitClaudeStatus(id, 'idle')
       }
     }, 3000)
+  }
+
+  private emitPermissionRequest(id: string, _lines: string[]): void {
+    // Extract permission context from the output — grab more lines for context
+    const contextLines = this.readOutput(id, 15)
+    const permissionText = contextLines
+      .filter(l => l.trim().length > 0)
+      .join('\n')
+
+    // Detect prompt type: Esc-to-cancel (numbered options) vs y/n
+    const promptType = ESC_CANCEL_PATTERN.test(permissionText) ? 'enter' : 'yn'
+
+    try {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        broadcastSend(this.mainWindow, 'terminal:permission-request', id, permissionText, promptType)
+      }
+    } catch {
+      // Window destroyed
+    }
   }
 
   private _registerPty(id: string, projectPath: string, ptyProcess: pty.IPty, tmuxWindow: string | null = null): TerminalInfo {
@@ -481,7 +542,7 @@ export class TerminalManager {
     ptyProcess.onData((data: string) => {
       try {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send('terminal:data', id, data)
+          broadcastSend(this.mainWindow,'terminal:data', id, data)
         }
       } catch {
         // Window destroyed during shutdown — ignore
@@ -492,11 +553,12 @@ export class TerminalManager {
 
     // Handle PTY exit
     ptyProcess.onExit(({ exitCode }) => {
-      // Tmux re-attach: if the attachment pty exits but the tmux window still exists,
-      // this is a transient detach (e.g. external client stole the attachment).
-      // Re-attach automatically instead of treating it as a terminal exit.
+      // Tmux re-attach: if the attachment pty exits but the tmux window still exists
+      // with a live pane, this is a transient detach (e.g. external client stole the
+      // attachment). Re-attach automatically instead of treating it as a terminal exit.
+      // Do NOT re-attach to a dead pane — that means the command exited.
       if (managed.tmuxWindow && this.tmuxSession) {
-        if (this.tmuxSession.windowExists(managed.tmuxWindow)) {
+        if (this.tmuxSession.windowExists(managed.tmuxWindow) && !this.tmuxSession.paneIsDead(managed.tmuxWindow)) {
           try {
             const newPty = this.tmuxSession.attachWindow(managed.tmuxWindow)
             managed.pty = newPty
@@ -507,11 +569,15 @@ export class TerminalManager {
             // Re-attach failed, fall through to normal exit handling
           }
         }
+        // Kill the tmux window if it's still around (dead pane with remain-on-exit on)
+        if (this.tmuxSession.windowExists(managed.tmuxWindow)) {
+          this.tmuxSession.killWindow(managed.tmuxWindow)
+        }
       }
 
       try {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send('terminal:exit', id, exitCode)
+          broadcastSend(this.mainWindow,'terminal:exit', id, exitCode)
         }
       } catch {
         // Window destroyed during shutdown — ignore
@@ -521,8 +587,10 @@ export class TerminalManager {
       const meta = this.claudeMeta.get(id)
       if (meta) {
         if (meta.silenceTimer) clearTimeout(meta.silenceTimer)
+        if (meta.windowCheckTimer) clearInterval(meta.windowCheckTimer)
         this.emitClaudeStatus(id, 'done')
         this.claudeMeta.delete(id)
+        this.pinnedSessionIds.delete(id)
         this.lastNotificationTime.delete(id)
       }
 
@@ -539,7 +607,39 @@ export class TerminalManager {
   }
 
   write(id: string, data: string): void {
-    this.findTerminal(id)?.pty.write(data)
+    const managed = this.findTerminal(id)
+    if (!managed) return
+
+    // For tmux Claude terminals, use send-keys targeted at the specific window
+    // instead of writing to the PTY. The PTY (tmux attach-session) writes to
+    // whatever window the client is currently viewing, which can be wrong if the
+    // user switched windows externally or if Claude exited and the client moved.
+    // send-keys -t session:window always targets the correct window.
+    if (managed.tmuxWindow && this.tmuxSession && this.claudeMeta.has(id)) {
+      if (this.tmuxSession.paneIsDead(managed.tmuxWindow)) {
+        console.log(`[TerminalManager] write blocked: pane dead for Claude terminal ${id}`)
+        this.killDeadTmuxTerminal(managed, id)
+        return
+      }
+      this.tmuxSession.sendKeys(managed.tmuxWindow, data)
+      return
+    }
+
+    managed.pty.write(data)
+  }
+
+  /** Kill a tmux terminal whose pane is dead — destroy the window then kill the PTY */
+  private killDeadTmuxTerminal(managed: ManagedTerminal, id: string): void {
+    // Kill the tmux window first (it persists because of remain-on-exit on)
+    if (managed.tmuxWindow && this.tmuxSession) {
+      this.tmuxSession.killWindow(managed.tmuxWindow)
+    }
+    // Kill the PTY to trigger onExit → cleanup chain
+    try {
+      managed.pty.kill()
+    } catch {
+      // PTY may already be dead
+    }
   }
 
   resize(id: string, cols: number, rows: number): void {
@@ -558,7 +658,9 @@ export class TerminalManager {
     const meta = this.claudeMeta.get(id)
     if (meta) {
       if (meta.silenceTimer) clearTimeout(meta.silenceTimer)
+      if (meta.windowCheckTimer) clearInterval(meta.windowCheckTimer)
       this.claudeMeta.delete(id)
+      this.pinnedSessionIds.delete(id)
     }
 
     // Kill tmux window first (this will cause the attachment pty to exit too)
@@ -604,6 +706,7 @@ export class TerminalManager {
     // Clear all claude timers
     for (const [, meta] of this.claudeMeta) {
       if (meta.silenceTimer) clearTimeout(meta.silenceTimer)
+      if (meta.windowCheckTimer) clearInterval(meta.windowCheckTimer)
     }
     this.claudeMeta.clear()
     this.lastNotificationTime.clear()
@@ -636,7 +739,7 @@ export class TerminalManager {
         this.setTerminalName(id, title)
         try {
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('terminal:claude-rename', id, title)
+            broadcastSend(this.mainWindow,'terminal:claude-rename', id, title)
           }
         } catch {
           // Window destroyed
@@ -647,7 +750,8 @@ export class TerminalManager {
     // Detect /clear: Claude CLI sends screen-clear escape sequences when starting a new session.
     // When detected, drop the old session ID so we can pick up the new one,
     // clear the output buffer, and notify the renderer to clear the chat.
-    if (this.claudeMeta.has(id) && this.claudeSessionIds.has(id)) {
+    // Skip for pinned (resumed) sessions — their startup screen-clear is not a /clear command.
+    if (this.claudeMeta.has(id) && this.claudeSessionIds.has(id) && !this.pinnedSessionIds.has(id)) {
       // \x1b[2J = clear entire screen, \x1b[H = cursor home — Claude CLI sends both on /clear
       if (data.includes('\x1b[2J') || data.includes('\x1b[3J')) {
         console.log(`[TerminalManager] Screen clear detected for ${id}, resetting session ID`)
@@ -680,7 +784,7 @@ export class TerminalManager {
           this.setTerminalName(id, renamedTitle)
           try {
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-              this.mainWindow.webContents.send('terminal:claude-rename', id, renamedTitle)
+              broadcastSend(this.mainWindow,'terminal:claude-rename', id, renamedTitle)
             }
           } catch {
             // Window destroyed
@@ -695,7 +799,7 @@ export class TerminalManager {
       if (/compact(ed|ing)/i.test(stripped) && /conversation/i.test(stripped)) {
         try {
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('terminal:system-message', id, 'Conversation compacted')
+            broadcastSend(this.mainWindow,'terminal:system-message', id, 'Conversation compacted')
           }
         } catch {
           // Window destroyed
@@ -724,7 +828,7 @@ export class TerminalManager {
         const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
         try {
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('terminal:agent-spawned', id, {
+            broadcastSend(this.mainWindow,'terminal:agent-spawned', id, {
               id: agentId,
               name: agentName,
               status: 'running',
@@ -739,7 +843,7 @@ export class TerminalManager {
       if (completeMatch) {
         try {
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-            this.mainWindow.webContents.send('terminal:agent-completed', id)
+            broadcastSend(this.mainWindow,'terminal:agent-completed', id)
           }
         } catch {
           // Window destroyed
@@ -778,7 +882,7 @@ export class TerminalManager {
     managed.pty.onData((data: string) => {
       try {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send('terminal:data', id, data)
+          broadcastSend(this.mainWindow,'terminal:data', id, data)
         }
       } catch {
         // Window destroyed
@@ -790,7 +894,7 @@ export class TerminalManager {
 
     managed.pty.onExit(({ exitCode }) => {
       if (managed.tmuxWindow && this.tmuxSession) {
-        if (this.tmuxSession.windowExists(managed.tmuxWindow)) {
+        if (this.tmuxSession.windowExists(managed.tmuxWindow) && !this.tmuxSession.paneIsDead(managed.tmuxWindow)) {
           try {
             const newPty = this.tmuxSession.attachWindow(managed.tmuxWindow)
             managed.pty = newPty
@@ -800,11 +904,15 @@ export class TerminalManager {
             // Fall through
           }
         }
+        // Kill the tmux window if it's still around (dead pane with remain-on-exit on)
+        if (this.tmuxSession.windowExists(managed.tmuxWindow)) {
+          this.tmuxSession.killWindow(managed.tmuxWindow)
+        }
       }
 
       try {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send('terminal:exit', id, exitCode)
+          broadcastSend(this.mainWindow,'terminal:exit', id, exitCode)
         }
       } catch {
         // Window destroyed
@@ -813,8 +921,10 @@ export class TerminalManager {
       const meta = this.claudeMeta.get(id)
       if (meta) {
         if (meta.silenceTimer) clearTimeout(meta.silenceTimer)
+        if (meta.windowCheckTimer) clearInterval(meta.windowCheckTimer)
         this.emitClaudeStatus(id, 'done')
         this.claudeMeta.delete(id)
+        this.pinnedSessionIds.delete(id)
         this.lastNotificationTime.delete(id)
       }
 
