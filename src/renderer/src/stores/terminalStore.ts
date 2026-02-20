@@ -15,6 +15,7 @@ export interface TerminalTab {
   pid: number
   name?: string
   type?: 'shell' | 'claude'
+  worktreePath?: string
 }
 
 export type ClaudeMode = 'plan' | 'execute'
@@ -34,6 +35,7 @@ interface TerminalState {
   claudeModels: Record<string, string>
   contextUsage: Record<string, number>
   claudeSessionIds: Record<string, string>
+  worktreeNextThread: Record<string, { enabled: boolean; includeChanges: boolean }>
 
   addTerminal: (tab: TerminalTab) => void
   removeTerminal: (id: string) => void
@@ -55,6 +57,8 @@ interface TerminalState {
   setClaudeModel: (id: string, model: string) => void
   setContextUsage: (id: string, percent: number) => void
   setClaudeSessionId: (terminalId: string, sessionId: string) => void
+  setWorktreeNextThread: (projectPath: string, enabled: boolean, includeChanges: boolean) => void
+  setTerminalWorktree: (terminalId: string, worktreePath: string) => void
 }
 
 export const useTerminalStore = create<TerminalState>((set) => ({
@@ -72,6 +76,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   claudeModels: {},
   contextUsage: {},
   claudeSessionIds: {},
+  worktreeNextThread: {},
 
   addTerminal: (tab: TerminalTab): void => {
     set(state => {
@@ -271,6 +276,20 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   setClaudeSessionId: (terminalId: string, sessionId: string): void => {
     set(state => ({
       claudeSessionIds: { ...state.claudeSessionIds, [terminalId]: sessionId }
+    }))
+  },
+
+  setWorktreeNextThread: (projectPath: string, enabled: boolean, includeChanges: boolean): void => {
+    set(state => ({
+      worktreeNextThread: { ...state.worktreeNextThread, [projectPath]: { enabled, includeChanges } }
+    }))
+  },
+
+  setTerminalWorktree: (terminalId: string, worktreePath: string): void => {
+    set(state => ({
+      terminals: state.terminals.map(t =>
+        t.id === terminalId ? { ...t, worktreePath } : t
+      )
     }))
   }
 }))

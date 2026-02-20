@@ -86,13 +86,16 @@ export default function App() {
       useTerminalStore.getState().setClaudeSessionId(terminalId, sessionId)
       const terminal = useTerminalStore.getState().terminals.find(t => t.id === terminalId)
       if (terminal) {
+        // For worktree terminals, use the worktree path for session file lookup
+        // (Claude CLI writes session files relative to its cwd)
+        const watchPath = terminal.worktreePath || terminal.projectPath
         // Always create session in store (even if file is empty / doesn't exist yet)
-        useSessionStore.getState().loadEntries(sessionId, terminal.projectPath, [])
-        window.api.sessionFile.watch(terminalId, sessionId, terminal.projectPath).then(result => {
+        useSessionStore.getState().loadEntries(sessionId, watchPath, [])
+        window.api.sessionFile.watch(terminalId, sessionId, watchPath).then(result => {
           if (result.success && result.entries && (result.entries as unknown[]).length > 0) {
             useSessionStore.getState().loadEntries(
               sessionId,
-              terminal.projectPath,
+              watchPath,
               result.entries as import('./stores/sessionStore').SessionFileEntry[]
             )
           }
@@ -114,7 +117,8 @@ export default function App() {
         // Session not in store yet — create it with these entries
         const terminal = useTerminalStore.getState().terminals.find(t => t.id === terminalId)
         if (terminal) {
-          store.loadEntries(sessionId, terminal.projectPath, entries as import('./stores/sessionStore').SessionFileEntry[])
+          const watchPath = terminal.worktreePath || terminal.projectPath
+          store.loadEntries(sessionId, watchPath, entries as import('./stores/sessionStore').SessionFileEntry[])
         }
       }
     })
@@ -127,7 +131,8 @@ export default function App() {
       const sessionId = useTerminalStore.getState().claudeSessionIds[terminalId]
       const terminal = useTerminalStore.getState().terminals.find(t => t.id === terminalId)
       if (sessionId && terminal) {
-        useSessionStore.getState().loadEntries(sessionId, terminal.projectPath, entries as import('./stores/sessionStore').SessionFileEntry[])
+        const watchPath = terminal.worktreePath || terminal.projectPath
+        useSessionStore.getState().loadEntries(sessionId, watchPath, entries as import('./stores/sessionStore').SessionFileEntry[])
       }
     })
     return unsub

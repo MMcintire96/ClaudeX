@@ -3,6 +3,7 @@ import { useProjectStore } from '../../stores/projectStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 
+
 const SidebarExpandIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -158,6 +159,7 @@ export default function MainPanel() {
       {activeId ? (
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           <ChatView
+            key={activeId}
             terminalId={activeId}
             projectPath={currentPath!}
           />

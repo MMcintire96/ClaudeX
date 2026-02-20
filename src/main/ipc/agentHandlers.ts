@@ -1,10 +1,36 @@
 import { ipcMain } from 'electron'
 import { AgentManager } from '../agent/AgentManager'
+import { WorktreeManager } from '../worktree/WorktreeManager'
+import { randomUUID } from 'crypto'
 
-export function registerAgentHandlers(agentManager: AgentManager): void {
-  ipcMain.handle('agent:start', (_event, projectPath: string, prompt: string, model?: string | null) => {
+export interface WorktreeOptions {
+  useWorktree: boolean
+  baseBranch?: string
+  includeChanges?: boolean
+}
+
+export function registerAgentHandlers(agentManager: AgentManager, worktreeManager?: WorktreeManager): void {
+  ipcMain.handle('agent:start', async (_event, projectPath: string, prompt: string, model?: string | null, worktreeOptions?: WorktreeOptions) => {
     try {
-      const sessionId = agentManager.startAgent({ projectPath, model: model ?? 'claude-opus-4-6' }, prompt)
+      let effectivePath = projectPath
+      let worktreePath: string | undefined
+
+      if (worktreeOptions?.useWorktree && worktreeManager) {
+        const sessionId = randomUUID()
+        const info = await worktreeManager.create({
+          projectPath,
+          sessionId,
+          baseBranch: worktreeOptions.baseBranch,
+          includeChanges: worktreeOptions.includeChanges
+        })
+        effectivePath = info.worktreePath
+        worktreePath = info.worktreePath
+
+        const agentSessionId = agentManager.startAgent({ projectPath: effectivePath, model: model ?? 'claude-opus-4-6' }, prompt)
+        return { success: true, sessionId: agentSessionId, worktreePath, worktreeSessionId: sessionId }
+      }
+
+      const sessionId = agentManager.startAgent({ projectPath: effectivePath, model: model ?? 'claude-opus-4-6' }, prompt)
       return { success: true, sessionId }
     } catch (err) {
       return { success: false, error: (err as Error).message }

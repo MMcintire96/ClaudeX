@@ -7,8 +7,10 @@ import ToolResultBlock from './ToolResultBlock'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import FileEditBlock, { isFileEditTool } from './FileEditBlock'
 import VoiceButton from '../common/VoiceButton'
+import WorktreeBar from './WorktreeBar'
 import { useTerminalStore } from '../../stores/terminalStore'
 import type { ClaudeMode } from '../../stores/terminalStore'
+import { useProjectStore } from '../../stores/projectStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useVimMode } from '../../hooks/useVimMode'
 
@@ -124,6 +126,13 @@ function renderHighlightedInput(text: string): React.ReactNode[] {
 }
 
 export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
+  // For session file watching, use worktree path if this terminal runs in a worktree
+  // (Claude CLI writes session files relative to its cwd)
+  const sessionProjectPath = useTerminalStore(s => {
+    const tab = s.terminals.find(t => t.id === terminalId)
+    return tab?.worktreePath || projectPath
+  })
+
   const [inputText, setInputText] = useState('')
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [slashMenuOpen, setSlashMenuOpen] = useState(false)
@@ -165,6 +174,15 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
   const contextUsage = useTerminalStore(s => s.contextUsage[terminalId] || 0)
   const toggleClaudeMode = useTerminalStore(s => s.toggleClaudeMode)
   const setClaudeModel = useTerminalStore(s => s.setClaudeModel)
+  const gitBranch = useProjectStore(s => s.gitBranches[projectPath] ?? null)
+  const isWorktreeThread = useTerminalStore(s => !!s.terminals.find(t => t.id === terminalId)?.worktreePath)
+  const setTerminalWorktree = useTerminalStore(s => s.setTerminalWorktree)
+  const addTerminal = useTerminalStore(s => s.addTerminal)
+  const removeTerminal = useTerminalStore(s => s.removeTerminal)
+  const setActiveClaudeId = useTerminalStore(s => s.setActiveClaudeId)
+  const [worktreeMode, setWorktreeMode] = useState<'local' | 'worktree'>('local')
+  const [worktreeDropdownOpen, setWorktreeDropdownOpen] = useState(false)
+  const [worktreeLocked, setWorktreeLocked] = useState(false)
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null)
   const [messageQueue, setMessageQueue] = useState<string[]>([])
   const sendingQueueRef = useRef(false)
@@ -229,6 +247,17 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     }
   }, [modelPickerOpen])
 
+  // Close worktree dropdown on outside click
+  useEffect(() => {
+    if (!worktreeDropdownOpen) return
+    const handler = () => setWorktreeDropdownOpen(false)
+    const id = setTimeout(() => document.addEventListener('click', handler), 0)
+    return () => {
+      clearTimeout(id)
+      document.removeEventListener('click', handler)
+    }
+  }, [worktreeDropdownOpen])
+
   // Reset transient input state when terminalId changes (session switch)
   useEffect(() => {
     setInputText('')
@@ -240,6 +269,17 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     filePickerLoadedRef.current = null
     setVisibleCount(MESSAGES_PER_PAGE)
     vim.resetToInsert()
+    // Reset worktree dropdown state
+    const tab = useTerminalStore.getState().terminals.find(t => t.id === terminalId)
+    if (tab?.worktreePath) {
+      setWorktreeMode('worktree')
+      setWorktreeLocked(true)
+    } else {
+      setWorktreeMode('local')
+      setWorktreeLocked(false)
+    }
+    setWorktreeDropdownOpen(false)
+    watchedSessionRef.current = null
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId])
 
@@ -270,22 +310,22 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     if (session && session.messages.length > 0) {
       // Already cached — just ensure watcher is running
       watchedSessionRef.current = sessionId
-      window.api.sessionFile.watch(terminalId, sessionId, projectPath)
+      window.api.sessionFile.watch(terminalId, sessionId, sessionProjectPath)
       return
     }
     watchedSessionRef.current = sessionId
     // Create session in store immediately (even if empty) so appendEntries works
-    useSessionStore.getState().loadEntries(sessionId, projectPath, [])
-    window.api.sessionFile.watch(terminalId, sessionId, projectPath).then(result => {
+    useSessionStore.getState().loadEntries(sessionId, sessionProjectPath, [])
+    window.api.sessionFile.watch(terminalId, sessionId, sessionProjectPath).then(result => {
       if (result.success && result.entries && (result.entries as unknown[]).length > 0) {
         useSessionStore.getState().loadEntries(
           sessionId,
-          projectPath,
+          sessionProjectPath,
           result.entries as import('../../stores/sessionStore').SessionFileEntry[]
         )
       }
     })
-  }, [sessionId, terminalId, projectPath])
+  }, [sessionId, terminalId, sessionProjectPath])
 
   // Clear optimistic pending message once session file catches up
   useEffect(() => {
@@ -441,6 +481,77 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     const text = inputText.trim()
     if (!text) return
 
+    // On first real message: if worktree mode selected, create worktree and restart terminal there
+    let activeTerminalId = terminalId
+    if (!worktreeLocked && worktreeMode === 'worktree' && !text.startsWith('/')) {
+      setWorktreeLocked(true)
+      setPendingUserMessage(text)
+      setInputText('')
+      if (textareaRef.current) textareaRef.current.style.height = 'auto'
+
+      const wtSessionId = `wt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const wtResult = await window.api.worktree.create({
+        projectPath,
+        sessionId: wtSessionId
+      })
+      if (!wtResult.success || !wtResult.worktree) {
+        setPendingUserMessage(null)
+        setWorktreeLocked(false)
+        return
+      }
+
+      // Grab the current terminal name before removing it
+      const oldName = useTerminalStore.getState().terminals.find(t => t.id === terminalId)?.name || 'Claude Code'
+
+      // Close the current terminal and create a new one in the worktree
+      await window.api.terminal.close(terminalId)
+      removeTerminal(terminalId)
+
+      const newResult = await window.api.terminal.createClaude(wtResult.worktree.worktreePath)
+      if (!newResult.success || !newResult.id) {
+        setPendingUserMessage(null)
+        return
+      }
+
+      // Use the original projectPath so the terminal groups under the right project
+      addTerminal({
+        id: newResult.id,
+        projectPath,
+        pid: newResult.pid!,
+        name: oldName,
+        type: 'claude',
+        worktreePath: wtResult.worktree.worktreePath
+      })
+      setActiveClaudeId(projectPath, newResult.id)
+      activeTerminalId = newResult.id
+
+      // Wait for Claude CLI to initialize in the new terminal
+      await new Promise(r => setTimeout(r, 1500))
+
+      // Add to history and send the message to the new terminal
+      historyRef.current.push(text)
+      historyIndexRef.current = -1
+      savedInputRef.current = ''
+
+      if (pendingModelRef.current) {
+        await window.api.terminal.write(activeTerminalId, `/model ${pendingModelRef.current}`)
+        await new Promise(r => setTimeout(r, 50))
+        await window.api.terminal.write(activeTerminalId, '\r')
+        pendingModelRef.current = null
+        await new Promise(r => setTimeout(r, 200))
+      }
+
+      await window.api.terminal.write(activeTerminalId, text)
+      await new Promise(r => setTimeout(r, 50))
+      await window.api.terminal.write(activeTerminalId, '\r')
+      return
+    }
+
+    // Lock the dropdown after first non-slash message
+    if (!worktreeLocked && !text.startsWith('/')) {
+      setWorktreeLocked(true)
+    }
+
     // Add to history
     historyRef.current.push(text)
     historyIndexRef.current = -1
@@ -480,17 +591,17 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
 
     // Apply pending model switch before sending the message
     if (pendingModelRef.current) {
-      await window.api.terminal.write(terminalId, `/model ${pendingModelRef.current}`)
+      await window.api.terminal.write(activeTerminalId, `/model ${pendingModelRef.current}`)
       await new Promise(r => setTimeout(r, 50))
-      await window.api.terminal.write(terminalId, '\r')
+      await window.api.terminal.write(activeTerminalId, '\r')
       pendingModelRef.current = null
       await new Promise(r => setTimeout(r, 200))
     }
 
-    await window.api.terminal.write(terminalId, text)
+    await window.api.terminal.write(activeTerminalId, text)
     await new Promise(r => setTimeout(r, 50))
-    await window.api.terminal.write(terminalId, '\r')
-  }, [inputText, terminalId, claudeStatus, setClaudeModel])
+    await window.api.terminal.write(activeTerminalId, '\r')
+  }, [inputText, terminalId, claudeStatus, setClaudeModel, worktreeMode, worktreeLocked, projectPath, removeTerminal, addTerminal, setActiveClaudeId])
 
   const handleToggleMode = useCallback(async () => {
     // Send Shift+Tab escape sequence to the Claude CLI PTY
@@ -782,6 +893,9 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {/* Worktree action bar */}
+      <WorktreeBar sessionId={sessionId || ''} terminalId={terminalId} projectPath={projectPath} />
+
       {/* Search bar */}
       {searchOpen && (
         <div className="chat-search-bar">
@@ -874,6 +988,12 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
                 if (parentTool?.toolName === 'AskUserQuestion') return null
                 if (parentTool && isFileEditTool(parentTool.toolName)) return null
                 return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolResultBlock message={resultMsg} /></div>
+              } else if (msg.type === 'system') {
+                return (
+                  <div key={msg.id} data-msg-id={msg.id} className={`system-message${matchClass}`}>
+                    <span className="system-message-text">{msg.content}</span>
+                  </div>
+                )
               }
               return null
             })
@@ -1055,12 +1175,62 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
         {/* Context footer */}
         <div className="input-footer">
           <div className="input-footer-left">
-            <span className="input-footer-project" title={projectPath}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
-              {projectPath.split('/').pop()}
-            </span>
+            {/* Worktree / Local dropdown */}
+            {gitBranch ? (
+              <div className="worktree-mode-picker">
+                <button
+                  className={`worktree-mode-btn ${worktreeLocked ? 'locked' : ''} ${worktreeMode === 'worktree' ? 'mode-worktree' : ''}`}
+                  onClick={() => { if (!worktreeLocked) setWorktreeDropdownOpen(!worktreeDropdownOpen) }}
+                  disabled={worktreeLocked}
+                  title={worktreeLocked
+                    ? (isWorktreeThread ? 'Running in worktree' : 'Running locally')
+                    : 'Choose where Claude works'}
+                >
+                  {worktreeMode === 'local' ? 'Local' : 'New Worktree'}
+                  {!worktreeLocked && (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  )}
+                </button>
+                {worktreeDropdownOpen && !worktreeLocked && (
+                  <div className="worktree-mode-dropdown">
+                    <button
+                      className={`worktree-mode-option ${worktreeMode === 'local' ? 'active' : ''}`}
+                      onClick={() => { setWorktreeMode('local'); setWorktreeDropdownOpen(false) }}
+                    >
+                      <strong>Local</strong>
+                      <span>Edit files in your checkout directly</span>
+                    </button>
+                    <button
+                      className={`worktree-mode-option ${worktreeMode === 'worktree' ? 'active' : ''}`}
+                      onClick={() => { setWorktreeMode('worktree'); setWorktreeDropdownOpen(false) }}
+                    >
+                      <strong>New Worktree</strong>
+                      <span>Isolated copy — your checkout stays untouched</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className="input-footer-project" title={projectPath}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+                {projectPath.split('/').pop()}
+              </span>
+            )}
+            {gitBranch && (
+              <span className="input-footer-branch" title={`Branch: ${gitBranch}`}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="6" y1="3" x2="6" y2="15" />
+                  <circle cx="18" cy="6" r="3" />
+                  <circle cx="6" cy="18" r="3" />
+                  <path d="M18 9a9 9 0 0 1-9 9" />
+                </svg>
+                {gitBranch}
+              </span>
+            )}
           </div>
           <div className="input-footer-right">
             <div

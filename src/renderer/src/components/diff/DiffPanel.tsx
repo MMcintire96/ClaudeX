@@ -60,6 +60,14 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
 
   const terminals = useTerminalStore(s => s.terminals)
+  const activeClaudeId = useTerminalStore(s => s.activeClaudeId[projectPath])
+
+  // If the active Claude terminal runs in a worktree, show that worktree's diff
+  const diffPath = useTerminalStore(s => {
+    if (!activeClaudeId) return projectPath
+    const tab = s.terminals.find(t => t.id === activeClaudeId)
+    return tab?.worktreePath || projectPath
+  })
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null)
@@ -118,9 +126,9 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
 
   /** Quiet refresh */
   const quietRefresh = useCallback(async () => {
-    if (!projectPath) return
+    if (!diffPath) return
     try {
-      const statusResult = await window.api.project.gitStatus(projectPath)
+      const statusResult = await window.api.project.gitStatus(diffPath)
       if (statusResult.success && statusResult.status) {
         const newFiles = (statusResult.status as { files: FileStatus[] }).files || []
         setFiles(prev => {
@@ -134,51 +142,51 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
       const file = selectedFileRef.current
       const staged = activeTab === 'staged'
       const diffResult = file
-        ? await window.api.project.diffFile(projectPath, file)
-        : await window.api.project.diff(projectPath, staged)
+        ? await window.api.project.diffFile(diffPath, file)
+        : await window.api.project.diff(diffPath, staged)
       if (diffResult.success) {
         const newDiff = diffResult.diff || ''
         setDiff(prev => prev === newDiff ? prev : newDiff)
       }
     } catch { /* ignore */ }
-  }, [projectPath, activeTab])
+  }, [diffPath, activeTab])
 
   const loadStatus = useCallback(async () => {
-    if (!projectPath) return
+    if (!diffPath) return
     setLoading(true)
     try {
-      const result = await window.api.project.gitStatus(projectPath)
+      const result = await window.api.project.gitStatus(diffPath)
       if (result.success && result.status) {
         const status = result.status as { files: FileStatus[] }
         setFiles(status.files || [])
       }
     } catch { /* ignore */ }
     setLoading(false)
-  }, [projectPath])
+  }, [diffPath])
 
   const loadDiff = useCallback(async (filePath?: string) => {
-    if (!projectPath) return
+    if (!diffPath) return
     setLoading(true)
     try {
       let result
       if (filePath) {
-        result = await window.api.project.diffFile(projectPath, filePath)
+        result = await window.api.project.diffFile(diffPath, filePath)
       } else {
         const staged = activeTab === 'staged'
-        result = await window.api.project.diff(projectPath, staged)
+        result = await window.api.project.diff(diffPath, staged)
       }
       if (result.success) {
         setDiff(result.diff || '')
       }
     } catch { /* ignore */ }
     setLoading(false)
-  }, [projectPath, activeTab])
+  }, [diffPath, activeTab])
 
   useEffect(() => {
     loadStatus()
     loadDiff()
     setSelectedFile(null)
-  }, [loadStatus, loadDiff, projectPath])
+  }, [loadStatus, loadDiff, diffPath])
 
   // Auto-refresh on Claude terminal output
   useEffect(() => {

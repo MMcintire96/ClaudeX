@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import { TerminalTab, ClaudeTerminalStatus } from '../../stores/terminalStore'
+import { TerminalTab, ClaudeTerminalStatus, useTerminalStore } from '../../stores/terminalStore'
 
 interface InlineRenameProps {
   value: string
@@ -47,6 +47,24 @@ const STATUS_COLORS: Record<ClaudeTerminalStatus, string> = {
   attention: '#f0a030',
   idle: '#888',
   done: '#666'
+}
+
+function WorktreeBadge({ terminalId }: { terminalId: string }) {
+  const isWorktree = useTerminalStore(s => {
+    const tab = s.terminals.find(t => t.id === terminalId)
+    return !!tab?.worktreePath
+  })
+  if (!isWorktree) return null
+  return (
+    <span className="worktree-badge" title="Running in worktree">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="6" y1="3" x2="6" y2="15" />
+        <circle cx="18" cy="6" r="3" />
+        <circle cx="6" cy="18" r="3" />
+        <path d="M18 9a9 9 0 0 1-9 9" />
+      </svg>
+    </span>
+  )
 }
 
 function timeAgo(timestamp: number): string {
@@ -232,7 +250,10 @@ export default function ProjectTree({
                   onCancel={() => setRenamingTerminalId(null)}
                 />
               ) : (
-                <span className="tree-item-label">{displayName}</span>
+                <span className="tree-item-label">
+                  {displayName}
+                  <WorktreeBadge terminalId={t.id} />
+                </span>
               )}
               <span className="thread-time"></span>
             </button>

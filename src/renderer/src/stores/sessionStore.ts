@@ -29,7 +29,15 @@ export interface UIToolResultMessage {
   timestamp: number
 }
 
-export type UIMessage = UITextMessage | UIToolUseMessage | UIToolResultMessage
+export interface UISystemMessage {
+  id: string
+  role: 'system'
+  type: 'system'
+  content: string
+  timestamp: number
+}
+
+export type UIMessage = UITextMessage | UIToolUseMessage | UIToolResultMessage | UISystemMessage
 
 export interface SessionFileEntry {
   type: string
@@ -193,9 +201,13 @@ export interface SessionState {
   error: string | null
   selectedModel: string | null
   createdAt: number
+  worktreePath: string | null
+  isWorktree: boolean
+  worktreeBranch: string | null
+  worktreeSessionId: string | null
 }
 
-function createSessionState(sessionId: string, projectPath: string): SessionState {
+function createSessionState(sessionId: string, projectPath: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }): SessionState {
   return {
     sessionId,
     projectPath,
@@ -211,7 +223,11 @@ function createSessionState(sessionId: string, projectPath: string): SessionStat
     claudeVersion: null,
     error: null,
     selectedModel: 'claude-opus-4-6',
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    worktreePath: worktreeOpts?.worktreePath ?? null,
+    isWorktree: !!worktreeOpts?.worktreePath,
+    worktreeBranch: null,
+    worktreeSessionId: worktreeOpts?.worktreeSessionId ?? null
   }
 }
 
@@ -226,7 +242,8 @@ interface SessionStore {
   // Per-project memory: remembers last active session per project
   projectSessionMemory: Record<string, string>
 
-  createSession: (projectPath: string, sessionId: string) => void
+  createSession: (projectPath: string, sessionId: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }) => void
+  setWorktreeBranch: (sessionId: string, branchName: string) => void
   removeSession: (sessionId: string) => void
   setActiveSession: (sessionId: string | null) => void
   getLastSessionForProject: (projectPath: string) => string | null
@@ -239,6 +256,7 @@ interface SessionStore {
   getSessionsForProject: (projectPath: string) => SessionState[]
   loadEntries: (sessionId: string, projectPath: string, entries: SessionFileEntry[]) => void
   appendEntries: (sessionId: string, entries: SessionFileEntry[]) => void
+  addSystemMessage: (sessionId: string, content: string) => void
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -248,15 +266,27 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   lastEntryType: {},
   projectSessionMemory: {},
 
-  createSession: (projectPath: string, sessionId: string): void => {
+  createSession: (projectPath: string, sessionId: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }): void => {
     set(state => ({
       sessions: {
         ...state.sessions,
-        [sessionId]: createSessionState(sessionId, projectPath)
+        [sessionId]: createSessionState(sessionId, projectPath, worktreeOpts)
       },
       activeSessionId: sessionId,
       projectSessionMemory: { ...state.projectSessionMemory, [projectPath]: sessionId }
     }))
+  },
+
+  setWorktreeBranch: (sessionId: string, branchName: string): void => {
+    set(s => {
+      if (!s.sessions[sessionId]) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: { ...s.sessions[sessionId], worktreeBranch: branchName }
+        }
+      }
+    })
   },
 
   removeSession: (sessionId: string): void => {
@@ -594,6 +624,26 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         },
         thinkingText: { ...s.thinkingText, [sessionId]: thinking ?? s.thinkingText[sessionId] },
         lastEntryType: { ...s.lastEntryType, [sessionId]: parsed.lastEntryType ?? s.lastEntryType[sessionId] }
+      }
+    })
+  },
+
+  addSystemMessage: (sessionId: string, content: string): void => {
+    set(s => {
+      const session = s.sessions[sessionId]
+      if (!session) return {}
+      const msg: UISystemMessage = {
+        id: uid(),
+        role: 'system',
+        type: 'system',
+        content,
+        timestamp: Date.now()
+      }
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: { ...session, messages: [...session.messages, msg] }
+        }
       }
     })
   }

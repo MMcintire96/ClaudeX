@@ -9,6 +9,9 @@ export interface PersistedSession {
   name: string
   createdAt: number
   lastActiveAt: number
+  worktreePath?: string | null
+  isWorktree?: boolean
+  worktreeSessionId?: string | null
 }
 
 export interface PersistedAppState {

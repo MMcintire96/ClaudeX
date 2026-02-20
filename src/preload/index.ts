@@ -2,8 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
   agent: {
-    start: (projectPath: string, prompt: string, model?: string | null) =>
-      ipcRenderer.invoke('agent:start', projectPath, prompt, model),
+    start: (projectPath: string, prompt: string, model?: string | null, worktreeOptions?: { useWorktree: boolean; baseBranch?: string; includeChanges?: boolean }) =>
+      ipcRenderer.invoke('agent:start', projectPath, prompt, model, worktreeOptions),
     send: (sessionId: string, content: string) =>
       ipcRenderer.invoke('agent:send', sessionId, content),
     stop: (sessionId: string) =>
@@ -236,6 +236,26 @@ const api = {
       ipcRenderer.on('browser:tabs-updated', handler)
       return () => ipcRenderer.removeListener('browser:tabs-updated', handler)
     }
+  },
+  worktree: {
+    create: (opts: { projectPath: string; sessionId: string; baseBranch?: string; includeChanges?: boolean }) =>
+      ipcRenderer.invoke('worktree:create', opts),
+    remove: (sessionId: string) =>
+      ipcRenderer.invoke('worktree:remove', sessionId),
+    list: (projectPath: string) =>
+      ipcRenderer.invoke('worktree:list', projectPath),
+    get: (sessionId: string) =>
+      ipcRenderer.invoke('worktree:get', sessionId),
+    createBranch: (sessionId: string, branchName: string) =>
+      ipcRenderer.invoke('worktree:create-branch', sessionId, branchName),
+    diff: (sessionId: string) =>
+      ipcRenderer.invoke('worktree:diff', sessionId),
+    syncToLocal: (sessionId: string, mode: 'overwrite' | 'apply') =>
+      ipcRenderer.invoke('worktree:sync-to-local', sessionId, mode),
+    syncFromLocal: (sessionId: string, mode: 'overwrite' | 'apply') =>
+      ipcRenderer.invoke('worktree:sync-from-local', sessionId, mode),
+    openInEditor: (sessionId: string) =>
+      ipcRenderer.invoke('worktree:open-in-editor', sessionId)
   }
 }
 

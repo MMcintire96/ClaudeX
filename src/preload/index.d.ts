@@ -1,6 +1,16 @@
+export interface WorktreeInfo {
+  sessionId: string
+  projectPath: string
+  worktreePath: string
+  baseBranch: string | null
+  baseCommit: string
+  createdAt: number
+  branchName: string | null
+}
+
 export interface ElectronAPI {
   agent: {
-    start: (projectPath: string, prompt: string, model?: string | null) => Promise<{ success: boolean; sessionId?: string; error?: string }>
+    start: (projectPath: string, prompt: string, model?: string | null, worktreeOptions?: { useWorktree: boolean; baseBranch?: string; includeChanges?: boolean }) => Promise<{ success: boolean; sessionId?: string; worktreePath?: string; worktreeSessionId?: string; error?: string }>
     send: (sessionId: string, content: string) => Promise<{ success: boolean; error?: string }>
     stop: (sessionId: string) => Promise<{ success: boolean }>
     status: (sessionId: string) => Promise<{ isRunning: boolean; sessionId: string | null; projectPath: string | null; hasSession: boolean }>
@@ -99,6 +109,17 @@ export interface ElectronAPI {
     onUrlChanged: (callback: (url: string) => void) => () => void
     onTitleChanged: (callback: (title: string) => void) => () => void
     onTabsUpdated: (callback: (tabs: Array<{ id: string; url: string; title: string }>, activeTabId: string | null) => void) => () => void
+  }
+  worktree: {
+    create: (opts: { projectPath: string; sessionId: string; baseBranch?: string; includeChanges?: boolean }) => Promise<{ success: boolean; worktree?: WorktreeInfo; error?: string }>
+    remove: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+    list: (projectPath: string) => Promise<WorktreeInfo[]>
+    get: (sessionId: string) => Promise<WorktreeInfo | null>
+    createBranch: (sessionId: string, branchName: string) => Promise<{ success: boolean; error?: string }>
+    diff: (sessionId: string) => Promise<{ success: boolean; diff?: string; error?: string }>
+    syncToLocal: (sessionId: string, mode: 'overwrite' | 'apply') => Promise<{ success: boolean; error?: string }>
+    syncFromLocal: (sessionId: string, mode: 'overwrite' | 'apply') => Promise<{ success: boolean; error?: string }>
+    openInEditor: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   }
 }
 

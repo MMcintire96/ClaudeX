@@ -29,7 +29,7 @@ export class SessionFileWatcher {
   }
 
   hashProjectPath(p: string): string {
-    return p.replace(/[/_]/g, '-')
+    return p.replace(/[/_.~]/g, '-')
   }
 
   getProjectDir(projectPath: string): string {

@@ -11,6 +11,7 @@ import { SessionFileWatcher } from './session/SessionFileWatcher'
 import { ProjectConfigManager } from './project/ProjectConfigManager'
 import { CodexBridgeServer } from './bridge/CodexBridgeServer'
 import { registerAllHandlers } from './ipc'
+import { WorktreeManager } from './worktree/WorktreeManager'
 
 const agentManager = new AgentManager()
 const projectManager = new ProjectManager()
@@ -21,6 +22,7 @@ const voiceManager = new VoiceManager()
 const sessionPersistence = new SessionPersistence()
 const sessionFileWatcher = new SessionFileWatcher()
 const projectConfigManager = new ProjectConfigManager()
+const worktreeManager = new WorktreeManager()
 const bridgeServer = new CodexBridgeServer(terminalManager, browserManager)
 
 let mainWindow: BrowserWindow | null = null
@@ -233,7 +235,7 @@ app.whenReady().then(async () => {
   registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, {
     bridgePort: bridgeServer.port,
     bridgeToken: bridgeServer.token
-  }, sessionPersistence, projectConfigManager, sessionFileWatcher)
+  }, sessionPersistence, projectConfigManager, sessionFileWatcher, worktreeManager)
   createWindow()
 
   app.on('activate', () => {
@@ -257,4 +259,5 @@ app.on('will-quit', () => {
   terminalManager.destroy()
   voiceManager.destroy()
   bridgeServer.stop()
+  worktreeManager.cleanupAll().catch(() => {})
 })

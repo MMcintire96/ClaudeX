@@ -257,7 +257,7 @@ export class TerminalManager {
     }
     if (!projectPath) return
 
-    const projectHash = projectPath.replace(/[/_]/g, '-')
+    const projectHash = projectPath.replace(/[/_.~]/g, '-')
     const sessionDir = path.join(os.homedir(), '.claude', 'projects', projectHash)
     const startTime = Date.now()
 
@@ -631,6 +631,22 @@ export class TerminalManager {
         } catch {
           // Window destroyed
         }
+      }
+    }
+
+    // Detect /clear: Claude CLI sends screen-clear escape sequences when starting a new session.
+    // When detected, drop the old session ID so we can pick up the new one,
+    // clear the output buffer, and notify the renderer to clear the chat.
+    if (this.claudeMeta.has(id) && this.claudeSessionIds.has(id)) {
+      // \x1b[2J = clear entire screen, \x1b[H = cursor home — Claude CLI sends both on /clear
+      if (data.includes('\x1b[2J') || data.includes('\x1b[3J')) {
+        console.log(`[TerminalManager] Screen clear detected for ${id}, resetting session ID`)
+        this.claudeSessionIds.delete(id)
+        managed.outputBuffer.length = 0
+        managed.partialLine = ''
+        this.contextUsage.delete(id)
+        // Re-run directory-based session ID detection for the new file
+        this.detectSessionIdFromDir(id)
       }
     }
 
