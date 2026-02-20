@@ -107,6 +107,16 @@ const api = {
       const handler = (_: unknown, parentId: string) => callback(parentId)
       ipcRenderer.on('terminal:agent-completed', handler)
       return () => ipcRenderer.removeListener('terminal:agent-completed', handler)
+    },
+    onContextUsage: (callback: (id: string, percent: number) => void) => {
+      const handler = (_: unknown, id: string, percent: number) => callback(id, percent)
+      ipcRenderer.on('terminal:context-usage', handler)
+      return () => ipcRenderer.removeListener('terminal:context-usage', handler)
+    },
+    onClaudeSessionId: (callback: (id: string, sessionId: string) => void) => {
+      const handler = (_: unknown, id: string, sessionId: string) => callback(id, sessionId)
+      ipcRenderer.on('terminal:claude-session-id', handler)
+      return () => ipcRenderer.removeListener('terminal:claude-session-id', handler)
     }
   },
   session: {

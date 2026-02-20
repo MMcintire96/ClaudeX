@@ -45,6 +45,12 @@ export default function HotkeysModal({ modKey, onClose }: HotkeysModalProps) {
             </span>
             <span className="hotkeys-label">Toggle terminal panel</span>
           </div>
+          <div className="hotkeys-row">
+            <span className="hotkeys-key">
+              <kbd>Shift</kbd> + <kbd>Tab</kbd>
+            </span>
+            <span className="hotkeys-label">Toggle plan/execute mode</span>
+          </div>
         </div>
       </div>
     </div>

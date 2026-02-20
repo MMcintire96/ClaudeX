@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState, useEffect } from 'react'
 
 interface Props {
   onTranscript: (text: string) => void
+  inline?: boolean
 }
 
 /**
@@ -18,7 +19,7 @@ async function audioBufferToFloat32_16k(audioBuffer: AudioBuffer): Promise<Float
   return resampled.getChannelData(0)
 }
 
-export default function VoiceButton({ onTranscript }: Props) {
+export default function VoiceButton({ onTranscript, inline = false }: Props) {
   const [listening, setListening] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const [modelStatus, setModelStatus] = useState<'unknown' | 'loading' | 'ready'>('unknown')
@@ -150,14 +151,18 @@ export default function VoiceButton({ onTranscript }: Props) {
       ? 'Click to stop recording'
       : 'Voice input'
 
+  const baseClass = inline ? 'voice-inline' : 'voice-fab'
+  const className = `${baseClass} ${listening ? 'voice-active' : ''} ${transcribing ? 'voice-transcribing' : ''}`
+  const iconSize = inline ? '16' : '20'
+
   return (
     <button
-      className={`voice-fab ${listening ? 'voice-active' : ''} ${transcribing ? 'voice-transcribing' : ''}`}
+      className={className}
       onClick={toggle}
       disabled={transcribing}
       title={title}
     >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
         <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
         <line x1="12" y1="19" x2="12" y2="23" />

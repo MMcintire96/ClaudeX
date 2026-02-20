@@ -61,6 +61,7 @@ export default function AppLayout() {
   const terminalPanelVisible = useTerminalStore(s => s.panelVisible)
   const terminals = useTerminalStore(s => s.terminals)
   const currentPath = useProjectStore(s => s.currentPath)
+  const togglePanel = useTerminalStore(s => s.togglePanel)
 
   const handleSidebarResize = useCallback(
     (delta: number) => setSidebarWidth(sidebarWidth + delta),
@@ -78,7 +79,6 @@ export default function AppLayout() {
     sidePanelView ? `${sidePanelWidth}px` : '0'
   ].join(' ')
 
-  const togglePanel = useTerminalStore(s => s.togglePanel)
   const hasShellTerminals = terminals.some(t => t.projectPath === currentPath && t.type !== 'claude')
   const showTerminal = terminalPanelVisible && hasShellTerminals
 

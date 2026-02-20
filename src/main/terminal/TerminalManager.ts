@@ -2,6 +2,8 @@ import { BrowserWindow, Notification } from 'electron'
 import * as pty from 'node-pty'
 import { v4 as uuidv4 } from 'uuid'
 import * as os from 'os'
+import * as fs from 'fs'
+import * as path from 'path'
 
 export interface TerminalInfo {
   id: string
@@ -42,6 +44,7 @@ export class TerminalManager {
   private claudeSessionIds: Map<string, string> = new Map()
   private createdAt: Map<string, number> = new Map()
   private lastNotificationTime: Map<string, number> = new Map()
+  private contextUsage: Map<string, number> = new Map()
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
@@ -112,6 +115,33 @@ export class TerminalManager {
     return this.createdAt.get(terminalId) || Date.now()
   }
 
+  getContextUsage(terminalId: string): number {
+    return this.contextUsage.get(terminalId) || 0
+  }
+
+  private emitClaudeSessionId(terminalId: string, sessionId: string): void {
+    try {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('terminal:claude-session-id', terminalId, sessionId)
+      }
+    } catch {
+      // Window destroyed
+    }
+  }
+
+  private emitContextUsage(id: string, percent: number): void {
+    const prev = this.contextUsage.get(id)
+    if (prev === percent) return
+    this.contextUsage.set(id, percent)
+    try {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('terminal:context-usage', id, percent)
+      }
+    } catch {
+      // Window destroyed
+    }
+  }
+
   registerClaudeTerminal(id: string): void {
     this.claudeMeta.set(id, {
       lastDataTimestamp: Date.now(),
@@ -121,6 +151,109 @@ export class TerminalManager {
       autoRenamed: false,
       idleCycleCount: 0
     })
+
+    // Proactively detect session ID by watching for new .jsonl files
+    this.detectSessionIdFromDir(id)
+  }
+
+  /**
+   * Scan the project's Claude session directory for new JSONL files.
+   * When a Claude terminal starts, it creates a new session file within a few seconds.
+   * We poll the directory to detect it and associate it with this terminal.
+   */
+  private detectSessionIdFromDir(terminalId: string): void {
+    // Find the project path for this terminal
+    let projectPath: string | null = null
+    for (const [pp, termMap] of this.terminals) {
+      if (termMap.has(terminalId)) {
+        projectPath = pp
+        break
+      }
+    }
+    if (!projectPath) return
+
+    const projectHash = projectPath.replace(/[/_]/g, '-')
+    const sessionDir = path.join(os.homedir(), '.claude', 'projects', projectHash)
+    const startTime = Date.now()
+
+    // Get existing files before the terminal started
+    let existingFiles: Set<string>
+    try {
+      existingFiles = new Set(
+        fs.readdirSync(sessionDir).filter(f => f.endsWith('.jsonl'))
+      )
+    } catch {
+      existingFiles = new Set()
+    }
+
+    // Poll for new files (up to 30 seconds)
+    let attempts = 0
+    const maxAttempts = 30
+    const timer = setInterval(() => {
+      attempts++
+
+      // Stop if session ID already found (e.g. from regex match)
+      if (this.claudeSessionIds.has(terminalId) || attempts >= maxAttempts) {
+        clearInterval(timer)
+        return
+      }
+
+      // Stop if terminal was removed
+      if (!this.claudeMeta.has(terminalId)) {
+        clearInterval(timer)
+        return
+      }
+
+      try {
+        if (!fs.existsSync(sessionDir)) return
+
+        const currentFiles = fs.readdirSync(sessionDir).filter(f => f.endsWith('.jsonl'))
+        const claimedSessions = new Set(this.claudeSessionIds.values())
+
+        // Strategy 1: Look for entirely new files (didn't exist when terminal started)
+        for (const file of currentFiles) {
+          if (existingFiles.has(file)) continue
+
+          const filePath = path.join(sessionDir, file)
+          const stat = fs.statSync(filePath)
+          if (stat.mtimeMs >= startTime - 2000) {
+            const sessionId = file.replace(/\.jsonl$/, '')
+            if (claimedSessions.has(sessionId)) continue
+            console.log(`[TerminalManager] Detected session ID for ${terminalId}: ${sessionId} (new file)`)
+            this.claudeSessionIds.set(terminalId, sessionId)
+            this.emitClaudeSessionId(terminalId, sessionId)
+            clearInterval(timer)
+            return
+          }
+        }
+
+        // Strategy 2: If no new file, look for recently modified unclaimed files.
+        // This handles cases where Claude reuses a session file or it was created
+        // just before our snapshot.
+        if (attempts >= 5) {
+          const candidates = currentFiles
+            .map(f => {
+              const filePath = path.join(sessionDir, f)
+              const stat = fs.statSync(filePath)
+              return { file: f, mtime: stat.mtimeMs }
+            })
+            .filter(f => f.mtime >= startTime - 5000) // Modified around terminal start
+            .filter(f => !claimedSessions.has(f.file.replace(/\.jsonl$/, '')))
+            .sort((a, b) => b.mtime - a.mtime)
+
+          if (candidates.length > 0) {
+            const sessionId = candidates[0].file.replace(/\.jsonl$/, '')
+            console.log(`[TerminalManager] Detected session ID for ${terminalId}: ${sessionId} (recently modified unclaimed)`)
+            this.claudeSessionIds.set(terminalId, sessionId)
+            this.emitClaudeSessionId(terminalId, sessionId)
+            clearInterval(timer)
+            return
+          }
+        }
+      } catch {
+        // Ignore filesystem errors
+      }
+    }, 1000)
   }
 
   private emitClaudeStatus(id: string, status: ClaudeStatus): void {
@@ -184,9 +317,9 @@ export class TerminalManager {
   }
 
   private extractTaskName(lines: string[]): string | null {
-    // Strategy: scan backwards for a line that looks like a user prompt (starts with > or ❯),
-    // then take the text after the prompt character as the task name.
-    const promptPattern = /^[>❯]\s*(.+)/
+    // Scan backwards for the user's prompt line (❯ prefix from Claude Code CLI).
+    // Only match ❯ — regular > is too broad (matches markdown blockquotes in output).
+    const promptPattern = /^❯\s+(.+)/
     for (let i = lines.length - 1; i >= 0; i--) {
       const trimmed = lines[i].trim()
       const match = trimmed.match(promptPattern)
@@ -200,23 +333,6 @@ export class TerminalManager {
         }
         return name
       }
-    }
-
-    // Fallback: skip banner lines and take first substantive line
-    const skipPatterns = /^[\s│╭╮╰╯─┌┐└┘├┤┬┴┼━┃┏┓┗┛┣┫┳┻╋\-=_.*~#]*$|^\s*$|^[\s*✻>]+\s*(Welcome|Type|Tips|Claude Code|\/help)/i
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.length < 3) continue
-      if (skipPatterns.test(line)) continue
-      if (/^[>❯$%#]\s*$/.test(trimmed)) continue
-      if (/^[-─━=~*]{2,}/.test(trimmed) && /[-─━=~*]{2,}$/.test(trimmed)) continue
-      if (/^(v\d|claude\s+code|model:|session:)/i.test(trimmed)) continue
-      let name = trimmed.replace(/^[>❯$%#]\s*/, '').replace(/^[-─━=~*\s]+|[-─━=~*\s]+$/g, '')
-      if (!name || name.length < 3) continue
-      if (name.length > 40) {
-        name = name.slice(0, 37) + '...'
-      }
-      return name
     }
 
     return null
@@ -290,6 +406,7 @@ export class TerminalManager {
           || data.match(/Session:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
         if (sessionMatch && sessionMatch[1]) {
           this.claudeSessionIds.set(id, sessionMatch[1])
+          this.emitClaudeSessionId(id, sessionMatch[1])
         }
       }
 
@@ -355,6 +472,22 @@ export class TerminalManager {
             }
           } catch {
             // Window destroyed
+          }
+        }
+      }
+
+      // Context usage detection — parse percentage from Claude CLI output
+      // Claude Code shows context usage like "XX% context" or "context: XX%" or "XX% remaining"
+      if (this.claudeMeta.has(id)) {
+        const strippedData = this.stripAnsi(data)
+        const ctxMatch = strippedData.match(/(\d{1,3})%\s*(?:context|remaining)/i)
+          || strippedData.match(/context[:\s]+(\d{1,3})%/i)
+        if (ctxMatch) {
+          const pct = parseInt(ctxMatch[1], 10)
+          if (pct >= 0 && pct <= 100) {
+            // Claude shows "remaining" so we track usage as 100 - remaining
+            const isRemaining = /remaining/i.test(ctxMatch[0])
+            this.emitContextUsage(id, isRemaining ? 100 - pct : pct)
           }
         }
       }

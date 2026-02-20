@@ -40,6 +40,8 @@ export interface ElectronAPI {
     getClaudeSessionId: (terminalId: string) => Promise<string | null>
     onAgentSpawned: (callback: (parentId: string, agent: { id: string; name: string; status: string; startedAt: number }) => void) => () => void
     onAgentCompleted: (callback: (parentId: string) => void) => () => void
+    onContextUsage: (callback: (id: string, percent: number) => void) => () => void
+    onClaudeSessionId: (callback: (id: string, sessionId: string) => void) => () => void
   }
   session: {
     history: (projectPath: string) => Promise<Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number }>>

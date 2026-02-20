@@ -31,6 +31,142 @@ export interface UIToolResultMessage {
 
 export type UIMessage = UITextMessage | UIToolUseMessage | UIToolResultMessage
 
+export interface SessionFileEntry {
+  type: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  message?: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any
+}
+
+interface ThinkingInfo {
+  text: string
+  isLatest: boolean
+}
+
+interface ParseResult {
+  messages: UIMessage[]
+  thinkingBlocks: ThinkingInfo[]
+  lastEntryType: string | null
+  detectedModel: string | null
+}
+
+let nextId = 0
+function uid(): string {
+  return `ss-${Date.now()}-${nextId++}`
+}
+
+export function parseEntries(entries: SessionFileEntry[]): ParseResult {
+  const messages: UIMessage[] = []
+  const thinkingBlocks: ThinkingInfo[] = []
+  const now = Date.now()
+  let lastEntryType: string | null = null
+  let detectedModel: string | null = null
+
+  for (let entryIdx = 0; entryIdx < entries.length; entryIdx++) {
+    const entry = entries[entryIdx]
+    lastEntryType = entry.type
+
+    if (entry.type === 'user') {
+      const msg = entry.message
+      if (!msg) continue
+
+      if (typeof msg.content === 'string') {
+        messages.push({
+          id: uid(),
+          role: 'user',
+          type: 'text',
+          content: msg.content,
+          timestamp: now
+        } as UITextMessage)
+      } else if (Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === 'tool_result') {
+            let text = ''
+            if (typeof block.content === 'string') {
+              text = block.content
+            } else if (Array.isArray(block.content)) {
+              text = block.content
+                .filter((c: { type: string }) => c.type === 'text')
+                .map((c: { text: string }) => c.text)
+                .join('\n')
+            }
+            messages.push({
+              id: uid(),
+              role: 'tool',
+              type: 'tool_result',
+              toolUseId: block.tool_use_id || '',
+              content: text,
+              isError: block.is_error || false,
+              timestamp: now
+            } as UIToolResultMessage)
+          } else if (block.type === 'text') {
+            messages.push({
+              id: uid(),
+              role: 'user',
+              type: 'text',
+              content: block.text,
+              timestamp: now
+            } as UITextMessage)
+          }
+        }
+      }
+    } else if (entry.type === 'assistant') {
+      const msg = entry.message
+      if (!msg || !Array.isArray(msg.content)) continue
+
+      if (msg.model) {
+        detectedModel = msg.model
+      }
+
+      let textAccum = ''
+      const isLastAssistant = !entries.slice(entryIdx + 1).some(e => e.type === 'assistant')
+
+      for (const block of msg.content) {
+        if (block.type === 'thinking' && block.thinking) {
+          thinkingBlocks.push({
+            text: block.thinking,
+            isLatest: isLastAssistant
+          })
+        } else if (block.type === 'text') {
+          textAccum += block.text
+        } else if (block.type === 'tool_use') {
+          if (textAccum) {
+            messages.push({
+              id: uid(),
+              role: 'assistant',
+              type: 'text',
+              content: textAccum,
+              timestamp: now
+            } as UITextMessage)
+            textAccum = ''
+          }
+          messages.push({
+            id: uid(),
+            role: 'assistant',
+            type: 'tool_use',
+            toolName: block.name || 'unknown',
+            toolId: block.id || uid(),
+            input: block.input || {},
+            timestamp: now
+          } as UIToolUseMessage)
+        }
+      }
+      if (textAccum) {
+        messages.push({
+          id: uid(),
+          role: 'assistant',
+          type: 'text',
+          content: textAccum,
+          timestamp: now
+        } as UITextMessage)
+      }
+    }
+  }
+
+  return { messages, thinkingBlocks, lastEntryType, detectedModel }
+}
+
 export interface SessionState {
   sessionId: string
   projectPath: string
@@ -73,6 +209,10 @@ interface SessionStore {
   sessions: Record<string, SessionState>
   activeSessionId: string | null
 
+  // Per-session metadata from JSONL file watching
+  thinkingText: Record<string, string | null>
+  lastEntryType: Record<string, string | null>
+
   // Per-project memory: remembers last active session per project
   projectSessionMemory: Record<string, string>
 
@@ -87,11 +227,15 @@ interface SessionStore {
   setSelectedModel: (sessionId: string, model: string | null) => void
   renameSession: (sessionId: string, name: string) => void
   getSessionsForProject: (projectPath: string) => SessionState[]
+  loadEntries: (sessionId: string, projectPath: string, entries: SessionFileEntry[]) => void
+  appendEntries: (sessionId: string, entries: SessionFileEntry[]) => void
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: {},
   activeSessionId: null,
+  thinkingText: {},
+  lastEntryType: {},
   projectSessionMemory: {},
 
   createSession: (projectPath: string, sessionId: string): void => {
@@ -395,5 +539,52 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     return Object.values(state.sessions)
       .filter(s => s.projectPath === projectPath)
       .sort((a, b) => a.createdAt - b.createdAt)
+  },
+
+  loadEntries: (sessionId: string, projectPath: string, entries: SessionFileEntry[]): void => {
+    const parsed = parseEntries(entries)
+    const latestThinking = parsed.thinkingBlocks.filter(t => t.isLatest)
+    const thinking = latestThinking.length > 0
+      ? (() => { const t = latestThinking[latestThinking.length - 1].text; return t.length > 200 ? t.slice(0, 197) + '...' : t })()
+      : null
+
+    set(s => {
+      const existing = s.sessions[sessionId]
+      const session: SessionState = existing
+        ? { ...existing, messages: parsed.messages, model: parsed.detectedModel ?? existing.model }
+        : { ...createSessionState(sessionId, projectPath), messages: parsed.messages, model: parsed.detectedModel }
+      return {
+        sessions: { ...s.sessions, [sessionId]: session },
+        thinkingText: { ...s.thinkingText, [sessionId]: thinking },
+        lastEntryType: { ...s.lastEntryType, [sessionId]: parsed.lastEntryType }
+      }
+    })
+  },
+
+  appendEntries: (sessionId: string, entries: SessionFileEntry[]): void => {
+    const parsed = parseEntries(entries)
+    if (parsed.messages.length === 0 && !parsed.lastEntryType) return
+
+    const latestThinking = parsed.thinkingBlocks.filter(t => t.isLatest)
+    const thinking = latestThinking.length > 0
+      ? (() => { const t = latestThinking[latestThinking.length - 1].text; return t.length > 200 ? t.slice(0, 197) + '...' : t })()
+      : null
+
+    set(s => {
+      const existing = s.sessions[sessionId]
+      if (!existing) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: {
+            ...existing,
+            messages: [...existing.messages, ...parsed.messages],
+            model: parsed.detectedModel ?? existing.model
+          }
+        },
+        thinkingText: { ...s.thinkingText, [sessionId]: thinking ?? s.thinkingText[sessionId] },
+        lastEntryType: { ...s.lastEntryType, [sessionId]: parsed.lastEntryType ?? s.lastEntryType[sessionId] }
+      }
+    })
   }
 }))

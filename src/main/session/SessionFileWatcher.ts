@@ -29,7 +29,7 @@ export class SessionFileWatcher {
   }
 
   hashProjectPath(p: string): string {
-    return p.replace(/\//g, '-')
+    return p.replace(/[/_]/g, '-')
   }
 
   getProjectDir(projectPath: string): string {
@@ -86,11 +86,11 @@ export class SessionFileWatcher {
     }
   }
 
-  watch(terminalId: string, _claudeSessionId: string | null, projectPath: string): SessionFileEntry[] {
+  watch(terminalId: string, claudeSessionId: string | null, projectPath: string): SessionFileEntry[] {
     this.unwatch(terminalId)
 
     const projectDir = this.getProjectDir(projectPath)
-    console.log(`[SessionFileWatcher] watch terminalId=${terminalId} projectDir=${projectDir}`)
+    console.log(`[SessionFileWatcher] watch terminalId=${terminalId} sessionId=${claudeSessionId} projectDir=${projectDir}`)
 
     const state: WatcherState = {
       projectDir,
@@ -105,7 +105,32 @@ export class SessionFileWatcher {
 
     this.watchers.set(terminalId, state)
 
-    // Try to find active file immediately
+    // If session ID is provided, attach directly to that file
+    if (claudeSessionId) {
+      const filePath = this.getSessionFilePath(claudeSessionId, projectPath)
+      state.activeFile = filePath
+      state.activeSessionId = claudeSessionId
+
+      let initialEntries: SessionFileEntry[] = []
+      try {
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, 'utf-8')
+          initialEntries = this.parseLines(content)
+          state.offset = Buffer.byteLength(content, 'utf-8')
+        }
+      } catch {
+        // File may not exist yet
+      }
+
+      this.startFileWatch(terminalId, state)
+      // Don't start directory poll — it would switch to whichever file was most
+      // recently modified, overriding the pinned session ID. If the user runs
+      // /clear, TerminalManager will detect the new session ID and emit a new
+      // terminal:claude-session-id event, triggering a fresh watch() call.
+      return initialEntries
+    }
+
+    // Fallback: find active file by scanning directory
     const initial = this.findAndAttachFile(terminalId, state)
 
     // Also watch the directory for new/changed files
@@ -166,7 +191,7 @@ export class SessionFileWatcher {
 
       if (found.filePath !== state.activeFile) {
         // New active file detected — switch to it
-        console.log(`[SessionFileWatcher] switching to new session: ${found.sessionId}`)
+        console.log(`[SessionFileWatcher] ${terminalId}: switching to new session: ${found.sessionId}`)
         if (state.fileWatcher) {
           state.fileWatcher.close()
           state.fileWatcher = null

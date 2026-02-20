@@ -1,6 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import { TerminalTab, ClaudeTerminalStatus, SubAgentInfo } from '../../stores/terminalStore'
-import ChatHistory from './ChatHistory'
+import { TerminalTab, ClaudeTerminalStatus } from '../../stores/terminalStore'
 
 interface InlineRenameProps {
   value: string
@@ -50,299 +49,245 @@ const STATUS_COLORS: Record<ClaudeTerminalStatus, string> = {
   done: '#666'
 }
 
-interface ContextMenuState {
-  x: number
-  y: number
+function timeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  const days = Math.floor(hours / 24)
+  return `${days}d`
+}
+
+interface DiffStats {
+  additions: number
+  deletions: number
 }
 
 interface ProjectTreeProps {
   projectPath: string
   projectName: string
-  isExpanded: boolean
   isCurrentProject: boolean
   isGitRepo: boolean
-  gitBranch: string | null
-  terminalTabs: TerminalTab[]
-  activeTerminalId: string | null
-  terminalPanelVisible: boolean
   claudeTerminals: TerminalTab[]
   claudeStatuses: Record<string, ClaudeTerminalStatus>
-  subAgents: Record<string, SubAgentInfo[]>
   activeClaudeId: string | null
-  onToggleExpanded: () => void
   onSwitchToProject: () => void
-  onSelectTerminal: (id: string) => void
-  onNewTerminal: () => void
-  onRenameTerminal: (terminalId: string, name: string) => void
   onSelectClaudeTerminal: (id: string) => void
-  onNewClaudeTerminal: () => void
   onRenameClaudeTerminal: (id: string, name: string) => void
   onCloseTerminal: (id: string) => void
-  onRemoveProject: () => void
-  onDragStart: (e: React.DragEvent) => void
-  onDragOver: (e: React.DragEvent) => void
-  onDrop: (e: React.DragEvent) => void
-  isDragOver: boolean
   historyEntries: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number }>
   onResumeHistory: (entry: { claudeSessionId?: string; projectPath: string; name: string }) => void
-  onClearHistory: () => void
-  hasStartConfig: boolean
-  onRunStart: () => void
-  onEditStartConfig: () => void
+}
+
+interface ContextMenuState {
+  terminalId: string
+  x: number
+  y: number
 }
 
 export default function ProjectTree({
   projectPath,
   projectName,
-  isExpanded,
   isCurrentProject,
   isGitRepo,
-  gitBranch,
-  terminalTabs,
-  activeTerminalId,
-  terminalPanelVisible,
   claudeTerminals,
   claudeStatuses,
-  subAgents,
   activeClaudeId,
-  onToggleExpanded,
   onSwitchToProject,
-  onSelectTerminal,
-  onNewTerminal,
-  onRenameTerminal,
   onSelectClaudeTerminal,
-  onNewClaudeTerminal,
   onRenameClaudeTerminal,
   onCloseTerminal,
-  onRemoveProject,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  isDragOver,
   historyEntries,
   onResumeHistory,
-  onClearHistory,
-  hasStartConfig,
-  onRunStart,
-  onEditStartConfig
 }: ProjectTreeProps) {
   const [renamingTerminalId, setRenamingTerminalId] = useState<string | null>(null)
+  const [diffStats, setDiffStats] = useState<DiffStats | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
-  const [itemContextMenu, setItemContextMenu] = useState<{ x: number; y: number; id: string; type: 'claude' | 'shell' } | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const itemMenuRef = useRef<HTMLDivElement>(null)
+  const [historyExpanded, setHistoryExpanded] = useState(false)
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return
+    const handler = () => setContextMenu(null)
+    document.addEventListener('click', handler)
+    return () => document.removeEventListener('click', handler)
+  }, [contextMenu])
+
+  // Fetch diff stats for the project
+  useEffect(() => {
+    if (!isGitRepo) return
+    let cancelled = false
+
+    const fetchStats = async () => {
+      try {
+        const result = await window.api.project.diff(projectPath)
+        if (cancelled || !result.success || !result.diff) {
+          if (!cancelled) setDiffStats(null)
+          return
+        }
+        const lines = result.diff.split('\n')
+        let additions = 0
+        let deletions = 0
+        for (const line of lines) {
+          if (line.startsWith('+') && !line.startsWith('+++')) additions++
+          if (line.startsWith('-') && !line.startsWith('---')) deletions++
+        }
+        setDiffStats({ additions, deletions })
+      } catch {
+        if (!cancelled) setDiffStats(null)
+      }
+    }
+
+    fetchStats()
+    const interval = setInterval(fetchStats, 15000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [projectPath, isGitRepo])
 
   const handleHeaderClick = useCallback(() => {
     if (!isCurrentProject) {
       onSwitchToProject()
     }
-    onToggleExpanded()
-  }, [isCurrentProject, onSwitchToProject, onToggleExpanded])
+  }, [isCurrentProject, onSwitchToProject])
 
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setItemContextMenu(null)
-    setContextMenu({ x: e.clientX, y: e.clientY })
-  }, [])
-
-  const handleItemContextMenu = useCallback((e: React.MouseEvent, id: string, type: 'claude' | 'shell') => {
-    e.preventDefault()
-    e.stopPropagation()
-    setContextMenu(null)
-    setItemContextMenu({ x: e.clientX, y: e.clientY, id, type })
-  }, [])
-
-  // Close menus on outside click
-  useEffect(() => {
-    if (!contextMenu && !itemContextMenu) return
-    const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setContextMenu(null)
-      }
-      if (itemMenuRef.current && !itemMenuRef.current.contains(e.target as Node)) {
-        setItemContextMenu(null)
-      }
-    }
-    window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
-  }, [contextMenu, itemContextMenu])
+  // Sorted history: most recent first
+  const sortedHistory = historyEntries.slice().reverse()
+  const HISTORY_COLLAPSED_LIMIT = 3
+  const visibleHistory = historyExpanded ? sortedHistory : sortedHistory.slice(0, HISTORY_COLLAPSED_LIMIT)
+  const hasMoreHistory = sortedHistory.length > HISTORY_COLLAPSED_LIMIT
 
   return (
-    <div
-      className={`project-tree ${isDragOver ? 'project-tree-drag-over' : ''}`}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-    >
+    <div className="project-tree">
+      {/* Project name row */}
       <button
         className={`project-tree-header ${isCurrentProject ? 'current' : ''}`}
         onClick={handleHeaderClick}
-        onContextMenu={handleContextMenu}
-        draggable
-        onDragStart={onDragStart}
       >
-        <span className={`project-group-chevron ${isExpanded ? 'open' : ''}`}>
-          &#9654;
-        </span>
-        <span className="project-group-icon">{'\u25CF'}</span>
+        <span className="project-tree-folder-icon">{'\uD83D\uDCC2'}</span>
         <span className="project-group-name">{projectName}</span>
-        {gitBranch && (
-          <span className="project-git-branch">{gitBranch}</span>
-        )}
-        {hasStartConfig && (
-          <span
-            className="project-start-btn"
-            title="Run start commands (right-click to edit)"
-            onClick={(e) => { e.stopPropagation(); onRunStart() }}
-            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onEditStartConfig() }}
-          >
-            &#9654;
+        {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) && (
+          <span className="project-diff-stats">
+            {diffStats.additions > 0 && (
+              <span className="diff-stat-add">+{diffStats.additions}</span>
+            )}
+            {diffStats.deletions > 0 && (
+              <span className="diff-stat-del">-{diffStats.deletions}</span>
+            )}
           </span>
         )}
       </button>
 
-      {/* Project context menu */}
+      <div className="project-tree-children">
+        {/* Active threads (running Claude instances) */}
+        {claudeTerminals.map((t, i) => {
+          const status = claudeStatuses[t.id] || 'idle'
+          const isActive = isCurrentProject && activeClaudeId === t.id
+          const isRenaming = renamingTerminalId === t.id
+          const displayName = t.name || `Claude Code ${i + 1}`
+          const isRunning = status === 'running'
+          return (
+            <button
+              key={t.id}
+              className={`tree-item tree-item-thread ${isActive ? 'active' : ''}`}
+              onClick={() => onSelectClaudeTerminal(t.id)}
+              onDoubleClick={() => setRenamingTerminalId(t.id)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setContextMenu({ terminalId: t.id, x: e.clientX, y: e.clientY })
+              }}
+            >
+              <span
+                className={`tree-item-status-indicator ${isRunning ? 'spinning' : ''}`}
+                style={{ color: STATUS_COLORS[status] }}
+              >
+                {isRunning ? '\u25CF' : status === 'attention' ? '\u25CF' : '\u25CB'}
+              </span>
+              {isRenaming ? (
+                <InlineRename
+                  value={displayName}
+                  onCommit={(name) => {
+                    onRenameClaudeTerminal(t.id, name)
+                    setRenamingTerminalId(null)
+                  }}
+                  onCancel={() => setRenamingTerminalId(null)}
+                />
+              ) : (
+                <span className="tree-item-label">{displayName}</span>
+              )}
+              <span className="thread-time"></span>
+            </button>
+          )
+        })}
+
+        {/* Past threads (history) */}
+        {sortedHistory.length > 0 && claudeTerminals.length > 0 && (
+          <div className="threads-separator" />
+        )}
+        {visibleHistory.map(entry => (
+          <button
+            key={entry.id}
+            className="tree-item tree-item-thread tree-item-past"
+            onClick={() => onResumeHistory(entry)}
+            title={entry.claudeSessionId ? 'Click to resume' : 'No session ID'}
+            disabled={!entry.claudeSessionId}
+          >
+            <span className="tree-item-status-indicator past">{'\u25CB'}</span>
+            <span className="tree-item-label">{entry.name}</span>
+            <span className="thread-time">{timeAgo(entry.endedAt)}</span>
+          </button>
+        ))}
+        {hasMoreHistory && (
+          <button
+            className="tree-item tree-item-show-more"
+            onClick={() => setHistoryExpanded(!historyExpanded)}
+          >
+            <span className="tree-item-label show-more-label">
+              {historyExpanded ? 'Show less' : `Show ${sortedHistory.length - HISTORY_COLLAPSED_LIMIT} more...`}
+            </span>
+          </button>
+        )}
+      </div>
+
+      {/* Context menu for Claude threads */}
       {contextMenu && (
         <div
-          ref={menuRef}
-          className="context-menu"
+          className="thread-context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           <button
-            className="context-menu-item"
-            onClick={() => { onNewClaudeTerminal(); setContextMenu(null) }}
-          >
-            New Claude Code
-          </button>
-          <button
-            className="context-menu-item"
-            onClick={() => { onNewTerminal(); setContextMenu(null) }}
-          >
-            New Terminal
-          </button>
-          <div className="context-menu-separator" />
-          <button
-            className="context-menu-item"
-            onClick={() => { onEditStartConfig(); setContextMenu(null) }}
-          >
-            Configure Start
-          </button>
-          <div className="context-menu-separator" />
-          <button
-            className="context-menu-item context-menu-item-danger"
-            onClick={() => { onRemoveProject(); setContextMenu(null) }}
-          >
-            Remove Project
-          </button>
-        </div>
-      )}
-
-      {/* Item context menu (rename / close) */}
-      {itemContextMenu && (
-        <div
-          ref={itemMenuRef}
-          className="context-menu"
-          style={{ top: itemContextMenu.y, left: itemContextMenu.x }}
-        >
-          <button
-            className="context-menu-item"
-            onClick={() => { setRenamingTerminalId(itemContextMenu.id); setItemContextMenu(null) }}
+            className="thread-context-menu-item"
+            onClick={() => {
+              setRenamingTerminalId(contextMenu.terminalId)
+              setContextMenu(null)
+            }}
           >
             Rename
           </button>
           <button
-            className="context-menu-item context-menu-item-danger"
-            onClick={() => { onCloseTerminal(itemContextMenu.id); setItemContextMenu(null) }}
+            className="thread-context-menu-item"
+            onClick={() => {
+              onCloseTerminal(contextMenu.terminalId)
+              setContextMenu(null)
+            }}
           >
-            Close
+            Kill session
           </button>
-        </div>
-      )}
-
-      {isExpanded && (
-        <div className="project-tree-children">
-          {/* Claude terminal items */}
-          {claudeTerminals.map((t, i) => {
-            const status = claudeStatuses[t.id] || 'idle'
-            const isActive = isCurrentProject && activeClaudeId === t.id
-            const isRenaming = renamingTerminalId === t.id
-            const displayName = t.name || `Claude Code ${i + 1}`
-            return (
-              <React.Fragment key={t.id}>
-                <button
-                  className={`tree-item tree-item-claude ${isActive ? 'active' : ''}`}
-                  onClick={() => onSelectClaudeTerminal(t.id)}
-                  onDoubleClick={() => setRenamingTerminalId(t.id)}
-                  onContextMenu={(e) => handleItemContextMenu(e, t.id, 'claude')}
-                >
-                  <span
-                    className="tree-item-status-dot"
-                    style={{ background: STATUS_COLORS[status] }}
-                  />
-                  {isRenaming ? (
-                    <InlineRename
-                      value={displayName}
-                      onCommit={(name) => {
-                        onRenameClaudeTerminal(t.id, name)
-                        setRenamingTerminalId(null)
-                      }}
-                      onCancel={() => setRenamingTerminalId(null)}
-                    />
-                  ) : (
-                    <span className="tree-item-label">{displayName}</span>
-                  )}
-                </button>
-                {/* Nested sub-agents */}
-                {subAgents[t.id] && subAgents[t.id].length > 0 && (
-                  <div className="tree-sub-agents">
-                    {subAgents[t.id].map((agent: SubAgentInfo) => (
-                      <div key={agent.id} className={`tree-sub-agent tree-sub-agent-${agent.status}`}>
-                        <span className="sub-agent-dot" />
-                        <span className="tree-item-label">{agent.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </React.Fragment>
-            )
-          })}
-
-          {/* Individual shell terminal items */}
-          {terminalTabs.map((t, i) => {
-            const isActive = isCurrentProject && terminalPanelVisible && activeTerminalId === t.id
-            const isRenaming = renamingTerminalId === t.id
-            const displayName = t.name || `Terminal ${i + 1}`
-            return (
-              <button
-                key={t.id}
-                className={`tree-item tree-item-terminal ${isActive ? 'active' : ''}`}
-                onClick={() => onSelectTerminal(t.id)}
-                onDoubleClick={() => setRenamingTerminalId(t.id)}
-                onContextMenu={(e) => handleItemContextMenu(e, t.id, 'shell')}
-              >
-                <span className="tree-item-icon">&gt;_</span>
-                {isRenaming ? (
-                  <InlineRename
-                    value={displayName}
-                    onCommit={(name) => {
-                      onRenameTerminal(t.id, name)
-                      setRenamingTerminalId(null)
-                    }}
-                    onCancel={() => setRenamingTerminalId(null)}
-                  />
-                ) : (
-                  <span className="tree-item-label">{displayName}</span>
-                )}
-              </button>
-            )
-          })}
-
-          {/* Chat History */}
-          <ChatHistory
-            entries={historyEntries}
-            onResume={onResumeHistory}
-            onClearHistory={onClearHistory}
-          />
+          {claudeTerminals.length > 1 && (
+            <button
+              className="thread-context-menu-item thread-context-menu-danger"
+              onClick={() => {
+                const others = claudeTerminals.filter(t => t.id !== contextMenu.terminalId)
+                for (const t of others) {
+                  onCloseTerminal(t.id)
+                }
+                setContextMenu(null)
+              }}
+            >
+              Kill other sessions
+            </button>
+          )}
         </div>
       )}
     </div>

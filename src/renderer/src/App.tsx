@@ -62,10 +62,64 @@ export default function App() {
   // Terminal exit listener
   useEffect(() => {
     const unsub = window.api.terminal.onExit((id: string) => {
+      window.api.sessionFile.unwatch(id)
       removeTerminal(id)
     })
     return unsub
   }, [removeTerminal])
+
+  // Push-based session ID detection
+  useEffect(() => {
+    const unsub = window.api.terminal.onClaudeSessionId((terminalId, sessionId) => {
+      useTerminalStore.getState().setClaudeSessionId(terminalId, sessionId)
+      const terminal = useTerminalStore.getState().terminals.find(t => t.id === terminalId)
+      if (terminal) {
+        // Always create session in store (even if file is empty / doesn't exist yet)
+        useSessionStore.getState().loadEntries(sessionId, terminal.projectPath, [])
+        window.api.sessionFile.watch(terminalId, sessionId, terminal.projectPath).then(result => {
+          if (result.success && result.entries && (result.entries as unknown[]).length > 0) {
+            useSessionStore.getState().loadEntries(
+              sessionId,
+              terminal.projectPath,
+              result.entries as import('./stores/sessionStore').SessionFileEntry[]
+            )
+          }
+        })
+      }
+    })
+    return unsub
+  }, [])
+
+  // Push-based incremental session file entries
+  useEffect(() => {
+    const unsub = window.api.sessionFile.onEntries((terminalId, entries) => {
+      const sessionId = useTerminalStore.getState().claudeSessionIds[terminalId]
+      if (!sessionId) return
+      const store = useSessionStore.getState()
+      if (store.sessions[sessionId]) {
+        store.appendEntries(sessionId, entries as import('./stores/sessionStore').SessionFileEntry[])
+      } else {
+        // Session not in store yet — create it with these entries
+        const terminal = useTerminalStore.getState().terminals.find(t => t.id === terminalId)
+        if (terminal) {
+          store.loadEntries(sessionId, terminal.projectPath, entries as import('./stores/sessionStore').SessionFileEntry[])
+        }
+      }
+    })
+    return unsub
+  }, [])
+
+  // Push-based session file reset (new session file detected)
+  useEffect(() => {
+    const unsub = window.api.sessionFile.onReset((terminalId, entries) => {
+      const sessionId = useTerminalStore.getState().claudeSessionIds[terminalId]
+      const terminal = useTerminalStore.getState().terminals.find(t => t.id === terminalId)
+      if (sessionId && terminal) {
+        useSessionStore.getState().loadEntries(sessionId, terminal.projectPath, entries as import('./stores/sessionStore').SessionFileEntry[])
+      }
+    })
+    return unsub
+  }, [])
 
   // Claude terminal status listener
   useEffect(() => {
@@ -82,6 +136,14 @@ export default function App() {
     })
     return unsub
   }, [autoRenameTerminal])
+
+  // Context usage listener
+  useEffect(() => {
+    const unsub = window.api.terminal.onContextUsage((id: string, percent: number) => {
+      useTerminalStore.getState().setContextUsage(id, percent)
+    })
+    return unsub
+  }, [])
 
   // Session restore listener — recreate Claude terminals with --resume and restore UI state
   useEffect(() => {
@@ -197,6 +259,21 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Track all held keys (normalized)
       heldKeysRef.current.add(normalizeKey(e.key))
+
+      // Shift+Tab — toggle plan/execute mode for active Claude terminal
+      if (e.shiftKey && e.key === 'Tab') {
+        e.preventDefault()
+        const store = useTerminalStore.getState()
+        const path = useProjectStore.getState().currentPath
+        if (path) {
+          const activeId = store.activeClaudeId[path]
+          if (activeId) {
+            window.api.terminal.write(activeId, '\x1b[Z')
+            store.toggleClaudeMode(activeId)
+          }
+        }
+        return
+      }
 
       // Ctrl+` to toggle terminal (hardcoded, separate from mod system)
       if ((e.ctrlKey || e.metaKey) && e.key === '`') {

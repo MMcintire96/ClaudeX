@@ -17,6 +17,8 @@ export interface TerminalTab {
   type?: 'shell' | 'claude'
 }
 
+export type ClaudeMode = 'plan' | 'execute'
+
 interface TerminalState {
   terminals: TerminalTab[]
   activeTerminalId: string | null
@@ -27,9 +29,11 @@ interface TerminalState {
   activeClaudeId: Record<string, string>
   manuallyRenamed: Record<string, boolean>
   subAgents: Record<string, SubAgentInfo[]>
-  claudeViewMode: Record<string, 'terminal' | 'chat'>
-  claudeSplitIds: Record<string, string[]>
   shellSplitIds: string[]
+  claudeModes: Record<string, ClaudeMode>
+  claudeModels: Record<string, string>
+  contextUsage: Record<string, number>
+  claudeSessionIds: Record<string, string>
 
   addTerminal: (tab: TerminalTab) => void
   removeTerminal: (id: string) => void
@@ -44,11 +48,13 @@ interface TerminalState {
   setActiveClaudeId: (projectPath: string, id: string) => void
   addSubAgent: (parentId: string, agent: SubAgentInfo) => void
   completeSubAgent: (parentId: string) => void
-  setClaudeViewMode: (id: string, mode: 'terminal' | 'chat') => void
-  splitClaude: (projectPath: string, newId: string) => void
-  unsplitClaude: (projectPath: string) => void
   splitShell: (newId: string) => void
   unsplitShell: () => void
+  setClaudeMode: (id: string, mode: ClaudeMode) => void
+  toggleClaudeMode: (id: string) => void
+  setClaudeModel: (id: string, model: string) => void
+  setContextUsage: (id: string, percent: number) => void
+  setClaudeSessionId: (terminalId: string, sessionId: string) => void
 }
 
 export const useTerminalStore = create<TerminalState>((set) => ({
@@ -61,16 +67,17 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   activeClaudeId: {},
   manuallyRenamed: {},
   subAgents: {},
-  claudeViewMode: {},
-  claudeSplitIds: {},
   shellSplitIds: [],
+  claudeModes: {},
+  claudeModels: {},
+  contextUsage: {},
+  claudeSessionIds: {},
 
   addTerminal: (tab: TerminalTab): void => {
     set(state => {
       const isClaude = tab.type === 'claude'
       return {
         terminals: [...state.terminals, tab],
-        // Don't steal focus or show bottom panel for claude terminals
         activeTerminalId: isClaude ? state.activeTerminalId : tab.id,
         panelVisible: isClaude ? state.panelVisible : true
       }
@@ -83,36 +90,22 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       const shellTerminals = next.filter(t => t.type !== 'claude')
       let activeId = state.activeTerminalId
       if (activeId === id) {
-        // Fall back to last shell terminal, not a claude one
         activeId = shellTerminals.length > 0 ? shellTerminals[shellTerminals.length - 1].id : null
       }
-      // Clean up claude status tracking
       const statuses = { ...state.claudeStatuses }
       delete statuses[id]
       const renamed = { ...state.manuallyRenamed }
       delete renamed[id]
-      // Clean up active claude id tracking
+      const sessionIds = { ...state.claudeSessionIds }
+      delete sessionIds[id]
       const activeClaudeIds = { ...state.activeClaudeId }
       for (const [proj, tid] of Object.entries(activeClaudeIds)) {
         if (tid === id) {
-          // Find another claude terminal for this project
           const otherClaude = next.find(t => t.type === 'claude' && t.projectPath === proj && t.id !== id)
           if (otherClaude) {
             activeClaudeIds[proj] = otherClaude.id
           } else {
             delete activeClaudeIds[proj]
-          }
-        }
-      }
-      // Clean up claude split state
-      const claudeSplits = { ...state.claudeSplitIds }
-      for (const [proj, ids] of Object.entries(claudeSplits)) {
-        if (ids.includes(id)) {
-          const remaining = ids.filter(sid => sid !== id)
-          if (remaining.length <= 1) {
-            delete claudeSplits[proj]
-          } else {
-            claudeSplits[proj] = remaining
           }
         }
       }
@@ -129,7 +122,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
         claudeStatuses: statuses,
         activeClaudeId: activeClaudeIds,
         manuallyRenamed: renamed,
-        claudeSplitIds: claudeSplits,
+        claudeSessionIds: sessionIds,
         shellSplitIds: shellSplits
       }
     })
@@ -215,7 +208,6 @@ export const useTerminalStore = create<TerminalState>((set) => ({
     set(state => {
       const agents = state.subAgents[parentId]
       if (!agents || agents.length === 0) return {}
-      // Complete the most recent running agent
       const updated = [...agents]
       for (let i = updated.length - 1; i >= 0; i--) {
         if (updated[i].status === 'running') {
@@ -225,39 +217,6 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       }
       return {
         subAgents: { ...state.subAgents, [parentId]: updated }
-      }
-    })
-  },
-
-  setClaudeViewMode: (id: string, mode: 'terminal' | 'chat'): void => {
-    set(state => ({
-      claudeViewMode: { ...state.claudeViewMode, [id]: mode }
-    }))
-  },
-
-  splitClaude: (projectPath: string, newId: string): void => {
-    set(state => {
-      const activeId = state.activeClaudeId[projectPath]
-      if (!activeId) return {}
-      return {
-        claudeSplitIds: {
-          ...state.claudeSplitIds,
-          [projectPath]: [activeId, newId]
-        }
-      }
-    })
-  },
-
-  unsplitClaude: (projectPath: string): void => {
-    set(state => {
-      const splits = state.claudeSplitIds[projectPath]
-      const newSplits = { ...state.claudeSplitIds }
-      delete newSplits[projectPath]
-      return {
-        claudeSplitIds: newSplits,
-        activeClaudeId: splits && splits.length > 0
-          ? { ...state.activeClaudeId, [projectPath]: splits[0] }
-          : state.activeClaudeId
       }
     })
   },
@@ -280,5 +239,38 @@ export const useTerminalStore = create<TerminalState>((set) => ({
         activeTerminalId: first || state.activeTerminalId
       }
     })
+  },
+
+  setClaudeMode: (id: string, mode: ClaudeMode): void => {
+    set(state => ({
+      claudeModes: { ...state.claudeModes, [id]: mode }
+    }))
+  },
+
+  toggleClaudeMode: (id: string): void => {
+    set(state => {
+      const current = state.claudeModes[id] || 'execute'
+      return {
+        claudeModes: { ...state.claudeModes, [id]: current === 'execute' ? 'plan' : 'execute' }
+      }
+    })
+  },
+
+  setClaudeModel: (id: string, model: string): void => {
+    set(state => ({
+      claudeModels: { ...state.claudeModels, [id]: model }
+    }))
+  },
+
+  setContextUsage: (id: string, percent: number): void => {
+    set(state => ({
+      contextUsage: { ...state.contextUsage, [id]: percent }
+    }))
+  },
+
+  setClaudeSessionId: (terminalId: string, sessionId: string): void => {
+    set(state => ({
+      claudeSessionIds: { ...state.claudeSessionIds, [terminalId]: sessionId }
+    }))
   }
 }))
