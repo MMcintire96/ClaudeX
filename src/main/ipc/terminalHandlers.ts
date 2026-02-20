@@ -211,6 +211,11 @@ export function registerTerminalHandlers(
     return terminalManager.list(projectPath)
   })
 
+  ipcMain.handle('terminal:rename', (_event, id: string, name: string) => {
+    terminalManager.setTerminalName(id, name)
+    return { success: true }
+  })
+
   // Session history handlers
   ipcMain.handle('session:history', (_event, projectPath: string) => {
     if (!sessionPersistence) return []

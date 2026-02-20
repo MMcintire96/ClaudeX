@@ -5,6 +5,7 @@ import { useProjectStore } from '../../stores/projectStore'
 import Sidebar from './Sidebar'
 import MainPanel from './MainPanel'
 import SidePanel from './SidePanel'
+import AppHeader from './AppHeader'
 import TerminalPanel from '../terminal/TerminalPanel'
 
 function ResizeHandle({
@@ -84,6 +85,7 @@ export default function AppLayout() {
 
   return (
     <div className="app-layout">
+      <AppHeader />
       <div className="app-layout-top" style={{ gridTemplateColumns: cols }}>
         {sidebarVisible && (
           <div className="panel-wrapper">

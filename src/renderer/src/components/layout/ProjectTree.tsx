@@ -97,12 +97,8 @@ interface ProjectTreeProps {
   onCloseTerminal: (id: string) => void
   onNewThread: () => void
   onRemoveProject: () => void
-  onOpenTerminal: () => void
-  onConfigureStart?: () => void
-  hasStartConfig?: boolean
-  onRunStart?: () => void
-  historyEntries: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number }>
-  onResumeHistory: (entry: { claudeSessionId?: string; projectPath: string; name: string }) => void
+  historyEntries: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>
+  onResumeHistory: (entry: { claudeSessionId?: string; projectPath: string; name: string; worktreePath?: string | null; isWorktree?: boolean }) => void
 }
 
 interface ContextMenuState {
@@ -126,10 +122,6 @@ export default function ProjectTree({
   onCloseTerminal,
   onNewThread,
   onRemoveProject,
-  onOpenTerminal,
-  onConfigureStart,
-  hasStartConfig,
-  onRunStart,
   historyEntries,
   onResumeHistory,
 }: ProjectTreeProps) {
@@ -182,8 +174,8 @@ export default function ProjectTree({
     }
   }, [isCurrentProject, onSwitchToProject])
 
-  // Sorted history: most recent first, exclude blank sessions (never renamed = no messages)
-  const sortedHistory = historyEntries.filter(e => e.name && !e.name.includes('Claude Code')).slice().reverse()
+  // Sorted history: most recent first. Only sessions with user messages are persisted.
+  const sortedHistory = historyEntries.filter(e => !!e.claudeSessionId).slice().reverse()
   const HISTORY_COLLAPSED_LIMIT = 3
   const visibleHistory = historyExpanded ? sortedHistory : sortedHistory.slice(0, HISTORY_COLLAPSED_LIMIT)
   const hasMoreHistory = sortedHistory.length > HISTORY_COLLAPSED_LIMIT
@@ -305,37 +297,6 @@ export default function ProjectTree({
                 }}
               >
                 New thread
-              </button>
-              {hasStartConfig && onRunStart && (
-                <button
-                  className="thread-context-menu-item"
-                  onClick={() => {
-                    onRunStart()
-                    setContextMenu(null)
-                  }}
-                >
-                  Run start
-                </button>
-              )}
-              {onConfigureStart && (
-                <button
-                  className="thread-context-menu-item"
-                  onClick={() => {
-                    onConfigureStart()
-                    setContextMenu(null)
-                  }}
-                >
-                  Configure start
-                </button>
-              )}
-              <button
-                className="thread-context-menu-item"
-                onClick={() => {
-                  onOpenTerminal()
-                  setContextMenu(null)
-                }}
-              >
-                Terminal
               </button>
               <button
                 className="thread-context-menu-item thread-context-menu-danger"

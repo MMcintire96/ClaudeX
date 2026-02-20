@@ -5,13 +5,8 @@ import { useTerminalStore } from '../../stores/terminalStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import CostTracker from '../common/CostTracker'
 import ProjectTree from './ProjectTree'
-import SettingsPanel from '../settings/SettingsPanel'
-import StartConfigModal from './StartConfigModal'
 
 export default function Sidebar() {
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [startConfigPath, setStartConfigPath] = useState<string | null>(null)
-  const [startConfigFlags, setStartConfigFlags] = useState<Record<string, boolean>>({})
   const [creatingThread, setCreatingThread] = useState(false)
   const {
     currentPath, isGitRepo, recentProjects,
@@ -24,7 +19,7 @@ export default function Sidebar() {
   const { loadSettings } = useSettingsStore()
   const {
     terminals, addTerminal, removeTerminal, switchToProjectTerminals,
-    manualRenameTerminal, togglePanel,
+    manualRenameTerminal,
     claudeStatuses, activeClaudeId, setActiveClaudeId
   } = useTerminalStore()
 
@@ -32,44 +27,6 @@ export default function Sidebar() {
     window.api.project.recent().then(setRecent)
     loadSettings()
   }, [setRecent, loadSettings])
-
-  // Check start config existence for projects
-  useEffect(() => {
-    const paths = recentProjects.map(p => p.path)
-    if (currentPath && !paths.includes(currentPath)) paths.unshift(currentPath)
-    for (const path of paths) {
-      window.api.project.hasStartConfig(path).then(has => {
-        setStartConfigFlags(prev => {
-          if (prev[path] === has) return prev
-          return { ...prev, [path]: has }
-        })
-      })
-    }
-  }, [recentProjects, currentPath])
-
-  const handleRunStart = useCallback(async (projectPath: string) => {
-    const result = await window.api.project.runStart(projectPath)
-    if (result.success && result.terminals) {
-      for (const t of result.terminals) {
-        addTerminal({ id: t.id, projectPath: t.projectPath, pid: t.pid, name: t.name })
-      }
-    } else if (result.success && result.terminalIds) {
-      for (const tid of result.terminalIds) {
-        addTerminal({ id: tid, projectPath, pid: 0 })
-      }
-    }
-    if (result.success && result.browserUrl) {
-      const url = result.browserUrl
-      const currentPanel = useUIStore.getState().sidePanelView
-      const browserAlreadyOpen = currentPanel?.type === 'browser' && currentPanel?.projectPath === projectPath
-      if (browserAlreadyOpen) {
-        window.api.browser.navigate(url)
-      } else {
-        useUIStore.getState().setPendingBrowserUrl(url)
-        setSidePanelView({ type: 'browser', projectPath })
-      }
-    }
-  }, [addTerminal, setSidePanelView])
 
   // Fetch git branches for projects
   const fetchBranches = useCallback(() => {
@@ -91,7 +48,7 @@ export default function Sidebar() {
   }, [fetchBranches])
 
   // Session history state
-  const [historyByProject, setHistoryByProject] = useState<Record<string, Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number }>>>({})
+  const [historyByProject, setHistoryByProject] = useState<Record<string, Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>>>({})
 
   const fetchHistory = useCallback(() => {
     const paths = recentProjects.map(p => p.path)
@@ -107,23 +64,26 @@ export default function Sidebar() {
     fetchHistory()
   }, [fetchHistory])
 
-  const handleResumeHistory = useCallback(async (entry: { claudeSessionId?: string; projectPath: string; name: string }) => {
+  const handleResumeHistory = useCallback(async (entry: { claudeSessionId?: string; projectPath: string; name: string; worktreePath?: string | null; isWorktree?: boolean }) => {
     if (!entry.claudeSessionId) return
     setCreatingThread(true)
     try {
       const cleanName = entry.name.replace(/^[^\w\s]+\s*/, '') || entry.name
+      // If this was a worktree session, resume in the worktree path if it still exists
+      const resumePath = entry.worktreePath || entry.projectPath
       const result = await window.api.terminal.createClaudeResume(
-        entry.projectPath,
+        resumePath,
         entry.claudeSessionId,
         cleanName
       )
       if (result.success && result.id) {
         addTerminal({
           id: result.id,
-          projectPath: result.projectPath!,
+          projectPath: entry.projectPath,
           pid: result.pid!,
           name: cleanName,
-          type: 'claude'
+          type: 'claude',
+          worktreePath: entry.worktreePath || undefined
         })
         // Preserve the old name — prevent OSC title sequences from overwriting
         manualRenameTerminal(result.id, cleanName)
@@ -220,18 +180,6 @@ export default function Sidebar() {
     removeTerminal(id)
   }, [removeTerminal])
 
-  const handleOpenTerminal = useCallback(async (projectPath: string) => {
-    const shellTerminals = terminals.filter(t => t.type !== 'claude' && t.projectPath === projectPath)
-    if (shellTerminals.length === 0) {
-      const result = await window.api.terminal.create(projectPath)
-      if (result.success && result.id) {
-        addTerminal({ id: result.id, projectPath: result.projectPath || projectPath, pid: result.pid || 0 })
-      }
-    } else {
-      togglePanel()
-    }
-  }, [terminals, addTerminal, togglePanel])
-
   const handleRemoveProject = useCallback((projectPath: string) => {
     const projectTerminals = terminals.filter(t => t.projectPath === projectPath)
     for (const t of projectTerminals) {
@@ -270,13 +218,6 @@ export default function Sidebar() {
             <line x1="9" y1="3" x2="9" y2="21" />
           </svg>
         </button>
-        <div style={{ flex: 1 }} />
-        <button className="sidebar-gear-btn" onClick={() => setSettingsOpen(o => !o)} title="Settings">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
       </div>
 
       {/* New Thread button */}
@@ -310,10 +251,6 @@ export default function Sidebar() {
             onCloseTerminal={handleCloseTerminal}
             onNewThread={() => handleNewClaudeTerminal(proj.path)}
             onRemoveProject={() => handleRemoveProject(proj.path)}
-            onOpenTerminal={() => handleOpenTerminal(proj.path)}
-            onConfigureStart={() => setStartConfigPath(proj.path)}
-            hasStartConfig={!!startConfigFlags[proj.path]}
-            onRunStart={() => handleRunStart(proj.path)}
             historyEntries={historyByProject[proj.path] || []}
             onResumeHistory={handleResumeHistory}
           />
@@ -329,22 +266,12 @@ export default function Sidebar() {
       {/* Footer */}
       <div className="sidebar-footer">
         <CostTracker />
-        {settingsOpen && <SettingsPanel />}
         <div className="sidebar-footer-row">
           <button className="btn btn-sm" onClick={handleOpenProject} style={{ flex: 1 }}>
             Open project
           </button>
         </div>
       </div>
-      {startConfigPath && (
-        <StartConfigModal
-          projectPath={startConfigPath}
-          onClose={() => setStartConfigPath(null)}
-          onSaved={() => {
-            setStartConfigFlags(prev => ({ ...prev, [startConfigPath]: true }))
-          }}
-        />
-      )}
     </aside>
   )
 }

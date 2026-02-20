@@ -30,6 +30,8 @@ export interface HistoryEntry {
   name: string
   createdAt: number
   endedAt: number
+  worktreePath?: string | null
+  isWorktree?: boolean
 }
 
 const DEFAULT_STATE: PersistedAppState = {

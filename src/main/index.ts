@@ -109,30 +109,40 @@ function createWindow(): void {
   ipcMain.on('app:ui-snapshot', (_event, snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[] }) => {
     if (!isClosing) return
     try {
-      const sessions: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; lastActiveAt: number }> = []
-      for (const projPath of projectManager.getRecentPaths()) {
-        const terms = terminalManager.list(projPath)
-        for (const t of terms) {
-          const claudeSessionId = terminalManager.getClaudeSessionId(t.id)
-          if (claudeSessionId) {
-            const createdAt = terminalManager.getCreatedAt(t.id)
-            sessionPersistence.addToHistory({
-              id: t.id,
-              claudeSessionId,
-              projectPath: t.projectPath,
-              name: terminalManager.getTerminalName(t.id) || 'Claude Code',
-              createdAt,
-              endedAt: Date.now()
-            })
-            sessions.push({
-              id: t.id,
-              claudeSessionId,
-              projectPath: t.projectPath,
-              name: terminalManager.getTerminalName(t.id) || 'Claude Code',
-              createdAt,
-              lastActiveAt: Date.now()
-            })
-          }
+      const sessions: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; lastActiveAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null }> = []
+      const allTerms = terminalManager.listAll()
+      for (const t of allTerms) {
+        const claudeSessionId = terminalManager.getClaudeSessionId(t.id)
+        if (claudeSessionId) {
+          // Only persist sessions that had user interaction
+          const entries = sessionFileWatcher.readAll(claudeSessionId, t.projectPath)
+          const hasUserMessage = entries.some(e => e.type === 'user')
+          if (!hasUserMessage) continue
+
+          const createdAt = terminalManager.getCreatedAt(t.id)
+          const wtInfo = worktreeManager.getByWorktreePath(t.projectPath)
+          const originalProjectPath = wtInfo ? wtInfo.projectPath : t.projectPath
+          sessionPersistence.addToHistory({
+            id: t.id,
+            claudeSessionId,
+            projectPath: originalProjectPath,
+            name: terminalManager.getTerminalName(t.id) || 'Claude Code',
+            createdAt,
+            endedAt: Date.now(),
+            worktreePath: wtInfo ? t.projectPath : null,
+            isWorktree: !!wtInfo
+          })
+          sessions.push({
+            id: t.id,
+            claudeSessionId,
+            projectPath: originalProjectPath,
+            name: terminalManager.getTerminalName(t.id) || 'Claude Code',
+            createdAt,
+            lastActiveAt: Date.now(),
+            worktreePath: wtInfo ? t.projectPath : null,
+            isWorktree: !!wtInfo,
+            worktreeSessionId: wtInfo ? wtInfo.sessionId : null
+          })
         }
       }
       sessionPersistence.saveState({
@@ -168,30 +178,39 @@ function createWindow(): void {
     setTimeout(() => {
       if (!mainWindow) return
       try {
-        const sessions: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; lastActiveAt: number }> = []
-        for (const projPath of projectManager.getRecentPaths()) {
-          const terms = terminalManager.list(projPath)
-          for (const t of terms) {
-            const claudeSessionId = terminalManager.getClaudeSessionId(t.id)
-            if (claudeSessionId) {
-              const createdAt = terminalManager.getCreatedAt(t.id)
-              sessionPersistence.addToHistory({
-                id: t.id,
-                claudeSessionId,
-                projectPath: t.projectPath,
-                name: terminalManager.getTerminalName(t.id) || 'Claude Code',
-                createdAt,
-                endedAt: Date.now()
-              })
-              sessions.push({
-                id: t.id,
-                claudeSessionId,
-                projectPath: t.projectPath,
-                name: terminalManager.getTerminalName(t.id) || 'Claude Code',
-                createdAt,
-                lastActiveAt: Date.now()
-              })
-            }
+        const sessions: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; lastActiveAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null }> = []
+        const allTerms = terminalManager.listAll()
+        for (const t of allTerms) {
+          const claudeSessionId = terminalManager.getClaudeSessionId(t.id)
+          if (claudeSessionId) {
+            const entries = sessionFileWatcher.readAll(claudeSessionId, t.projectPath)
+            const hasUserMessage = entries.some(e => e.type === 'user')
+            if (!hasUserMessage) continue
+
+            const createdAt = terminalManager.getCreatedAt(t.id)
+            const wtInfo = worktreeManager.getByWorktreePath(t.projectPath)
+            const originalProjectPath = wtInfo ? wtInfo.projectPath : t.projectPath
+            sessionPersistence.addToHistory({
+              id: t.id,
+              claudeSessionId,
+              projectPath: originalProjectPath,
+              name: terminalManager.getTerminalName(t.id) || 'Claude Code',
+              createdAt,
+              endedAt: Date.now(),
+              worktreePath: wtInfo ? t.projectPath : null,
+              isWorktree: !!wtInfo
+            })
+            sessions.push({
+              id: t.id,
+              claudeSessionId,
+              projectPath: originalProjectPath,
+              name: terminalManager.getTerminalName(t.id) || 'Claude Code',
+              createdAt,
+              lastActiveAt: Date.now(),
+              worktreePath: wtInfo ? t.projectPath : null,
+              isWorktree: !!wtInfo,
+              worktreeSessionId: wtInfo ? wtInfo.sessionId : null
+            })
           }
         }
         sessionPersistence.saveState({

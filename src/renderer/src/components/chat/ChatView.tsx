@@ -359,6 +359,19 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     return () => clearTimeout(timeout)
   }, [claudeStatus, messageQueue, terminalId])
 
+  // Pre-computed lookup maps to avoid O(n²) scans in the render loop
+  const toolUseById = useMemo(() => {
+    const map = new Map<string, UIToolUseMessage>()
+    messages.forEach(m => { if (m.type === 'tool_use') map.set((m as UIToolUseMessage).toolId, m as UIToolUseMessage) })
+    return map
+  }, [messages])
+
+  const toolResultByToolUseId = useMemo(() => {
+    const map = new Map<string, UIToolResultMessage>()
+    messages.forEach(m => { if (m.type === 'tool_result') map.set((m as UIToolResultMessage).toolUseId, m as UIToolResultMessage) })
+    return map
+  }, [messages])
+
   // Search: compute matching message indices
   const searchMatches = useMemo(() => {
     if (!searchQuery) return []
@@ -968,23 +981,17 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
               } else if (msg.type === 'tool_use') {
                 const toolMsg = msg as UIToolUseMessage
                 if (toolMsg.toolName === 'AskUserQuestion') {
-                  const hasResult = messages.slice(absIdx + 1).some(
-                    m => m.type === 'tool_result' && (m as UIToolResultMessage).toolUseId === toolMsg.toolId
-                  )
+                  const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
                   return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><AskUserQuestionBlock message={toolMsg} terminalId={terminalId} answered={hasResult} /></div>
                 }
                 if (isFileEditTool(toolMsg.toolName)) {
-                  const pairedResult = messages.find(
-                    m => m.type === 'tool_result' && (m as UIToolResultMessage).toolUseId === toolMsg.toolId
-                  ) as UIToolResultMessage | undefined
-                  return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult || null} /></div>
+                  const pairedResult = toolResultByToolUseId.get(toolMsg.toolId)
+                  return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult ?? null} /></div>
                 }
                 return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolUseBlock message={toolMsg} /></div>
               } else if (msg.type === 'tool_result') {
                 const resultMsg = msg as UIToolResultMessage
-                const parentTool = messages.find(
-                  m => m.type === 'tool_use' && (m as UIToolUseMessage).toolId === resultMsg.toolUseId
-                ) as UIToolUseMessage | undefined
+                const parentTool = toolUseById.get(resultMsg.toolUseId)
                 if (parentTool?.toolName === 'AskUserQuestion') return null
                 if (parentTool && isFileEditTool(parentTool.toolName)) return null
                 return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolResultBlock message={resultMsg} /></div>

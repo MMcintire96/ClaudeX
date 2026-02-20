@@ -589,6 +589,16 @@ export class TerminalManager {
     }))
   }
 
+  listAll(): TerminalInfo[] {
+    const result: TerminalInfo[] = []
+    for (const pt of this.terminals.values()) {
+      for (const t of pt.values()) {
+        result.push({ id: t.id, projectPath: t.projectPath, pid: t.pty.pid })
+      }
+    }
+    return result
+  }
+
   destroy(): void {
     this.mainWindow = null
     // Clear all claude timers
@@ -675,6 +685,20 @@ export class TerminalManager {
           } catch {
             // Window destroyed
           }
+        }
+      }
+    }
+
+    // Detect /compact output — Claude CLI prints a compaction message
+    if (this.claudeMeta.has(id)) {
+      const stripped = this.stripAnsi(data)
+      if (/compact(ed|ing)/i.test(stripped) && /conversation/i.test(stripped)) {
+        try {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('terminal:system-message', id, 'Conversation compacted')
+          }
+        } catch {
+          // Window destroyed
         }
       }
     }

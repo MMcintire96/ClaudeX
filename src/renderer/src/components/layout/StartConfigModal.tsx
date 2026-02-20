@@ -9,6 +9,7 @@ interface StartCommand {
 interface StartConfig {
   commands: StartCommand[]
   browserUrl?: string
+  buildCommand?: string
 }
 
 interface StartConfigModalProps {
@@ -20,6 +21,7 @@ interface StartConfigModalProps {
 export default function StartConfigModal({ projectPath, onClose, onSaved }: StartConfigModalProps) {
   const [commands, setCommands] = useState<StartCommand[]>([{ name: '', command: '' }])
   const [browserUrl, setBrowserUrl] = useState('')
+  const [buildCommand, setBuildCommand] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -27,6 +29,9 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
       if (config && config.commands.length > 0) {
         setCommands(config.commands)
         setBrowserUrl(config.browserUrl || '')
+      }
+      if (config?.buildCommand) {
+        setBuildCommand(config.buildCommand)
       }
       setLoading(false)
     })
@@ -36,7 +41,8 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
     const validCommands = commands.filter(c => c.name.trim() && c.command.trim())
     const config: StartConfig = {
       commands: validCommands,
-      browserUrl: browserUrl.trim() || undefined
+      browserUrl: browserUrl.trim() || undefined,
+      buildCommand: buildCommand.trim() || undefined
     }
     await window.api.project.saveStartConfig(projectPath, config)
     onSaved()
@@ -95,6 +101,15 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
             <button className="btn btn-sm" onClick={addCommand} style={{ marginTop: '4px' }}>
               + Add command
             </button>
+          </div>
+          <div className="start-config-section">
+            <label className="start-config-label">Build command (optional)</label>
+            <input
+              className="start-config-input"
+              placeholder="npm run build"
+              value={buildCommand}
+              onChange={e => setBuildCommand(e.target.value)}
+            />
           </div>
           <div className="start-config-section">
             <label className="start-config-label">Browser URL (optional)</label>

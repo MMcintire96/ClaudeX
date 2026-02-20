@@ -222,6 +222,17 @@ export class SessionFileWatcher {
     if (!state.activeFile) return
     try {
       const stat = fs.statSync(state.activeFile)
+
+      // File was rewritten (e.g. /compact) — re-read from scratch and send reset
+      if (stat.size < state.offset) {
+        console.log(`[SessionFileWatcher] file truncated for ${terminalId}, re-reading (compact?)`)
+        const content = fs.readFileSync(state.activeFile, 'utf-8')
+        const entries = this.parseLines(content)
+        state.offset = Buffer.byteLength(content, 'utf-8')
+        this.sendReset(terminalId, entries)
+        return
+      }
+
       if (stat.size <= state.offset) return
 
       const fd = fs.openSync(state.activeFile, 'r')

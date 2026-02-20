@@ -169,6 +169,8 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       terminals: state.terminals.map(t => t.id === id ? { ...t, name } : t),
       manuallyRenamed: { ...state.manuallyRenamed, [id]: true }
     }))
+    // Sync to main process so the name persists on save
+    window.api.terminal.rename(id, name)
   },
 
   autoRenameTerminal: (id: string, name: string): void => {

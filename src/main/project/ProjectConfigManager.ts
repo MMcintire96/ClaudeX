@@ -12,6 +12,7 @@ export interface StartCommand {
 export interface ProjectStartConfig {
   commands: StartCommand[]
   browserUrl?: string
+  buildCommand?: string
 }
 
 export class ProjectConfigManager {

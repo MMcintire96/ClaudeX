@@ -3,7 +3,7 @@ import { join } from 'path'
 import { writeFileSync, unlinkSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { AgentProcess, AgentProcessOptions } from './AgentProcess'
-import type { AgentEvent } from './types'
+import type { AgentEvent, StreamEvent } from './types'
 
 const SYSTEM_PROMPT_APPEND =
   'You are running inside Claude Codex, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
@@ -21,6 +21,8 @@ export class AgentManager {
   private bridgePort = 0
   private bridgeToken = ''
   private mcpTempFiles: Map<string, string> = new Map()
+  private deltaBuffer: Map<string, AgentEvent[]> = new Map()
+  private deltaFlushPending: Set<string> = new Set()
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
@@ -80,12 +82,42 @@ export class AgentManager {
     }
   }
 
+  private flushDeltas(sessionId: string): void {
+    const events = this.deltaBuffer.get(sessionId)
+    if (!events || events.length === 0) return
+    this.deltaBuffer.delete(sessionId)
+    this.deltaFlushPending.delete(sessionId)
+    this.mainWindow?.webContents.send('agent:events', { sessionId, events })
+  }
+
   private wireEvents(sessionId: string, agent: AgentProcess): void {
     agent.on('event', (event: AgentEvent) => {
-      this.mainWindow?.webContents.send('agent:event', { sessionId, event })
+      const isTextDelta =
+        event.type === 'stream_event' &&
+        (event as StreamEvent).event?.type === 'content_block_delta'
+
+      if (isTextDelta) {
+        const buf = this.deltaBuffer.get(sessionId) ?? []
+        buf.push(event)
+        this.deltaBuffer.set(sessionId, buf)
+        if (!this.deltaFlushPending.has(sessionId)) {
+          this.deltaFlushPending.add(sessionId)
+          setImmediate(() => this.flushDeltas(sessionId))
+        }
+      } else {
+        // Flush any buffered deltas before this non-delta event
+        const pending = this.deltaBuffer.get(sessionId)
+        if (pending && pending.length > 0) {
+          this.deltaBuffer.delete(sessionId)
+          this.deltaFlushPending.delete(sessionId)
+          this.mainWindow?.webContents.send('agent:events', { sessionId, events: pending })
+        }
+        this.mainWindow?.webContents.send('agent:event', { sessionId, event })
+      }
     })
 
     agent.on('close', (code: number | null) => {
+      this.flushDeltas(sessionId)
       this.mainWindow?.webContents.send('agent:closed', { sessionId, code })
     })
 

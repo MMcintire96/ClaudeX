@@ -17,6 +17,11 @@ const api = {
       ipcRenderer.on('agent:event', handler)
       return () => ipcRenderer.removeListener('agent:event', handler)
     },
+    onEvents: (callback: (data: { sessionId: string; events: unknown[] }) => void) => {
+      const handler = (_: unknown, data: { sessionId: string; events: unknown[] }) => callback(data)
+      ipcRenderer.on('agent:events', handler)
+      return () => ipcRenderer.removeListener('agent:events', handler)
+    },
     onClosed: (callback: (data: { sessionId: string; code: number | null }) => void) => {
       const handler = (_: unknown, data: { sessionId: string; code: number | null }) => callback(data)
       ipcRenderer.on('agent:closed', handler)
@@ -58,8 +63,8 @@ const api = {
       ipcRenderer.invoke('project:save-start-config', projectPath, config),
     hasStartConfig: (projectPath: string) =>
       ipcRenderer.invoke('project:has-start-config', projectPath),
-    runStart: (projectPath: string) =>
-      ipcRenderer.invoke('project:run-start', projectPath),
+    runStart: (projectPath: string, cwdOverride?: string) =>
+      ipcRenderer.invoke('project:run-start', projectPath, cwdOverride),
     listFiles: (projectPath: string) =>
       ipcRenderer.invoke('project:list-files', projectPath)
   },
@@ -76,6 +81,8 @@ const api = {
       ipcRenderer.invoke('terminal:close', id),
     list: (projectPath: string) =>
       ipcRenderer.invoke('terminal:list', projectPath),
+    rename: (id: string, name: string) =>
+      ipcRenderer.invoke('terminal:rename', id, name),
     onData: (callback: (id: string, data: string) => void) => {
       const handler = (_: unknown, id: string, data: string) => callback(id, data)
       ipcRenderer.on('terminal:data', handler)
@@ -123,6 +130,11 @@ const api = {
       const handler = (_: unknown, id: string, sessionId: string) => callback(id, sessionId)
       ipcRenderer.on('terminal:claude-session-id', handler)
       return () => ipcRenderer.removeListener('terminal:claude-session-id', handler)
+    },
+    onSystemMessage: (callback: (terminalId: string, message: string) => void) => {
+      const handler = (_: unknown, terminalId: string, message: string) => callback(terminalId, message)
+      ipcRenderer.on('terminal:system-message', handler)
+      return () => ipcRenderer.removeListener('terminal:system-message', handler)
     }
   },
   session: {

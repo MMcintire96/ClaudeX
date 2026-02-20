@@ -281,8 +281,16 @@ export class WorktreeManager {
     shell.openPath(info.worktreePath)
   }
 
+  /**
+   * Look up worktree info by worktree path (as opposed to sessionId).
+   * Used to find worktree metadata for a terminal running in a worktree directory.
+   */
+  getByWorktreePath(worktreePath: string): WorktreeInfo | null {
+    return this.registry.worktrees.find(w => w.worktreePath === worktreePath) ?? null
+  }
+
   async cleanupAll(): Promise<void> {
-    // Get unique project paths
+    // Prune git worktree references
     const projectPaths = new Set(this.registry.worktrees.map(w => w.projectPath))
     for (const pp of projectPaths) {
       try {
@@ -291,6 +299,33 @@ export class WorktreeManager {
       } catch (err) {
         console.warn(`[WorktreeManager] Failed to prune worktrees for ${pp}:`, err)
       }
+    }
+
+    // Remove orphaned worktree directories not in the registry
+    try {
+      const { readdirSync } = await import('fs')
+      const projectHashDirs = readdirSync(this.worktreeBaseDir)
+      for (const hashDir of projectHashDirs) {
+        const hashPath = join(this.worktreeBaseDir, hashDir)
+        try {
+          const wtDirs = readdirSync(hashPath)
+          for (const wtDir of wtDirs) {
+            const wtPath = join(hashPath, wtDir)
+            const inRegistry = this.registry.worktrees.some(w => w.worktreePath === wtPath)
+            if (!inRegistry) {
+              console.log(`[WorktreeManager] Removing orphaned worktree directory: ${wtPath}`)
+              rmSync(wtPath, { recursive: true, force: true })
+            }
+          }
+          // Remove empty hash directories
+          const remaining = readdirSync(hashPath)
+          if (remaining.length === 0) {
+            rmSync(hashPath, { recursive: true, force: true })
+          }
+        } catch { /* ignore per-dir errors */ }
+      }
+    } catch (err) {
+      console.warn('[WorktreeManager] Failed to cleanup orphaned directories:', err)
     }
   }
 }

@@ -34,6 +34,12 @@ export default function App() {
       processEvent(sessionId, event)
     })
 
+    const unsubEvents = window.api.agent.onEvents(({ sessionId, events }) => {
+      for (const event of events) {
+        processEvent(sessionId, event)
+      }
+    })
+
     const unsubClosed = window.api.agent.onClosed(({ sessionId, code }) => {
       // Process exited — this is normal between turns for -p mode
       setProcessing(sessionId, false)
@@ -49,6 +55,7 @@ export default function App() {
 
     return () => {
       unsubEvent()
+      unsubEvents()
       unsubClosed()
       unsubError()
     }
@@ -133,6 +140,17 @@ export default function App() {
       if (sessionId && terminal) {
         const watchPath = terminal.worktreePath || terminal.projectPath
         useSessionStore.getState().loadEntries(sessionId, watchPath, entries as import('./stores/sessionStore').SessionFileEntry[])
+      }
+    })
+    return unsub
+  }, [])
+
+  // System message listener (e.g. "Conversation compacted")
+  useEffect(() => {
+    const unsub = window.api.terminal.onSystemMessage((terminalId, message) => {
+      const sessionId = useTerminalStore.getState().claudeSessionIds[terminalId]
+      if (sessionId) {
+        useSessionStore.getState().addSystemMessage(sessionId, message)
       }
     })
     return unsub
