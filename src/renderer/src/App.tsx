@@ -54,6 +54,18 @@ export default function App() {
     }
   }, [processEvent, setProcessing, setError])
 
+  // Prevent Electron from opening dropped files in the browser window.
+  // ChatView has its own drop handler that stops propagation for its area.
+  useEffect(() => {
+    const preventDrop = (e: DragEvent) => { e.preventDefault(); e.stopPropagation() }
+    document.addEventListener('dragover', preventDrop)
+    document.addEventListener('drop', preventDrop)
+    return () => {
+      document.removeEventListener('dragover', preventDrop)
+      document.removeEventListener('drop', preventDrop)
+    }
+  }, [])
+
   // Apply theme to document
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -173,25 +185,8 @@ export default function App() {
         useProjectStore.getState().setProject(s.activeProjectPath, false)
       }
 
-      if (!s.sessions || s.sessions.length === 0) return
-      for (const session of s.sessions) {
-        if (!session.claudeSessionId) continue
-        window.api.terminal.createClaudeResume(
-          session.projectPath,
-          session.claudeSessionId,
-          session.name
-        ).then(result => {
-          if (result.success && result.id) {
-            terminalAddTerminal({
-              id: result.id,
-              projectPath: result.projectPath!,
-              pid: result.pid!,
-              name: session.name,
-              type: 'claude'
-            })
-          }
-        })
-      }
+      // Don't auto-restore old Claude sessions — they appear in history and can be
+      // resumed on demand. Just restore UI state (theme, sidebar, active project).
     })
     return unsub
   }, [terminalAddTerminal])

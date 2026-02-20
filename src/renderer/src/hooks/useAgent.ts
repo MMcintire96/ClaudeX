@@ -20,7 +20,7 @@ export function useAgent(sessionId: string | null) {
       return null
     }
 
-    const result = await window.api.agent.start(currentPath, prompt)
+    const result = await window.api.agent.start(currentPath, prompt, 'claude-opus-4-6')
     if (!result.success || !result.sessionId) {
       return null
     }

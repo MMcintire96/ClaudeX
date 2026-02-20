@@ -2,6 +2,7 @@ import { app, ipcMain } from 'electron'
 import { join } from 'path'
 import { writeFileSync, unlinkSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
+import { spawn } from 'child_process'
 import { v4 as uuidv4 } from 'uuid'
 import { TerminalManager } from '../terminal/TerminalManager'
 import { SettingsManager } from '../settings/SettingsManager'
@@ -175,7 +176,7 @@ export function registerTerminalHandlers(
         terminalId
       )
 
-      terminalManager.registerClaudeTerminal(info.id)
+      terminalManager.registerClaudeTerminal(info.id, claudeSessionId)
       if (name) {
         terminalManager.setTerminalName(info.id, name)
       }
@@ -224,5 +225,49 @@ export function registerTerminalHandlers(
 
   ipcMain.handle('session:get-claude-session-id', (_event, terminalId: string) => {
     return terminalManager.getClaudeSessionId(terminalId)
+  })
+
+  ipcMain.handle('terminal:open-external', (_event, terminalId: string, projectPath: string) => {
+    try {
+      const tmuxSessionName = terminalManager.getTmuxSessionName()
+      if (tmuxSessionName) {
+        // Tmux mode: attach to the full tmux session so the user sees all windows
+        const child = spawn('alacritty', ['-e', 'tmux', 'attach-session', '-t', tmuxSessionName], {
+          cwd: projectPath,
+          detached: true,
+          stdio: 'ignore'
+        })
+        child.unref()
+        return { success: true }
+      }
+
+      // Fallback: original behavior — launch claude --resume in alacritty
+      const claudeSessionId = terminalManager.getClaudeSessionId(terminalId)
+      if (!claudeSessionId) {
+        return { success: false, error: 'No Claude session ID found for this terminal' }
+      }
+      const claudePath = findClaudeBinary()
+      const args = ['--resume', claudeSessionId]
+      const settings = settingsManager.get()
+      if (settings.claude.dangerouslySkipPermissions) {
+        args.push('--dangerously-skip-permissions')
+      }
+      const child = spawn('alacritty', ['-e', claudePath, ...args], {
+        cwd: projectPath,
+        detached: true,
+        stdio: 'ignore'
+      })
+      child.unref()
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('terminal:get-tmux-info', () => {
+    return {
+      available: terminalManager.isTmuxEnabled(),
+      sessionName: terminalManager.getTmuxSessionName()
+    }
   })
 }

@@ -71,6 +71,16 @@ export function parseEntries(entries: SessionFileEntry[]): ParseResult {
       const msg = entry.message
       if (!msg) continue
 
+      // Skip slash commands (e.g. /model, /clear, /cost, /compact, /init)
+      // and local command output (ANSI-encoded responses like "Set model to ...")
+      if (typeof msg.content === 'string') {
+        const trimmed = msg.content.trim()
+        if (trimmed.startsWith('/')) continue
+        // Skip ANSI escape sequences (local command stdout)
+        // eslint-disable-next-line no-control-regex
+        if (/\x1b\[/.test(trimmed)) continue
+      }
+
       if (typeof msg.content === 'string') {
         messages.push({
           id: uid(),
@@ -200,7 +210,7 @@ function createSessionState(sessionId: string, projectPath: string): SessionStat
     model: null,
     claudeVersion: null,
     error: null,
-    selectedModel: null,
+    selectedModel: 'claude-opus-4-6',
     createdAt: Date.now()
   }
 }

@@ -1,7 +1,14 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useState } from 'react'
 import { useProjectStore } from '../../stores/projectStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
+
+const SidebarExpandIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <line x1="9" y1="3" x2="9" y2="21" />
+  </svg>
+)
 import ChatView from '../chat/ChatView'
 
 const isMac = navigator.userAgent.includes('Macintosh')
@@ -9,13 +16,17 @@ const isMac = navigator.userAgent.includes('Macintosh')
 export default function MainPanel() {
   const projectName = useProjectStore(s => s.currentName)
   const currentPath = useProjectStore(s => s.currentPath)
+  const sidebarVisible = useUIStore(s => s.sidebarVisible)
+  const toggleSidebar = useUIStore(s => s.toggleSidebar)
   const sidePanelView = useUIStore(s => s.sidePanelView)
   const setSidePanelView = useUIStore(s => s.setSidePanelView)
   const addTerminal = useTerminalStore(s => s.addTerminal)
   const activeClaudeId = useTerminalStore(s => s.activeClaudeId)
   const setActiveClaudeId = useTerminalStore(s => s.setActiveClaudeId)
 
+  const claudeSessionIds = useTerminalStore(s => s.claudeSessionIds)
   const activeId = currentPath ? activeClaudeId[currentPath] : null
+  const activeSessionId = activeId ? claudeSessionIds[activeId] : null
 
   const isBrowserActive = sidePanelView?.type === 'browser' && sidePanelView?.projectPath === currentPath
   const isDiffActive = sidePanelView?.type === 'diff' && sidePanelView?.projectPath === currentPath
@@ -25,24 +36,36 @@ export default function MainPanel() {
     setSidePanelView({ type: 'browser', projectPath: currentPath })
   }, [currentPath, setSidePanelView])
 
+  const handleOpenExternal = useCallback(() => {
+    if (!activeId || !currentPath) return
+    window.api.terminal.openExternal(activeId, currentPath)
+  }, [activeId, currentPath])
+
   const handleToggleDiff = useCallback(() => {
     if (!currentPath) return
     setSidePanelView({ type: 'diff', projectPath: currentPath })
   }, [currentPath, setSidePanelView])
 
+  const [launching, setLaunching] = useState(false)
+
   const handleLaunchClaude = useCallback(async () => {
     if (!currentPath) return
-    const result = await window.api.terminal.createClaude(currentPath)
-    if (result.success && result.id) {
-      const count = useTerminalStore.getState().terminals.filter(t => t.type === 'claude' && t.projectPath === currentPath).length
-      addTerminal({
-        id: result.id,
-        projectPath: result.projectPath!,
-        pid: result.pid!,
-        name: `Claude Code${count > 0 ? ` ${count + 1}` : ''}`,
-        type: 'claude'
-      })
-      setActiveClaudeId(currentPath, result.id)
+    setLaunching(true)
+    try {
+      const result = await window.api.terminal.createClaude(currentPath)
+      if (result.success && result.id) {
+        const count = useTerminalStore.getState().terminals.filter(t => t.type === 'claude' && t.projectPath === currentPath).length
+        addTerminal({
+          id: result.id,
+          projectPath: result.projectPath!,
+          pid: result.pid!,
+          name: `Claude Code${count > 0 ? ` ${count + 1}` : ''}`,
+          type: 'claude'
+        })
+        setActiveClaudeId(currentPath, result.id)
+      }
+    } finally {
+      setLaunching(false)
     }
   }, [currentPath, addTerminal, setActiveClaudeId])
 
@@ -50,6 +73,11 @@ export default function MainPanel() {
     <main className="main-panel">
       <div className="main-header">
         <div className="main-header-left">
+          {!sidebarVisible && (
+            <button className="sidebar-expand-btn" onClick={toggleSidebar} title="Expand sidebar">
+              <SidebarExpandIcon />
+            </button>
+          )}
           <span className="main-header-title">
             {projectName ?? 'No project'}
           </span>
@@ -76,6 +104,19 @@ export default function MainPanel() {
               <rect x="3" y="3" width="18" height="18" rx="2"/>
             </svg>
           </button>
+          {activeSessionId && (
+            <button
+              className="btn-header-icon"
+              onClick={handleOpenExternal}
+              title="Open in external terminal"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/>
+                <line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+            </button>
+          )}
           <div className="header-separator" />
           <button
             className="btn-header-icon"
@@ -128,8 +169,8 @@ export default function MainPanel() {
               <div className="empty-state-icon">&#9672;</div>
               <h2>What can I help you build?</h2>
               <p>Start a new thread to begin working with Claude Code</p>
-              <button className="btn btn-primary" onClick={handleLaunchClaude}>
-                New thread
+              <button className="btn btn-primary" onClick={handleLaunchClaude} disabled={launching}>
+                {launching ? 'Starting...' : 'New thread'}
               </button>
             </>
           ) : (

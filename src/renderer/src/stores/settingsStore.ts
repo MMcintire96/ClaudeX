@@ -6,6 +6,9 @@ interface AppSettings {
   }
   modKey: string
   vimMode: boolean
+  autoExpandEdits: boolean
+  notificationSounds: boolean
+  vimChatMode: boolean
 }
 
 interface SettingsState extends AppSettings {
@@ -20,6 +23,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
   modKey: 'Alt',
   vimMode: true,
+  autoExpandEdits: false,
+  notificationSounds: true,
+  vimChatMode: false,
   loaded: false,
 
   loadSettings: async (): Promise<void> => {

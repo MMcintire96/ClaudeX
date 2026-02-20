@@ -2,9 +2,9 @@ import { ipcMain } from 'electron'
 import { AgentManager } from '../agent/AgentManager'
 
 export function registerAgentHandlers(agentManager: AgentManager): void {
-  ipcMain.handle('agent:start', (_event, projectPath: string, prompt: string) => {
+  ipcMain.handle('agent:start', (_event, projectPath: string, prompt: string, model?: string | null) => {
     try {
-      const sessionId = agentManager.startAgent({ projectPath }, prompt)
+      const sessionId = agentManager.startAgent({ projectPath, model: model ?? 'claude-opus-4-6' }, prompt)
       return { success: true, sessionId }
     } catch (err) {
       return { success: false, error: (err as Error).message }

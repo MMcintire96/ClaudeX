@@ -73,11 +73,11 @@ export default function AppLayout() {
     [sidePanelWidth, setSidePanelWidth]
   )
 
-  const cols = [
-    sidebarVisible ? `${sidebarWidth}px` : '0',
-    '1fr',
-    sidePanelView ? `${sidePanelWidth}px` : '0'
-  ].join(' ')
+  const colParts: string[] = []
+  if (sidebarVisible) colParts.push(`${sidebarWidth}px`)
+  colParts.push('1fr')
+  if (sidePanelView) colParts.push(`${sidePanelWidth}px`)
+  const cols = colParts.join(' ')
 
   const hasShellTerminals = terminals.some(t => t.projectPath === currentPath && t.type !== 'claude')
   const showTerminal = terminalPanelVisible && hasShellTerminals
@@ -99,7 +99,11 @@ export default function AppLayout() {
           </div>
         )}
       </div>
-      {showTerminal && <TerminalPanel />}
+      {hasShellTerminals && (
+        <div style={{ display: showTerminal ? undefined : 'none' }}>
+          <TerminalPanel />
+        </div>
+      )}
       {!terminalPanelVisible && hasShellTerminals && (
         <button className="terminal-collapsed-bar" onClick={togglePanel} title="Show terminal">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

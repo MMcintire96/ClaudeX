@@ -2,8 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
   agent: {
-    start: (projectPath: string, prompt: string) =>
-      ipcRenderer.invoke('agent:start', projectPath, prompt),
+    start: (projectPath: string, prompt: string, model?: string | null) =>
+      ipcRenderer.invoke('agent:start', projectPath, prompt, model),
     send: (sessionId: string, content: string) =>
       ipcRenderer.invoke('agent:send', sessionId, content),
     stop: (sessionId: string) =>
@@ -59,7 +59,9 @@ const api = {
     hasStartConfig: (projectPath: string) =>
       ipcRenderer.invoke('project:has-start-config', projectPath),
     runStart: (projectPath: string) =>
-      ipcRenderer.invoke('project:run-start', projectPath)
+      ipcRenderer.invoke('project:run-start', projectPath),
+    listFiles: (projectPath: string) =>
+      ipcRenderer.invoke('project:list-files', projectPath)
   },
   terminal: {
     create: (projectPath: string) =>
@@ -113,6 +115,10 @@ const api = {
       ipcRenderer.on('terminal:context-usage', handler)
       return () => ipcRenderer.removeListener('terminal:context-usage', handler)
     },
+    openExternal: (terminalId: string, projectPath: string) =>
+      ipcRenderer.invoke('terminal:open-external', terminalId, projectPath),
+    getTmuxInfo: () =>
+      ipcRenderer.invoke('terminal:get-tmux-info') as Promise<{ available: boolean; sessionName: string | null }>,
     onClaudeSessionId: (callback: (id: string, sessionId: string) => void) => {
       const handler = (_: unknown, id: string, sessionId: string) => callback(id, sessionId)
       ipcRenderer.on('terminal:claude-session-id', handler)

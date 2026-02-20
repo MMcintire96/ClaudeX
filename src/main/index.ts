@@ -73,6 +73,7 @@ function createWindow(): void {
   agentManager.setMainWindow(mainWindow)
   browserManager.setMainWindow(mainWindow)
   terminalManager.setMainWindow(mainWindow)
+  terminalManager.setSettingsManager(settingsManager)
   sessionFileWatcher.setMainWindow(mainWindow)
 
   // Prevent the window from navigating away (e.g. when a file is dropped)
@@ -226,6 +227,7 @@ app.whenReady().then(async () => {
 
   await projectManager.init()
   await settingsManager.init()
+  await terminalManager.init()
   await bridgeServer.start()
   agentManager.setBridgeInfo(bridgeServer.port, bridgeServer.token)
   registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, {

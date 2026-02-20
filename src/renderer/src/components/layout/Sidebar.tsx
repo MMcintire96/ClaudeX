@@ -12,18 +12,19 @@ export default function Sidebar() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [startConfigPath, setStartConfigPath] = useState<string | null>(null)
   const [startConfigFlags, setStartConfigFlags] = useState<Record<string, boolean>>({})
+  const [creatingThread, setCreatingThread] = useState(false)
   const {
     currentPath, isGitRepo, recentProjects,
     setProject, setRecent, removeProject,
     gitBranches, setGitBranch
   } = useProjectStore()
   const {
-    setSidePanelView, projectSidePanelMemory
+    setSidePanelView, projectSidePanelMemory, toggleSidebar
   } = useUIStore()
   const { loadSettings } = useSettingsStore()
   const {
     terminals, addTerminal, removeTerminal, switchToProjectTerminals,
-    manualRenameTerminal,
+    manualRenameTerminal, togglePanel,
     claudeStatuses, activeClaudeId, setActiveClaudeId
   } = useTerminalStore()
 
@@ -108,32 +109,47 @@ export default function Sidebar() {
 
   const handleResumeHistory = useCallback(async (entry: { claudeSessionId?: string; projectPath: string; name: string }) => {
     if (!entry.claudeSessionId) return
-    const result = await window.api.terminal.createClaudeResume(
-      entry.projectPath,
-      entry.claudeSessionId,
-      entry.name
-    )
-    if (result.success && result.id) {
-      addTerminal({
-        id: result.id,
-        projectPath: result.projectPath!,
-        pid: result.pid!,
-        name: entry.name,
-        type: 'claude'
-      })
-      setActiveClaudeId(entry.projectPath, result.id)
-      if (entry.projectPath !== currentPath) {
-        await switchToProject(entry.projectPath)
+    setCreatingThread(true)
+    try {
+      const cleanName = entry.name.replace(/^[^\w\s]+\s*/, '') || entry.name
+      const result = await window.api.terminal.createClaudeResume(
+        entry.projectPath,
+        entry.claudeSessionId,
+        cleanName
+      )
+      if (result.success && result.id) {
+        addTerminal({
+          id: result.id,
+          projectPath: result.projectPath!,
+          pid: result.pid!,
+          name: cleanName,
+          type: 'claude'
+        })
+        // Preserve the old name — prevent OSC title sequences from overwriting
+        manualRenameTerminal(result.id, cleanName)
+        setActiveClaudeId(entry.projectPath, result.id)
+        // Remove from history so it doesn't show as duplicate
+        setHistoryByProject(prev => ({
+          ...prev,
+          [entry.projectPath]: (prev[entry.projectPath] || []).filter(e => e.claudeSessionId !== entry.claudeSessionId)
+        }))
+        if (entry.projectPath !== currentPath) {
+          await switchToProject(entry.projectPath)
+        }
       }
+    } finally {
+      setCreatingThread(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addTerminal, setActiveClaudeId, currentPath])
+  }, [addTerminal, manualRenameTerminal, setActiveClaudeId, currentPath])
 
   const getClaudeTerminalsForProject = (projectPath: string) =>
     terminals.filter(t => t.projectPath === projectPath && t.type === 'claude')
 
   const ensureClaudeTerminal = useCallback(async (projectPath: string) => {
-    const existing = terminals.filter(t => t.type === 'claude' && t.projectPath === projectPath)
+    // Read fresh from store to avoid stale closure (e.g. after resume adds a terminal)
+    const current = useTerminalStore.getState().terminals
+    const existing = current.filter(t => t.type === 'claude' && t.projectPath === projectPath)
     if (existing.length > 0) return
     const result = await window.api.terminal.createClaude(projectPath)
     if (result.success && result.id) {
@@ -146,20 +162,25 @@ export default function Sidebar() {
       })
       setActiveClaudeId(projectPath, result.id)
     }
-  }, [terminals, addTerminal, setActiveClaudeId])
+  }, [addTerminal, setActiveClaudeId])
 
   const handleNewClaudeTerminal = useCallback(async (projectPath: string) => {
-    const result = await window.api.terminal.createClaude(projectPath)
-    if (result.success && result.id) {
-      const count = terminals.filter(t => t.type === 'claude' && t.projectPath === projectPath).length
-      addTerminal({
-        id: result.id,
-        projectPath: result.projectPath!,
-        pid: result.pid!,
-        name: `Claude Code${count > 0 ? ` ${count + 1}` : ''}`,
-        type: 'claude'
-      })
-      setActiveClaudeId(projectPath, result.id)
+    setCreatingThread(true)
+    try {
+      const result = await window.api.terminal.createClaude(projectPath)
+      if (result.success && result.id) {
+        const count = terminals.filter(t => t.type === 'claude' && t.projectPath === projectPath).length
+        addTerminal({
+          id: result.id,
+          projectPath: result.projectPath!,
+          pid: result.pid!,
+          name: `Claude Code${count > 0 ? ` ${count + 1}` : ''}`,
+          type: 'claude'
+        })
+        setActiveClaudeId(projectPath, result.id)
+      }
+    } finally {
+      setCreatingThread(false)
     }
   }, [terminals, addTerminal, setActiveClaudeId])
 
@@ -199,6 +220,18 @@ export default function Sidebar() {
     removeTerminal(id)
   }, [removeTerminal])
 
+  const handleOpenTerminal = useCallback(async (projectPath: string) => {
+    const shellTerminals = terminals.filter(t => t.type !== 'claude' && t.projectPath === projectPath)
+    if (shellTerminals.length === 0) {
+      const result = await window.api.terminal.create(projectPath)
+      if (result.success && result.id) {
+        addTerminal({ id: result.id, projectPath: result.projectPath || projectPath, pid: result.pid || 0 })
+      }
+    } else {
+      togglePanel()
+    }
+  }, [terminals, addTerminal, togglePanel])
+
   const handleRemoveProject = useCallback((projectPath: string) => {
     const projectTerminals = terminals.filter(t => t.projectPath === projectPath)
     for (const t of projectTerminals) {
@@ -229,16 +262,31 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-drag-region" />
+      <div className="sidebar-header">
+        <div className="sidebar-header-drag" />
+        <button className="sidebar-collapse-btn" onClick={toggleSidebar} title="Collapse sidebar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
+          </svg>
+        </button>
+        <div style={{ flex: 1 }} />
+        <button className="sidebar-gear-btn" onClick={() => setSettingsOpen(o => !o)} title="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </div>
 
       {/* New Thread button */}
       <div className="sidebar-new-thread">
         <button
           className="btn btn-primary btn-new-thread"
           onClick={() => currentPath && handleNewClaudeTerminal(currentPath)}
-          disabled={!currentPath}
+          disabled={!currentPath || creatingThread}
         >
-          + New thread
+          {creatingThread ? 'Starting...' : '+ New thread'}
         </button>
       </div>
 
@@ -260,6 +308,12 @@ export default function Sidebar() {
             onSelectClaudeTerminal={handleSelectClaudeTerminal}
             onRenameClaudeTerminal={manualRenameTerminal}
             onCloseTerminal={handleCloseTerminal}
+            onNewThread={() => handleNewClaudeTerminal(proj.path)}
+            onRemoveProject={() => handleRemoveProject(proj.path)}
+            onOpenTerminal={() => handleOpenTerminal(proj.path)}
+            onConfigureStart={() => setStartConfigPath(proj.path)}
+            hasStartConfig={!!startConfigFlags[proj.path]}
+            onRunStart={() => handleRunStart(proj.path)}
             historyEntries={historyByProject[proj.path] || []}
             onResumeHistory={handleResumeHistory}
           />
@@ -279,9 +333,6 @@ export default function Sidebar() {
         <div className="sidebar-footer-row">
           <button className="btn btn-sm" onClick={handleOpenProject} style={{ flex: 1 }}>
             Open project
-          </button>
-          <button className="btn btn-sm" onClick={() => setSettingsOpen(o => !o)}>
-            Settings
           </button>
         </div>
       </div>

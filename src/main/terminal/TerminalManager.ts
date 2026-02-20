@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from 'uuid'
 import * as os from 'os'
 import * as fs from 'fs'
 import * as path from 'path'
+import { spawn } from 'child_process'
+import { TmuxSession } from './TmuxSession'
 
 export interface TerminalInfo {
   id: string
@@ -17,6 +19,7 @@ interface ManagedTerminal {
   pty: pty.IPty
   outputBuffer: string[]
   partialLine: string
+  tmuxWindow: string | null
 }
 
 type ClaudeStatus = 'running' | 'idle' | 'attention' | 'done'
@@ -45,9 +48,54 @@ export class TerminalManager {
   private createdAt: Map<string, number> = new Map()
   private lastNotificationTime: Map<string, number> = new Map()
   private contextUsage: Map<string, number> = new Map()
+  private settingsManager: { get(): { notificationSounds?: boolean } } | null = null
+  private tmuxSession: TmuxSession | null = null
+  private tmuxAvailable = false
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
+  }
+
+  setSettingsManager(sm: { get(): { notificationSounds?: boolean } }): void {
+    this.settingsManager = sm
+  }
+
+  /** Initialize tmux session if tmux is available. Call at startup. */
+  async init(): Promise<void> {
+    this.tmuxAvailable = TmuxSession.isAvailable()
+    if (!this.tmuxAvailable) {
+      console.log('[TerminalManager] tmux not found, using direct pty mode')
+      return
+    }
+    const sessionName = `codex-${process.pid}`
+    this.tmuxSession = new TmuxSession(sessionName)
+    try {
+      this.tmuxSession.init()
+      console.log(`[TerminalManager] tmux session created: ${sessionName}`)
+    } catch (err) {
+      console.error('[TerminalManager] Failed to create tmux session, falling back to direct pty:', err)
+      this.tmuxSession = null
+      this.tmuxAvailable = false
+    }
+  }
+
+  getTmuxSessionName(): string | null {
+    return this.tmuxSession?.getSessionName() ?? null
+  }
+
+  getTmuxWindowName(id: string): string | null {
+    return this.findTerminal(id)?.tmuxWindow ?? null
+  }
+
+  isTmuxEnabled(): boolean {
+    return this.tmuxSession !== null
+  }
+
+  /** Build a sanitized tmux window name from project path and label */
+  private tmuxWindowName(projectPath: string, label: string): string {
+    const project = projectPath.split('/').pop() || 'project'
+    const raw = `${project}:${label}`
+    return raw.replace(/[^a-zA-Z0-9._:-]/g, '-').slice(0, 60)
   }
 
   private getDefaultShell(): string {
@@ -60,6 +108,13 @@ export class TerminalManager {
   create(projectPath: string): TerminalInfo {
     const id = uuidv4()
     const shell = this.getDefaultShell()
+
+    if (this.tmuxSession) {
+      const windowName = this.tmuxWindowName(projectPath, `shell-${id.slice(0, 6)}`)
+      this.tmuxSession.createShellWindow(windowName, projectPath)
+      const attachPty = this.tmuxSession.attachWindow(windowName)
+      return this._registerPty(id, projectPath, attachPty, windowName)
+    }
 
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-256color',
@@ -84,6 +139,16 @@ export class TerminalManager {
 
     const mergedEnv = { ...(process.env as Record<string, string>), ...env }
 
+    if (this.tmuxSession) {
+      const windowName = this.tmuxWindowName(projectPath, `Claude-${id.slice(0, 6)}`)
+      this.tmuxSession.createCommandWindow(windowName, projectPath, command, args, mergedEnv)
+      const attachPty = this.tmuxSession.attachWindow(windowName)
+      if (onExit) {
+        attachPty.onExit(() => onExit())
+      }
+      return this._registerPty(id, projectPath, attachPty, windowName)
+    }
+
     const ptyProcess = pty.spawn(command, args, {
       name: 'xterm-256color',
       cols: 80,
@@ -101,6 +166,16 @@ export class TerminalManager {
 
   setTerminalName(id: string, name: string): void {
     this.terminalNames.set(id, name)
+    // Also rename tmux window to projectName:chatName
+    const managed = this.findTerminal(id)
+    if (managed?.tmuxWindow && this.tmuxSession) {
+      const newWindowName = this.tmuxWindowName(managed.projectPath, name)
+      if (newWindowName) {
+        const oldName = managed.tmuxWindow
+        this.tmuxSession.renameWindow(oldName, newWindowName)
+        managed.tmuxWindow = newWindowName
+      }
+    }
   }
 
   getTerminalName(id: string): string | null {
@@ -142,7 +217,7 @@ export class TerminalManager {
     }
   }
 
-  registerClaudeTerminal(id: string): void {
+  registerClaudeTerminal(id: string, knownSessionId?: string): void {
     this.claudeMeta.set(id, {
       lastDataTimestamp: Date.now(),
       status: 'idle',
@@ -152,8 +227,18 @@ export class TerminalManager {
       idleCycleCount: 0
     })
 
-    // Proactively detect session ID by watching for new .jsonl files
-    this.detectSessionIdFromDir(id)
+    if (knownSessionId) {
+      // Session ID already known (e.g. resumed session) — emit immediately
+      this.claudeSessionIds.set(id, knownSessionId)
+      try {
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('terminal:claude-session-id', id, knownSessionId)
+        }
+      } catch { /* window destroyed */ }
+    } else {
+      // Proactively detect session ID by watching for new .jsonl files
+      this.detectSessionIdFromDir(id)
+    }
   }
 
   /**
@@ -271,16 +356,24 @@ export class TerminalManager {
     } catch {
       // Window destroyed during shutdown
     }
-    // Desktop notification when attention is needed and window is not focused
-    if (status === 'attention' && this.mainWindow && !this.mainWindow.isDestroyed() && !this.mainWindow.isFocused()) {
+    // Desktop notification when Claude finishes or needs attention
+    const shouldNotify =
+      (status === 'attention') ||
+      (prevStatus === 'running' && status === 'idle' && meta.hasBeenRunning)
+    const windowFocused = this.mainWindow && !this.mainWindow.isDestroyed() && this.mainWindow.isFocused()
+    if (shouldNotify && !windowFocused) {
       const now = Date.now()
       const lastTime = this.lastNotificationTime.get(id) || 0
-      if (now - lastTime > 30000) {
+      if (now - lastTime > 10000) {
         this.lastNotificationTime.set(id, now)
         const termName = this.terminalNames.get(id) || 'Claude Code'
+        const managed = this.findTerminal(id)
+        const projectName = managed?.projectPath.split('/').pop() || ''
+        const title = status === 'attention' ? 'Claude needs your attention' : 'Claude finished working'
+        const body = projectName ? `${termName} — ${projectName}` : termName
         const notification = new Notification({
-          title: 'Claude needs your attention',
-          body: termName
+          title,
+          body
         })
         notification.on('click', () => {
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
@@ -289,6 +382,16 @@ export class TerminalManager {
           }
         })
         notification.show()
+        // Play notification sound if enabled
+        if (this.settingsManager?.get().notificationSounds !== false) {
+          try {
+            const sound = spawn('paplay', ['/usr/share/sounds/freedesktop/stereo/complete.oga'], {
+              stdio: 'ignore',
+              detached: true
+            })
+            sound.unref()
+          } catch { /* no sound available */ }
+        }
       }
     }
     // Track idle cycles (running → idle/attention transitions)
@@ -306,7 +409,7 @@ export class TerminalManager {
     const lines = this.readOutput(id, 100)
     const taskName = this.extractTaskName(lines)
     if (!taskName) return
-    this.terminalNames.set(id, taskName)
+    this.setTerminalName(id, taskName)
     try {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send('terminal:claude-rename', id, taskName)
@@ -354,13 +457,14 @@ export class TerminalManager {
     }, 3000)
   }
 
-  private _registerPty(id: string, projectPath: string, ptyProcess: pty.IPty): TerminalInfo {
+  private _registerPty(id: string, projectPath: string, ptyProcess: pty.IPty, tmuxWindow: string | null = null): TerminalInfo {
     const managed: ManagedTerminal = {
       id,
       projectPath,
       pty: ptyProcess,
       outputBuffer: [],
-      partialLine: ''
+      partialLine: '',
+      tmuxWindow
     }
 
     this.createdAt.set(id, Date.now())
@@ -383,126 +487,28 @@ export class TerminalManager {
         // Window destroyed during shutdown — ignore
       }
 
-      // Detect OSC title sequences (e.g. from Claude /rename)
-      // Matches \x1b]0;title\x07 or \x1b]2;title\x07 or BEL-terminated
-      const titleMatch = data.match(/\x1b\](?:0|2);([^\x07\x1b]*?)(?:\x07|\x1b\\)/)
-      if (titleMatch && titleMatch[1] && this.claudeMeta.has(id)) {
-        const title = titleMatch[1].trim()
-        if (title) {
-          this.terminalNames.set(id, title)
-          try {
-            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-              this.mainWindow.webContents.send('terminal:claude-rename', id, title)
-            }
-          } catch {
-            // Window destroyed
-          }
-        }
-      }
-
-      // Detect Claude session ID from output (e.g. "session_id: <uuid>" or "Session: <uuid>")
-      if (this.claudeMeta.has(id) && !this.claudeSessionIds.has(id)) {
-        const sessionMatch = data.match(/session[_ ]?id:?\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
-          || data.match(/Session:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
-        if (sessionMatch && sessionMatch[1]) {
-          this.claudeSessionIds.set(id, sessionMatch[1])
-          this.emitClaudeSessionId(id, sessionMatch[1])
-        }
-      }
-
-      // Fallback rename detection: match "Session renamed to: <name>" text from Claude /rename
-      if (this.claudeMeta.has(id)) {
-        const renameMatch = data.match(/Session renamed to:?\s*(.+?)(?:\r|\n|$)/)
-          || data.match(/Renamed (?:session|to):?\s*(.+?)(?:\r|\n|$)/)
-        if (renameMatch && renameMatch[1]) {
-          const renamedTitle = renameMatch[1].trim()
-          if (renamedTitle) {
-            this.terminalNames.set(id, renamedTitle)
-            try {
-              if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-                this.mainWindow.webContents.send('terminal:claude-rename', id, renamedTitle)
-              }
-            } catch {
-              // Window destroyed
-            }
-          }
-        }
-      }
-
-      // Accumulate output in ring buffer
-      managed.partialLine += data
-      const lines = managed.partialLine.split('\n')
-      // Last element is the incomplete line (or '' if data ended with \n)
-      managed.partialLine = lines.pop()!
-      for (const line of lines) {
-        managed.outputBuffer.push(this.stripAnsi(line))
-        if (managed.outputBuffer.length > 1000) {
-          managed.outputBuffer.shift()
-        }
-      }
-
-      // Agent sub-task detection (best-effort output parsing)
-      if (this.claudeMeta.has(id)) {
-        const stripped = this.stripAnsi(data)
-        // Detect agent spawn patterns
-        const spawnMatch = stripped.match(/(?:Task\(|Launching agent|⏳\s*)(.*?)(?:\)|$)/m)
-          || stripped.match(/╭─+\s*(.*?agent.*?)(?:\s*─|$)/im)
-        if (spawnMatch && spawnMatch[1] && spawnMatch[1].trim().length >= 3) {
-          const agentName = spawnMatch[1].trim().slice(0, 60)
-          const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-          try {
-            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-              this.mainWindow.webContents.send('terminal:agent-spawned', id, {
-                id: agentId,
-                name: agentName,
-                status: 'running',
-                startedAt: Date.now()
-              })
-            }
-          } catch {
-            // Window destroyed
-          }
-        }
-        // Detect agent completion patterns
-        const completeMatch = stripped.match(/(?:Task completed|✓\s*Agent|agent.*?completed|Result:)/im)
-        if (completeMatch) {
-          try {
-            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-              this.mainWindow.webContents.send('terminal:agent-completed', id)
-            }
-          } catch {
-            // Window destroyed
-          }
-        }
-      }
-
-      // Context usage detection — parse percentage from Claude CLI output
-      // Claude Code shows context usage like "XX% context" or "context: XX%" or "XX% remaining"
-      if (this.claudeMeta.has(id)) {
-        const strippedData = this.stripAnsi(data)
-        const ctxMatch = strippedData.match(/(\d{1,3})%\s*(?:context|remaining)/i)
-          || strippedData.match(/context[:\s]+(\d{1,3})%/i)
-        if (ctxMatch) {
-          const pct = parseInt(ctxMatch[1], 10)
-          if (pct >= 0 && pct <= 100) {
-            // Claude shows "remaining" so we track usage as 100 - remaining
-            const isRemaining = /remaining/i.test(ctxMatch[0])
-            this.emitContextUsage(id, isRemaining ? 100 - pct : pct)
-          }
-        }
-      }
-
-      // Claude status detection
-      if (this.claudeMeta.has(id)) {
-        const meta = this.claudeMeta.get(id)!
-        meta.lastDataTimestamp = Date.now()
-        this.emitClaudeStatus(id, 'running')
-        this.startSilenceTimer(id)
-      }
+      this._processOutput(managed, data)
     })
 
     // Handle PTY exit
     ptyProcess.onExit(({ exitCode }) => {
+      // Tmux re-attach: if the attachment pty exits but the tmux window still exists,
+      // this is a transient detach (e.g. external client stole the attachment).
+      // Re-attach automatically instead of treating it as a terminal exit.
+      if (managed.tmuxWindow && this.tmuxSession) {
+        if (this.tmuxSession.windowExists(managed.tmuxWindow)) {
+          try {
+            const newPty = this.tmuxSession.attachWindow(managed.tmuxWindow)
+            managed.pty = newPty
+            // Re-register data and exit handlers on the new pty
+            this._reattachHandlers(managed)
+            return
+          } catch {
+            // Re-attach failed, fall through to normal exit handling
+          }
+        }
+      }
+
       try {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
           this.mainWindow.webContents.send('terminal:exit', id, exitCode)
@@ -555,6 +561,11 @@ export class TerminalManager {
       this.claudeMeta.delete(id)
     }
 
+    // Kill tmux window first (this will cause the attachment pty to exit too)
+    if (managed.tmuxWindow && this.tmuxSession) {
+      this.tmuxSession.killWindow(managed.tmuxWindow)
+    }
+
     managed.pty.kill()
     this.terminalNames.delete(id)
     this.createdAt.delete(id)
@@ -596,6 +607,185 @@ export class TerminalManager {
       }
     }
     this.terminals.clear()
+    // Kill the entire tmux session (atomic cleanup of all windows)
+    if (this.tmuxSession) {
+      this.tmuxSession.killSession()
+      this.tmuxSession = null
+    }
+  }
+
+  /** Process output data — shared between _registerPty and _reattachHandlers */
+  private _processOutput(managed: ManagedTerminal, data: string): void {
+    const id = managed.id
+
+    // Detect OSC title sequences (e.g. from Claude /rename)
+    const titleMatch = data.match(/\x1b\](?:0|2);([^\x07\x1b]*?)(?:\x07|\x1b\\)/)
+    if (titleMatch && titleMatch[1] && this.claudeMeta.has(id)) {
+      const title = titleMatch[1].trim()
+      if (title) {
+        this.setTerminalName(id, title)
+        try {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('terminal:claude-rename', id, title)
+          }
+        } catch {
+          // Window destroyed
+        }
+      }
+    }
+
+    // Detect Claude session ID from output
+    if (this.claudeMeta.has(id) && !this.claudeSessionIds.has(id)) {
+      const sessionMatch = data.match(/session[_ ]?id:?\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
+        || data.match(/Session:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
+      if (sessionMatch && sessionMatch[1]) {
+        this.claudeSessionIds.set(id, sessionMatch[1])
+        this.emitClaudeSessionId(id, sessionMatch[1])
+      }
+    }
+
+    // Fallback rename detection
+    if (this.claudeMeta.has(id)) {
+      const renameMatch = data.match(/Session renamed to:?\s*(.+?)(?:\r|\n|$)/)
+        || data.match(/Renamed (?:session|to):?\s*(.+?)(?:\r|\n|$)/)
+      if (renameMatch && renameMatch[1]) {
+        const renamedTitle = renameMatch[1].trim()
+        if (renamedTitle) {
+          this.setTerminalName(id, renamedTitle)
+          try {
+            if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+              this.mainWindow.webContents.send('terminal:claude-rename', id, renamedTitle)
+            }
+          } catch {
+            // Window destroyed
+          }
+        }
+      }
+    }
+
+    // Accumulate output in ring buffer
+    managed.partialLine += data
+    const lines = managed.partialLine.split('\n')
+    managed.partialLine = lines.pop()!
+    for (const line of lines) {
+      managed.outputBuffer.push(this.stripAnsi(line))
+      if (managed.outputBuffer.length > 1000) {
+        managed.outputBuffer.shift()
+      }
+    }
+
+    // Agent sub-task detection
+    if (this.claudeMeta.has(id)) {
+      const stripped = this.stripAnsi(data)
+      const spawnMatch = stripped.match(/(?:Task\(|Launching agent|⏳\s*)(.*?)(?:\)|$)/m)
+        || stripped.match(/╭─+\s*(.*?agent.*?)(?:\s*─|$)/im)
+      if (spawnMatch && spawnMatch[1] && spawnMatch[1].trim().length >= 3) {
+        const agentName = spawnMatch[1].trim().slice(0, 60)
+        const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        try {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('terminal:agent-spawned', id, {
+              id: agentId,
+              name: agentName,
+              status: 'running',
+              startedAt: Date.now()
+            })
+          }
+        } catch {
+          // Window destroyed
+        }
+      }
+      const completeMatch = stripped.match(/(?:Task completed|✓\s*Agent|agent.*?completed|Result:)/im)
+      if (completeMatch) {
+        try {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('terminal:agent-completed', id)
+          }
+        } catch {
+          // Window destroyed
+        }
+      }
+    }
+
+    // Context usage detection
+    if (this.claudeMeta.has(id)) {
+      const strippedData = this.stripAnsi(data)
+      const ctxMatch = strippedData.match(/(\d{1,3})%\s*(?:context|remaining)/i)
+        || strippedData.match(/context[:\s]+(\d{1,3})%/i)
+      if (ctxMatch) {
+        const pct = parseInt(ctxMatch[1], 10)
+        if (pct >= 0 && pct <= 100) {
+          const isRemaining = /remaining/i.test(ctxMatch[0])
+          this.emitContextUsage(id, isRemaining ? 100 - pct : pct)
+        }
+      }
+    }
+
+    // Claude status detection
+    if (this.claudeMeta.has(id)) {
+      const meta = this.claudeMeta.get(id)!
+      meta.lastDataTimestamp = Date.now()
+      this.emitClaudeStatus(id, 'running')
+      this.startSilenceTimer(id)
+    }
+  }
+
+  /** Re-register onData and onExit handlers after tmux re-attach */
+  private _reattachHandlers(managed: ManagedTerminal): void {
+    const id = managed.id
+    const projectPath = managed.projectPath
+
+    managed.pty.onData((data: string) => {
+      try {
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('terminal:data', id, data)
+        }
+      } catch {
+        // Window destroyed
+      }
+
+      // All the same parsing logic from _registerPty — delegate to shared method
+      this._processOutput(managed, data)
+    })
+
+    managed.pty.onExit(({ exitCode }) => {
+      if (managed.tmuxWindow && this.tmuxSession) {
+        if (this.tmuxSession.windowExists(managed.tmuxWindow)) {
+          try {
+            const newPty = this.tmuxSession.attachWindow(managed.tmuxWindow)
+            managed.pty = newPty
+            this._reattachHandlers(managed)
+            return
+          } catch {
+            // Fall through
+          }
+        }
+      }
+
+      try {
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('terminal:exit', id, exitCode)
+        }
+      } catch {
+        // Window destroyed
+      }
+
+      const meta = this.claudeMeta.get(id)
+      if (meta) {
+        if (meta.silenceTimer) clearTimeout(meta.silenceTimer)
+        this.emitClaudeStatus(id, 'done')
+        this.claudeMeta.delete(id)
+        this.lastNotificationTime.delete(id)
+      }
+
+      const pt = this.terminals.get(projectPath)
+      if (pt) {
+        pt.delete(id)
+        if (pt.size === 0) {
+          this.terminals.delete(projectPath)
+        }
+      }
+    })
   }
 
   readOutput(id: string, lines = 50): string[] {

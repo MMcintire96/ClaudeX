@@ -12,7 +12,7 @@ const MOD_KEY_LABELS: Record<string, string> = {
 }
 
 export default function SettingsPanel() {
-  const { claude, modKey, vimMode, updateSettings } = useSettingsStore()
+  const { claude, modKey, vimMode, autoExpandEdits, notificationSounds, vimChatMode, updateSettings } = useSettingsStore()
   const { theme, setTheme } = useUIStore()
   const [capturing, setCapturing] = useState(false)
 
@@ -102,6 +102,63 @@ export default function SettingsPanel() {
               checked={vimMode}
               onChange={(e) =>
                 updateSettings({ vimMode: e.target.checked })
+              }
+            />
+            <span className="settings-toggle-slider" />
+          </label>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-label">
+            <span>Auto expand edits</span>
+            <span className="settings-description">
+              Automatically expand all file edit blocks in chat
+            </span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={autoExpandEdits}
+              onChange={(e) =>
+                updateSettings({ autoExpandEdits: e.target.checked })
+              }
+            />
+            <span className="settings-toggle-slider" />
+          </label>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-label">
+            <span>Vim chat input</span>
+            <span className="settings-description">
+              Vim keybindings in the chat textarea (ESC for normal mode)
+            </span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={vimChatMode}
+              onChange={(e) =>
+                updateSettings({ vimChatMode: e.target.checked })
+              }
+            />
+            <span className="settings-toggle-slider" />
+          </label>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-label">
+            <span>Notification sounds</span>
+            <span className="settings-description">
+              Play a sound when Claude finishes working
+            </span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={notificationSounds}
+              onChange={(e) =>
+                updateSettings({ notificationSounds: e.target.checked })
               }
             />
             <span className="settings-toggle-slider" />

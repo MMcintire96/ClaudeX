@@ -1,7 +1,11 @@
 import { ipcMain } from 'electron'
 import { resolve } from 'path'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { ProjectManager } from '../project/ProjectManager'
 import { GitService } from '../project/GitService'
+
+const execFileAsync = promisify(execFile)
 import { ProjectConfigManager, ProjectStartConfig } from '../project/ProjectConfigManager'
 import { TerminalManager } from '../terminal/TerminalManager'
 
@@ -133,5 +137,19 @@ export function registerProjectHandlers(
     }
 
     return { success: true, terminals, terminalIds: terminals.map(t => t.id), browserUrl: config.browserUrl || null }
+  })
+
+  ipcMain.handle('project:list-files', async (_event, projectPath: string) => {
+    try {
+      // Use git ls-files for .gitignore-aware listing, include untracked non-ignored files
+      const { stdout } = await execFileAsync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], {
+        cwd: projectPath,
+        maxBuffer: 10 * 1024 * 1024
+      })
+      const files = stdout.split('\n').filter(f => f.length > 0)
+      return { success: true, files }
+    } catch {
+      return { success: false, files: [], error: 'Failed to list files' }
+    }
   })
 }

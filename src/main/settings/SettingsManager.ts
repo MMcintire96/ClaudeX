@@ -8,6 +8,9 @@ export interface AppSettings {
   }
   modKey: string
   vimMode: boolean
+  autoExpandEdits: boolean
+  notificationSounds: boolean
+  vimChatMode: boolean
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -15,7 +18,10 @@ const DEFAULT_SETTINGS: AppSettings = {
     dangerouslySkipPermissions: false
   },
   modKey: 'Alt',
-  vimMode: true
+  vimMode: true,
+  autoExpandEdits: false,
+  notificationSounds: true,
+  vimChatMode: false
 }
 
 /**
@@ -37,7 +43,10 @@ export class SettingsManager {
       this.settings = {
         claude: { ...DEFAULT_SETTINGS.claude, ...loaded.claude },
         modKey: loaded.modKey ?? DEFAULT_SETTINGS.modKey,
-        vimMode: loaded.vimMode ?? DEFAULT_SETTINGS.vimMode
+        vimMode: loaded.vimMode ?? DEFAULT_SETTINGS.vimMode,
+        autoExpandEdits: loaded.autoExpandEdits ?? DEFAULT_SETTINGS.autoExpandEdits,
+        notificationSounds: loaded.notificationSounds ?? DEFAULT_SETTINGS.notificationSounds,
+        vimChatMode: loaded.vimChatMode ?? DEFAULT_SETTINGS.vimChatMode
       }
     } catch {
       this.settings = structuredClone(DEFAULT_SETTINGS)
@@ -57,6 +66,15 @@ export class SettingsManager {
     }
     if (partial.vimMode !== undefined) {
       this.settings.vimMode = partial.vimMode
+    }
+    if (partial.autoExpandEdits !== undefined) {
+      this.settings.autoExpandEdits = partial.autoExpandEdits
+    }
+    if (partial.notificationSounds !== undefined) {
+      this.settings.notificationSounds = partial.notificationSounds
+    }
+    if (partial.vimChatMode !== undefined) {
+      this.settings.vimChatMode = partial.vimChatMode
     }
     await this.persist()
     return this.settings

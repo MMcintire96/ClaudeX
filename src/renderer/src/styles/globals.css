@@ -92,10 +92,60 @@ body {
   height: 100%;
 }
 
-.sidebar-drag-region {
-  -webkit-app-region: drag;
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
   height: 40px;
   flex-shrink: 0;
+  position: relative;
+}
+
+.sidebar-header-drag {
+  -webkit-app-region: drag;
+  position: absolute;
+  inset: 0;
+}
+
+.sidebar-collapse-btn,
+.sidebar-gear-btn {
+  -webkit-app-region: no-drag;
+  position: relative;
+  z-index: 1;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-collapse-btn:hover,
+.sidebar-gear-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.sidebar-expand-btn {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-expand-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
 }
 
 .sidebar-nav {
@@ -438,6 +488,9 @@ body {
   flex: 1;
   min-width: 0;
   padding-left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .main-header-title {
@@ -698,6 +751,23 @@ body {
   width: 100%;
   margin: 0 auto;
   padding: 16px 24px;
+}
+
+.btn-load-more {
+  display: block;
+  margin: 0 auto 16px;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-load-more:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 /* Message Bubbles */
@@ -1234,8 +1304,67 @@ body {
   border-color: #444444;
 }
 
+/* Vim mode indicator */
+.vim-mode-indicator {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  text-align: center;
+  user-select: none;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+}
+
+/* Block cursor style for vim normal/visual mode */
+.input-textarea.vim-normal {
+  caret-color: transparent;
+}
+
+.vim-block-cursor {
+  position: absolute;
+  width: 0.6em;
+  height: 1.3em;
+  background: var(--text-primary, #e0e0e0);
+  opacity: 0.7;
+  pointer-events: none;
+  z-index: 1;
+  animation: vim-cursor-blink 1s step-end infinite;
+}
+
+@keyframes vim-cursor-blink {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0.3; }
+}
+
+.input-highlight-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 0;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--text-primary);
+  pointer-events: none;
+  overflow: hidden;
+}
+.input-highlight-placeholder {
+  color: var(--text-muted);
+}
+.input-file-ref {
+  color: var(--accent, #5b9bd5);
+}
 .input-textarea {
+  position: relative;
   flex: 1;
+  width: 100%;
   resize: none;
   padding: 6px 0;
   border: none;
@@ -1245,11 +1374,14 @@ body {
   font-size: 14px;
   line-height: 1.5;
   min-height: 44px;
-  max-height: 200px;
   outline: none;
 }
+.input-textarea.has-content {
+  color: transparent;
+  caret-color: var(--text-primary);
+}
 .input-textarea::placeholder {
-  color: var(--text-muted);
+  color: transparent;
 }
 .input-textarea:disabled {
   opacity: 0.6;
@@ -1463,6 +1595,59 @@ body {
   color: #ff4444;
 }
 
+/* ===== MESSAGE QUEUE ===== */
+.message-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 16px;
+  margin: 4px 0;
+}
+
+.message-queue-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.message-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  opacity: 0.7;
+}
+
+.message-queue-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-queue-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.message-queue-remove:hover {
+  color: #ff4444;
+  opacity: 1;
+}
+
 /* ===== THINKING INDICATOR ===== */
 .thinking-indicator {
   display: flex;
@@ -1472,7 +1657,7 @@ body {
   margin: 4px 0;
   border-radius: 12px;
   background: var(--bg-tertiary, var(--bg-secondary));
-  max-width: 85%;
+  width: 100%;
   animation: thinking-fade-in 0.3s ease;
 }
 
@@ -1563,6 +1748,7 @@ body {
 }
 
 /* Diff Panel */
+/* ===== DIFF PANEL — side-by-side layout (diff left, file tree right) ===== */
 .diff-panel {
   display: flex;
   flex-direction: column;
@@ -1574,118 +1760,34 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.diff-panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
 }
 
 .diff-panel-header h3 {
   font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
+  margin: 0;
 }
 
-/* Collapsible file section */
-.diff-file-section {
-  border-bottom: 1px solid var(--border);
-}
-
-.diff-file-section-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 16px;
-  background: var(--bg-tertiary);
-  border: none;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.1s;
-}
-.diff-file-section-toggle:hover {
-  background: var(--bg-hover);
-}
-
-.diff-file-section-chevron {
-  font-size: 10px;
-  color: var(--text-muted);
-  width: 12px;
-  flex-shrink: 0;
-}
-
-.diff-file-section-label {
-  flex: 1;
-}
-
-.diff-file-section-count {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 0 7px;
-  border-radius: 10px;
-  background: var(--bg-hover);
-  color: var(--text-muted);
-  line-height: 18px;
-}
-
-.diff-file-list {
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.diff-file-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 16px;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-  text-align: left;
-  font-family: 'SF Mono', monospace;
-}
-.diff-file-item:hover {
-  background: var(--bg-hover);
-}
-.diff-file-item.active {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-
-.diff-file-status {
-  color: var(--warning);
-  font-weight: 700;
-  width: 14px;
-}
-
-.diff-content {
-  flex: 1;
-  overflow: auto;
-  padding: 8px;
-}
-
-.diff-panel-empty, .diff-empty, .diff-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-/* Diff tab row */
+/* Tab row — inline in header */
 .diff-tab-row {
   display: flex;
-  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .diff-tab {
-  flex: 1;
-  padding: 8px 12px;
+  padding: 4px 10px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -1697,8 +1799,8 @@ body {
   transition: all 0.1s;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 5px;
+  white-space: nowrap;
 }
 .diff-tab:hover {
   color: var(--text-secondary);
@@ -1723,16 +1825,53 @@ body {
   color: var(--send-color, #fff);
 }
 
-/* Diff search */
-.diff-search-wrapper {
-  padding: 8px 12px;
+/* Body: horizontal split */
+.diff-panel-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Left: diff content */
+.diff-content {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+  min-width: 0;
+}
+
+.diff-panel-empty, .diff-empty, .diff-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Right: file tree sidebar */
+.diff-sidebar {
+  width: 240px;
+  min-width: 180px;
+  max-width: 320px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg-primary);
+}
+
+.diff-sidebar-header {
+  padding: 8px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .diff-search-input {
   width: 100%;
-  padding: 6px 10px;
+  padding: 5px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-input, var(--bg-primary));
@@ -1748,38 +1887,65 @@ body {
   color: var(--text-muted);
 }
 
-/* Diff file tree */
-.diff-file-tree {
-  max-height: 240px;
+/* File tree in sidebar */
+.diff-sidebar-tree {
+  flex: 1;
   overflow-y: auto;
-  border-bottom: 1px solid var(--border);
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+
+/* Tree directory row */
+.diff-tree-dir-group {
+  /* container for dir + children */
+}
+
+.diff-tree-dir-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.diff-tree-dir-row:hover {
+  background: var(--bg-hover);
+}
+
+.diff-tree-chevron {
+  font-size: 9px;
+  color: var(--text-muted);
+  width: 10px;
   flex-shrink: 0;
 }
 
-.diff-file-tree-group {
-  /* no margin needed */
-}
-
-.diff-file-tree-dir {
+.diff-tree-dir-icon {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  font-size: 11px;
-  font-weight: 600;
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
-.diff-file-tree-dir-icon {
-  font-size: 12px;
+.diff-tree-dir-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.diff-file-tree-item {
+/* Tree file row */
+.diff-tree-file-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   width: 100%;
-  padding: 5px 12px 5px 16px;
+  padding: 3px 8px;
   background: none;
   border: none;
   color: var(--text-secondary);
@@ -1789,29 +1955,22 @@ body {
   font-family: 'SF Mono', 'Fira Code', monospace;
   transition: background 0.1s;
 }
-.diff-file-tree-item:hover {
+.diff-tree-file-row:hover {
   background: var(--bg-hover);
 }
-.diff-file-tree-item.active {
+.diff-tree-file-row.active {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
 
-.diff-file-tree-back {
-  color: var(--accent);
-  font-family: inherit;
-  font-weight: 500;
-}
-
-.diff-file-tree-badge {
-  font-weight: 700;
-  width: 14px;
-  text-align: center;
+.diff-tree-file-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
   flex-shrink: 0;
-  font-size: 11px;
 }
 
-.diff-file-tree-name {
+.diff-tree-file-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1819,7 +1978,14 @@ body {
   min-width: 0;
 }
 
-.diff-file-tree-empty {
+.diff-tree-file-badge {
+  font-weight: 700;
+  font-size: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.diff-tree-empty {
   padding: 16px;
   text-align: center;
   color: var(--text-muted);
@@ -2274,6 +2440,67 @@ body {
 .slash-desc {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* @ file picker menu */
+.file-picker-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-y: auto;
+  max-height: 300px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.file-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.file-picker-item:hover,
+.file-picker-item.active {
+  background: var(--bg-hover);
+}
+
+.file-picker-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.file-picker-name {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.file-picker-dir {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 250px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
 }
 
 /* Model badge in input bar */
@@ -2865,10 +3092,137 @@ body {
   background: var(--bg-primary);
 }
 
+.chat-view.drag-over {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.chat-view.drag-over::after {
+  content: 'Drop files to add as @references';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 100;
+  pointer-events: none;
+}
+
 .chat-view-messages {
   flex: 1;
   overflow-y: auto;
   padding: 0;
+}
+
+/* ===== CHAT SEARCH BAR ===== */
+.chat-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.chat-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.chat-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  outline: none;
+}
+
+.chat-search-input:focus {
+  border-color: var(--accent);
+}
+
+.chat-search-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chat-search-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chat-search-nav:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.chat-search-nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.chat-search-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chat-search-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Search match highlighting on message wrappers */
+.search-match {
+  border-left: 2px solid var(--accent, #007acc);
+  background: rgba(255, 213, 79, 0.06);
+  border-radius: 2px;
+}
+
+.search-match-current {
+  background: rgba(255, 213, 79, 0.14);
+  border-left-color: #ffd54f;
+}
+
+/* Inline text highlight */
+.search-highlight {
+  background: rgba(255, 213, 79, 0.35);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.search-match-current .search-highlight {
+  background: rgba(255, 213, 79, 0.55);
 }
 
 .chat-view-input-wrapper {

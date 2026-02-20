@@ -1,6 +1,6 @@
 export interface ElectronAPI {
   agent: {
-    start: (projectPath: string, prompt: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
+    start: (projectPath: string, prompt: string, model?: string | null) => Promise<{ success: boolean; sessionId?: string; error?: string }>
     send: (sessionId: string, content: string) => Promise<{ success: boolean; error?: string }>
     stop: (sessionId: string) => Promise<{ success: boolean }>
     status: (sessionId: string) => Promise<{ isRunning: boolean; sessionId: string | null; projectPath: string | null; hasSession: boolean }>
@@ -24,6 +24,7 @@ export interface ElectronAPI {
     saveStartConfig: (projectPath: string, config: { commands: Array<{ name: string; command: string; cwd?: string }>; browserUrl?: string }) => Promise<{ success: boolean }>
     hasStartConfig: (projectPath: string) => Promise<boolean>
     runStart: (projectPath: string) => Promise<{ success: boolean; terminalIds?: string[]; browserUrl?: string | null; error?: string }>
+    listFiles: (projectPath: string) => Promise<{ success: boolean; files: string[]; error?: string }>
   }
   terminal: {
     create: (projectPath: string) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; error?: string }>
@@ -41,6 +42,8 @@ export interface ElectronAPI {
     onAgentSpawned: (callback: (parentId: string, agent: { id: string; name: string; status: string; startedAt: number }) => void) => () => void
     onAgentCompleted: (callback: (parentId: string) => void) => () => void
     onContextUsage: (callback: (id: string, percent: number) => void) => () => void
+    openExternal: (terminalId: string, projectPath: string) => Promise<{ success: boolean; error?: string }>
+    getTmuxInfo: () => Promise<{ available: boolean; sessionName: string | null }>
     onClaudeSessionId: (callback: (id: string, sessionId: string) => void) => () => void
   }
   session: {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import DiffView from './DiffView'
 import { useTerminalStore } from '../../stores/terminalStore'
-import { useSettingsStore } from '../../stores/settingsStore'
+
 
 interface FileStatus {
   path: string
@@ -13,27 +13,38 @@ interface DiffPanelProps {
   projectPath: string
 }
 
-/** Write text to the active Claude terminal, handling vim mode (ESC -> i) if enabled. */
-async function writeToClaudeTerminal(terminalId: string, text: string, vimMode: boolean): Promise<void> {
-  if (vimMode) {
-    await window.api.terminal.write(terminalId, '\x1b')
-    await new Promise(r => setTimeout(r, 50))
-    await window.api.terminal.write(terminalId, 'i')
-    await new Promise(r => setTimeout(r, 50))
+/** Group files by directory into a tree structure */
+function buildFileTree(files: FileStatus[]): TreeNode[] {
+  const root: TreeNode[] = []
+
+  for (const f of files) {
+    const parts = f.path.split('/')
+    let current = root
+
+    // Build intermediate directories
+    for (let i = 0; i < parts.length - 1; i++) {
+      const dirName = parts[i]
+      let dirNode = current.find(n => n.type === 'dir' && n.name === dirName)
+      if (!dirNode) {
+        dirNode = { type: 'dir', name: dirName, path: parts.slice(0, i + 1).join('/'), children: [] }
+        current.push(dirNode)
+      }
+      current = dirNode.children!
+    }
+
+    // Add file leaf
+    current.push({ type: 'file', name: parts[parts.length - 1], path: f.path, file: f })
   }
-  await window.api.terminal.write(terminalId, text)
+
+  return root
 }
 
-/** Group files by directory */
-function groupByDirectory(files: FileStatus[]): Map<string, FileStatus[]> {
-  const groups = new Map<string, FileStatus[]>()
-  for (const f of files) {
-    const lastSlash = f.path.lastIndexOf('/')
-    const dir = lastSlash >= 0 ? f.path.substring(0, lastSlash) : '.'
-    if (!groups.has(dir)) groups.set(dir, [])
-    groups.get(dir)!.push(f)
-  }
-  return groups
+interface TreeNode {
+  type: 'dir' | 'file'
+  name: string
+  path: string
+  children?: TreeNode[]
+  file?: FileStatus
 }
 
 export default function DiffPanel({ projectPath }: DiffPanelProps) {
@@ -46,10 +57,9 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   const selectedFileRef = useRef<string | null>(null)
   selectedFileRef.current = selectedFile
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
 
-  const activeClaudeId = useTerminalStore(s => s.activeClaudeId)
   const terminals = useTerminalStore(s => s.terminals)
-  const vimMode = useSettingsStore(s => s.vimMode)
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null)
@@ -62,12 +72,10 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   }, [contextMenu])
 
   const handleAddToClaude = useCallback((filePath: string) => {
-    const terminalId = activeClaudeId[projectPath]
-    if (!terminalId) return
     const cleanPath = filePath.replace(/^[ab]\//, '')
-    writeToClaudeTerminal(terminalId, '@' + cleanPath + ' ', vimMode)
+    window.dispatchEvent(new CustomEvent('claude-add-file', { detail: { filePath: cleanPath, projectPath } }))
     setContextMenu(null)
-  }, [projectPath, activeClaudeId, vimMode])
+  }, [projectPath])
 
   // Filter files by tab (staged vs unstaged)
   const filteredByTab = useMemo(() => {
@@ -92,8 +100,21 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     files.filter(f => f.index !== ' ' && f.index !== '?').length
   , [files])
 
-  // Grouped files
-  const groupedFiles = useMemo(() => groupByDirectory(filteredFiles), [filteredFiles])
+  // File tree
+  const fileTree = useMemo(() => buildFileTree(filteredFiles), [filteredFiles])
+
+  // Filter the diff content to match the file filter (when no specific file is selected)
+  const displayDiff = useMemo(() => {
+    if (selectedFile || !searchFilter.trim() || !diff) return diff
+    const filteredPaths = new Set(filteredFiles.map(f => f.path))
+    // Split unified diff into per-file sections and keep only matching ones
+    const sections = diff.split(/(?=^diff --git )/m)
+    return sections.filter(section => {
+      const match = section.match(/^diff --git a\/(.*?) b\//)
+      if (!match) return false
+      return filteredPaths.has(match[1])
+    }).join('')
+  }, [diff, selectedFile, searchFilter, filteredFiles])
 
   /** Quiet refresh */
   const quietRefresh = useCallback(async () => {
@@ -181,9 +202,14 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   }, [terminals, projectPath, quietRefresh])
 
   const handleFileClick = useCallback((path: string) => {
-    setSelectedFile(path)
-    loadDiff(path)
-  }, [loadDiff])
+    if (selectedFile === path) {
+      setSelectedFile(null)
+      loadDiff()
+    } else {
+      setSelectedFile(path)
+      loadDiff(path)
+    }
+  }, [loadDiff, selectedFile])
 
   const handleTabChange = useCallback((tab: 'unstaged' | 'staged') => {
     setActiveTab(tab)
@@ -199,6 +225,15 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
       loadDiff()
     }
   }, [loadStatus, loadDiff, selectedFile])
+
+  const toggleDir = useCallback((dirPath: string) => {
+    setCollapsedDirs(prev => {
+      const next = new Set(prev)
+      if (next.has(dirPath)) next.delete(dirPath)
+      else next.add(dirPath)
+      return next
+    })
+  }, [])
 
   const getStatusBadge = (f: FileStatus) => {
     if (activeTab === 'staged') {
@@ -221,102 +256,117 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     }
   }
 
+  const renderTreeNode = (node: TreeNode, depth: number = 0): React.ReactNode => {
+    if (node.type === 'dir') {
+      const isCollapsed = collapsedDirs.has(node.path)
+      return (
+        <div key={node.path} className="diff-tree-dir-group">
+          <button
+            className="diff-tree-dir-row"
+            style={{ paddingLeft: 8 + depth * 16 }}
+            onClick={() => toggleDir(node.path)}
+          >
+            <span className="diff-tree-chevron">{isCollapsed ? '\u25B8' : '\u25BE'}</span>
+            <span className="diff-tree-dir-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+            </span>
+            <span className="diff-tree-dir-name">{node.name}</span>
+          </button>
+          {!isCollapsed && node.children?.map(child => renderTreeNode(child, depth + 1))}
+        </div>
+      )
+    }
+
+    const f = node.file!
+    const badge = getStatusBadge(f)
+    return (
+      <button
+        key={f.path}
+        className={`diff-tree-file-row ${selectedFile === f.path ? 'active' : ''}`}
+        style={{ paddingLeft: 8 + depth * 16 }}
+        onClick={() => handleFileClick(f.path)}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setContextMenu({ x: e.clientX, y: e.clientY, filePath: f.path })
+        }}
+      >
+        <span className="diff-tree-file-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+        </span>
+        <span className="diff-tree-file-name">{node.name}</span>
+        <span className="diff-tree-file-badge" style={{ color: getStatusColor(badge) }}>
+          {badge}
+        </span>
+      </button>
+    )
+  }
+
   return (
     <div className="diff-panel">
+      {/* Top header bar */}
       <div className="diff-panel-header">
-        <h3>Uncommitted changes</h3>
+        <div className="diff-panel-header-left">
+          <h3>Uncommitted changes</h3>
+          <div className="diff-tab-row">
+            <button
+              className={`diff-tab ${activeTab === 'unstaged' ? 'active' : ''}`}
+              onClick={() => handleTabChange('unstaged')}
+            >
+              Unstaged
+              {unstagedCount > 0 && <span className="diff-tab-count">{unstagedCount}</span>}
+            </button>
+            <button
+              className={`diff-tab ${activeTab === 'staged' ? 'active' : ''}`}
+              onClick={() => handleTabChange('staged')}
+            >
+              Staged
+              {stagedCount > 0 && <span className="diff-tab-count">{stagedCount}</span>}
+            </button>
+          </div>
+        </div>
         <button className="btn btn-sm" onClick={handleRefresh}>
           Refresh
         </button>
       </div>
 
-      {/* Tab row */}
-      <div className="diff-tab-row">
-        <button
-          className={`diff-tab ${activeTab === 'unstaged' ? 'active' : ''}`}
-          onClick={() => handleTabChange('unstaged')}
-        >
-          Unstaged
-          {unstagedCount > 0 && <span className="diff-tab-count">{unstagedCount}</span>}
-        </button>
-        <button
-          className={`diff-tab ${activeTab === 'staged' ? 'active' : ''}`}
-          onClick={() => handleTabChange('staged')}
-        >
-          Staged
-          {stagedCount > 0 && <span className="diff-tab-count">{stagedCount}</span>}
-        </button>
-      </div>
-
-      {/* Search input */}
-      <div className="diff-search-wrapper">
-        <input
-          className="diff-search-input"
-          type="text"
-          placeholder="Filter files..."
-          value={searchFilter}
-          onChange={e => setSearchFilter(e.target.value)}
-        />
-      </div>
-
-      {/* File tree */}
-      {filteredFiles.length > 0 && (
-        <div className="diff-file-tree">
-          {selectedFile && (
-            <button
-              className="diff-file-tree-item diff-file-tree-back"
-              onClick={() => { setSelectedFile(null); loadDiff() }}
-            >
-              All changes
-            </button>
+      {/* Main body: diff left, file tree right */}
+      <div className="diff-panel-body">
+        {/* Left: diff content */}
+        <div className="diff-content">
+          {loading ? (
+            <div className="diff-loading">Loading...</div>
+          ) : (
+            <DiffView diff={displayDiff} onAddToClaude={handleAddToClaude} />
           )}
-          {Array.from(groupedFiles.entries()).map(([dir, dirFiles]) => (
-            <div key={dir} className="diff-file-tree-group">
-              {groupedFiles.size > 1 && (
-                <div className="diff-file-tree-dir">
-                  <span className="diff-file-tree-dir-icon">{'\uD83D\uDCC1'}</span>
-                  {dir}
-                </div>
-              )}
-              {dirFiles.map(f => {
-                const badge = getStatusBadge(f)
-                const fileName = f.path.includes('/') ? f.path.split('/').pop()! : f.path
-                return (
-                  <button
-                    key={f.path}
-                    className={`diff-file-tree-item ${selectedFile === f.path ? 'active' : ''}`}
-                    onClick={() => handleFileClick(f.path)}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      setContextMenu({ x: e.clientX, y: e.clientY, filePath: f.path })
-                    }}
-                  >
-                    <span className="diff-file-tree-badge" style={{ color: getStatusColor(badge) }}>
-                      {badge}
-                    </span>
-                    <span className="diff-file-tree-name">
-                      {groupedFiles.size > 1 ? fileName : f.path}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          ))}
         </div>
-      )}
 
-      {filteredFiles.length === 0 && !loading && (
-        <div className="diff-file-tree-empty">
-          {searchFilter ? 'No matching files' : (activeTab === 'staged' ? 'No staged changes' : 'No unstaged changes')}
+        {/* Right: file tree sidebar */}
+        <div className="diff-sidebar">
+          <div className="diff-sidebar-header">
+            <input
+              className="diff-search-input"
+              type="text"
+              placeholder="Filter files..."
+              value={searchFilter}
+              onChange={e => setSearchFilter(e.target.value)}
+            />
+          </div>
+
+          <div className="diff-sidebar-tree">
+            {filteredFiles.length > 0 ? (
+              fileTree.map(node => renderTreeNode(node, 0))
+            ) : !loading ? (
+              <div className="diff-tree-empty">
+                {searchFilter ? 'No matching files' : (activeTab === 'staged' ? 'No staged changes' : 'No unstaged changes')}
+              </div>
+            ) : null}
+          </div>
         </div>
-      )}
-
-      <div className="diff-content">
-        {loading ? (
-          <div className="diff-loading">Loading...</div>
-        ) : (
-          <DiffView diff={diff} onAddToClaude={handleAddToClaude} />
-        )}
       </div>
 
       {contextMenu && (

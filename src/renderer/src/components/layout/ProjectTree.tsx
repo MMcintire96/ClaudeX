@@ -77,12 +77,19 @@ interface ProjectTreeProps {
   onSelectClaudeTerminal: (id: string) => void
   onRenameClaudeTerminal: (id: string, name: string) => void
   onCloseTerminal: (id: string) => void
+  onNewThread: () => void
+  onRemoveProject: () => void
+  onOpenTerminal: () => void
+  onConfigureStart?: () => void
+  hasStartConfig?: boolean
+  onRunStart?: () => void
   historyEntries: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number }>
   onResumeHistory: (entry: { claudeSessionId?: string; projectPath: string; name: string }) => void
 }
 
 interface ContextMenuState {
-  terminalId: string
+  type: 'thread' | 'project'
+  terminalId?: string
   x: number
   y: number
 }
@@ -99,6 +106,12 @@ export default function ProjectTree({
   onSelectClaudeTerminal,
   onRenameClaudeTerminal,
   onCloseTerminal,
+  onNewThread,
+  onRemoveProject,
+  onOpenTerminal,
+  onConfigureStart,
+  hasStartConfig,
+  onRunStart,
   historyEntries,
   onResumeHistory,
 }: ProjectTreeProps) {
@@ -151,8 +164,8 @@ export default function ProjectTree({
     }
   }, [isCurrentProject, onSwitchToProject])
 
-  // Sorted history: most recent first
-  const sortedHistory = historyEntries.slice().reverse()
+  // Sorted history: most recent first, exclude blank sessions (never renamed = no messages)
+  const sortedHistory = historyEntries.filter(e => e.name && !e.name.includes('Claude Code')).slice().reverse()
   const HISTORY_COLLAPSED_LIMIT = 3
   const visibleHistory = historyExpanded ? sortedHistory : sortedHistory.slice(0, HISTORY_COLLAPSED_LIMIT)
   const hasMoreHistory = sortedHistory.length > HISTORY_COLLAPSED_LIMIT
@@ -163,6 +176,11 @@ export default function ProjectTree({
       <button
         className={`project-tree-header ${isCurrentProject ? 'current' : ''}`}
         onClick={handleHeaderClick}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setContextMenu({ type: 'project', x: e.clientX, y: e.clientY })
+        }}
       >
         <span className="project-tree-folder-icon">{'\uD83D\uDCC2'}</span>
         <span className="project-group-name">{projectName}</span>
@@ -195,7 +213,7 @@ export default function ProjectTree({
               onContextMenu={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                setContextMenu({ terminalId: t.id, x: e.clientX, y: e.clientY })
+                setContextMenu({ type: 'thread', terminalId: t.id, x: e.clientX, y: e.clientY })
               }}
             >
               <span
@@ -234,7 +252,7 @@ export default function ProjectTree({
             disabled={!entry.claudeSessionId}
           >
             <span className="tree-item-status-indicator past">{'\u25CB'}</span>
-            <span className="tree-item-label">{entry.name}</span>
+            <span className="tree-item-label">{entry.name.replace(/^[^\w\s]+\s*/, '')}</span>
             <span className="thread-time">{timeAgo(entry.endedAt)}</span>
           </button>
         ))}
@@ -250,43 +268,99 @@ export default function ProjectTree({
         )}
       </div>
 
-      {/* Context menu for Claude threads */}
+      {/* Context menu */}
       {contextMenu && (
         <div
           className="thread-context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
-          <button
-            className="thread-context-menu-item"
-            onClick={() => {
-              setRenamingTerminalId(contextMenu.terminalId)
-              setContextMenu(null)
-            }}
-          >
-            Rename
-          </button>
-          <button
-            className="thread-context-menu-item"
-            onClick={() => {
-              onCloseTerminal(contextMenu.terminalId)
-              setContextMenu(null)
-            }}
-          >
-            Kill session
-          </button>
-          {claudeTerminals.length > 1 && (
-            <button
-              className="thread-context-menu-item thread-context-menu-danger"
-              onClick={() => {
-                const others = claudeTerminals.filter(t => t.id !== contextMenu.terminalId)
-                for (const t of others) {
-                  onCloseTerminal(t.id)
-                }
-                setContextMenu(null)
-              }}
-            >
-              Kill other sessions
-            </button>
+          {contextMenu.type === 'project' ? (
+            <>
+              <button
+                className="thread-context-menu-item"
+                onClick={() => {
+                  onNewThread()
+                  setContextMenu(null)
+                }}
+              >
+                New thread
+              </button>
+              {hasStartConfig && onRunStart && (
+                <button
+                  className="thread-context-menu-item"
+                  onClick={() => {
+                    onRunStart()
+                    setContextMenu(null)
+                  }}
+                >
+                  Run start
+                </button>
+              )}
+              {onConfigureStart && (
+                <button
+                  className="thread-context-menu-item"
+                  onClick={() => {
+                    onConfigureStart()
+                    setContextMenu(null)
+                  }}
+                >
+                  Configure start
+                </button>
+              )}
+              <button
+                className="thread-context-menu-item"
+                onClick={() => {
+                  onOpenTerminal()
+                  setContextMenu(null)
+                }}
+              >
+                Terminal
+              </button>
+              <button
+                className="thread-context-menu-item thread-context-menu-danger"
+                onClick={() => {
+                  onRemoveProject()
+                  setContextMenu(null)
+                }}
+              >
+                Remove project
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="thread-context-menu-item"
+                onClick={() => {
+                  if (contextMenu.terminalId) setRenamingTerminalId(contextMenu.terminalId)
+                  setContextMenu(null)
+                }}
+              >
+                Rename
+              </button>
+              <button
+                className="thread-context-menu-item"
+                onClick={() => {
+                  if (contextMenu.terminalId) onCloseTerminal(contextMenu.terminalId)
+                  setContextMenu(null)
+                }}
+              >
+                Kill session
+              </button>
+              {claudeTerminals.length > 1 && (
+                <button
+                  className="thread-context-menu-item thread-context-menu-danger"
+                  onClick={() => {
+                    const others = claudeTerminals.filter(t => t.id !== contextMenu.terminalId)
+                    for (const t of others) {
+                      onCloseTerminal(t.id)
+                    }
+                    setContextMenu(null)
+                  }}
+                >
+                  Kill other sessions
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

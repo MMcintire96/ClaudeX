@@ -32,7 +32,7 @@ export default function InputBar({ sessionId }: InputBarProps) {
   const session = useSessionStore(s =>
     sessionId ? s.sessions[sessionId] ?? null : null
   )
-  const selectedModel = session?.selectedModel ?? null
+  const selectedModel = session?.selectedModel ?? 'claude-opus-4-6'
   const costUsd = session?.costUsd ?? 0
   const totalCostUsd = session?.totalCostUsd ?? 0
 
@@ -48,7 +48,6 @@ export default function InputBar({ sessionId }: InputBarProps) {
         if (match) {
           useSessionStore.getState().setSelectedModel(sessionId, match)
           window.api.agent.setModel(sessionId, match)
-          useSessionStore.getState().addUserMessage(sessionId, `/model ${match}`)
           useSessionStore.getState().processEvent(sessionId, {
             type: 'result',
             subtype: 'success',
@@ -57,7 +56,6 @@ export default function InputBar({ sessionId }: InputBarProps) {
             num_turns: session?.numTurns ?? 0
           })
         } else {
-          useSessionStore.getState().addUserMessage(sessionId, command)
           useSessionStore.getState().setError(sessionId, `Unknown model: ${modelArg}. Available: ${AVAILABLE_MODELS.join(', ')}`)
         }
       } else {
@@ -104,7 +102,6 @@ export default function InputBar({ sessionId }: InputBarProps) {
     if (sessionId) {
       useSessionStore.getState().setSelectedModel(sessionId, model)
       window.api.agent.setModel(sessionId, model)
-      useSessionStore.getState().addUserMessage(sessionId, `/model ${model}`)
     }
     setShowModelPicker(false)
   }, [sessionId])

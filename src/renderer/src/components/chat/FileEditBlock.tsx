@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import type { UIToolUseMessage, UIToolResultMessage } from '../../stores/sessionStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 interface Props {
   message: UIToolUseMessage
@@ -84,7 +85,9 @@ export function isFileEditTool(toolName: string): boolean {
 }
 
 export default function FileEditBlock({ message, result }: Props) {
-  const [expanded, setExpanded] = useState(false)
+  const autoExpand = useSettingsStore(s => s.autoExpandEdits)
+  const isEditTool = message.toolName === 'Edit' || message.toolName === 'Write'
+  const [expanded, setExpanded] = useState(autoExpand && isEditTool)
   const input = message.input
 
   const filePath = (input.file_path || input.path || '') as string
