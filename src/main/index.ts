@@ -14,6 +14,24 @@ import { registerAllHandlers } from './ipc'
 import { WorktreeManager } from './worktree/WorktreeManager'
 import { addBroadcastWindow, removeBroadcastWindow } from './broadcast'
 
+// Auto-grant media permissions (Electron has no native permission dialog)
+app.commandLine.appendSwitch('use-fake-ui-for-media-stream')
+
+// Enable audio capture on Linux (PulseAudio/PipeWire support for AppImage/sandboxed envs)
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-features', 'PulseAudioInput,WebRTCPipeWireCapturer')
+  // Explicitly allow autoplay for audio contexts
+  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+}
+
+// In dev mode, use a separate config directory so a dev instance
+// can run alongside the installed AppImage without conflicts.
+// Must run before any constructor that calls app.getPath('userData').
+if (!app.isPackaged) {
+  app.setName('claudex-dev')
+  app.setPath('userData', join(app.getPath('appData'), 'claudex-dev'))
+}
+
 const agentManager = new AgentManager()
 const projectManager = new ProjectManager()
 const browserManager = new BrowserManager()
@@ -57,6 +75,7 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     title: 'ClaudeX',
+    icon: join(__dirname, '../../resources/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

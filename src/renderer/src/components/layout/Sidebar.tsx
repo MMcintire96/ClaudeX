@@ -16,7 +16,7 @@ export default function Sidebar() {
     gitBranches, setGitBranch
   } = useProjectStore()
   const {
-    setSidePanelView, projectSidePanelMemory, toggleSidebar
+    setSidePanelView, projectSidePanelMemory
   } = useUIStore()
   const { loadSettings } = useSettingsStore()
   const {
@@ -265,12 +265,6 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-header-drag" />
-        <button className="sidebar-collapse-btn" onClick={toggleSidebar} title="Collapse sidebar">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <line x1="9" y1="3" x2="9" y2="21" />
-          </svg>
-        </button>
       </div>
 
       {/* New Thread button */}
@@ -330,7 +324,7 @@ export default function Sidebar() {
       <div className="sidebar-footer">
         <CostTracker />
         <div className="sidebar-footer-row">
-          <button className="btn btn-sm" onClick={handleOpenProject} style={{ flex: 1 }}>
+          <button className="btn" onClick={handleOpenProject} style={{ flex: 1 }}>
             Open project
           </button>
         </div>

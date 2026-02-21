@@ -18,36 +18,50 @@ ClaudeX gives you a visual interface to run Claude Code agents with integrated t
 - **Themes** — Dark, Light, and Monokai themes with terminal color sync
 - **Model switching** — Choose between Opus, Sonnet, and Haiku per session
 
-## Getting Started
+## Installation
 
 ### Prerequisites
 
-- Node.js (v18+)
-- npm
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 
-### Install
+### Pre-built packages
+
+Download the latest release from the [Releases](https://github.com/MMcintire96/ClaudeX/releases) page, then:
+
+**AppImage (any Linux distro):**
+```bash
+chmod +x ClaudeX-*.AppImage
+./ClaudeX-*.AppImage
+```
+
+**Deb (Debian/Ubuntu):**
+```bash
+sudo dpkg -i claudex_*_amd64.deb
+```
+
+**macOS:**
+Open the `.dmg` and drag ClaudeX to Applications.
+
+**Windows:**
+Run the `.exe` installer.
+
+### Build from source
+
+Requires Node.js (v18+) and npm.
 
 ```bash
-git clone https://github.com/michael/claudex.git
-cd claudex
+git clone https://github.com/MMcintire96/ClaudeX.git
+cd ClaudeX
 npm install
+npm run package    # Outputs to dist/
 ```
 
 ### Development
 
 ```bash
-npm run dev
-```
-
-Starts the Electron app with hot reload for the renderer process.
-
-### Build
-
-```bash
+npm run dev        # Start with hot reload
 npm run build      # Build all bundles
-npm run preview    # Preview the production build
-npm run package    # Package distributable (AppImage/deb on Linux, dmg on macOS, NSIS on Windows)
+npm run preview    # Preview production build
 ```
 
 ## Architecture

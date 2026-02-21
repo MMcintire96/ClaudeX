@@ -14,8 +14,11 @@ files:
   - '!electron.vite.config.*'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-  - '!node_modules/sharp/**'
-  - '!node_modules/@img/**'
+asarUnpack:
+  - 'node_modules/@huggingface/transformers/dist/*.wasm'
+  - 'node_modules/onnxruntime-*/**/*.wasm'
+  - 'node_modules/sharp/**'
+  - 'node_modules/@img/**'
 linux:
   target:
     - AppImage

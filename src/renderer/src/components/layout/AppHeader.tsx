@@ -4,6 +4,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 import SettingsPanel from '../settings/SettingsPanel'
 import StartConfigModal from './StartConfigModal'
+import iconUrl from '../../assets/icon.png'
 
 const isMac = navigator.userAgent.includes('Macintosh')
 
@@ -166,6 +167,10 @@ export default function AppHeader() {
             <SidebarExpandIcon />
           </button>
         )}
+        <img src={iconUrl} alt="" style={{ width: 20, height: 20, marginRight: 6, borderRadius: 4 }} />
+        <span className="main-header-branding">ClaudeX</span>
+      </div>
+      <div className="main-header-center">
         <span className="main-header-title">
           {projectName ?? 'No project'}
         </span>

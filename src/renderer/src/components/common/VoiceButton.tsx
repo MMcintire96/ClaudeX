@@ -98,7 +98,27 @@ export default function VoiceButton({ onTranscript, inline = false }: Props) {
 
   const startRecording = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Microphone API not available. This may be a permissions or sandbox issue.')
+        return
+      }
+
+      // Enumerate devices first to give a better error message
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const hasAudioInput = devices.some(d => d.kind === 'audioinput')
+      if (!hasAudioInput) {
+        alert('No microphone detected. Please connect a microphone and try again.')
+        return
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 16000
+        }
+      })
       streamRef.current = stream
 
       const recorder = new MediaRecorder(stream)
@@ -113,8 +133,15 @@ export default function VoiceButton({ onTranscript, inline = false }: Props) {
 
       recorder.start()
       setListening(true)
-    } catch (err) {
-      console.error('Microphone access denied:', err)
+    } catch (err: any) {
+      console.error('Microphone access failed:', err)
+      setListening(false)
+      const msg = err?.name === 'NotAllowedError'
+        ? 'Microphone permission denied.'
+        : err?.name === 'NotFoundError'
+          ? 'No microphone found. Check your audio settings.'
+          : `Microphone access failed: ${err?.message || 'Unknown error'}. Check that PulseAudio/PipeWire is running.`
+      alert(msg)
     }
   }, [])
 
