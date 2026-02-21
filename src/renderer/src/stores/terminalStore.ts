@@ -18,7 +18,7 @@ export interface TerminalTab {
   worktreePath?: string
 }
 
-export type ClaudeMode = 'plan' | 'execute'
+export type ClaudeMode = 'plan' | 'execute' | 'dangerously-skip'
 
 interface TerminalState {
   terminals: TerminalTab[]
@@ -261,8 +261,10 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   toggleClaudeMode: (id: string): void => {
     set(state => {
       const current = state.claudeModes[id] || 'execute'
+      const order: ClaudeMode[] = ['execute', 'plan', 'dangerously-skip']
+      const next = order[(order.indexOf(current) + 1) % order.length]
       return {
-        claudeModes: { ...state.claudeModes, [id]: current === 'execute' ? 'plan' : 'execute' }
+        claudeModes: { ...state.claudeModes, [id]: next }
       }
     })
   },

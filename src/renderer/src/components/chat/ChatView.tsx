@@ -1274,11 +1274,11 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
                 )}
               </div>
               <button
-                className={`btn-mode-toggle ${claudeMode === 'plan' ? 'mode-plan' : 'mode-execute'}`}
+                className={`btn-mode-toggle ${claudeMode === 'plan' ? 'mode-plan' : claudeMode === 'dangerously-skip' ? 'mode-dangerous' : 'mode-execute'}`}
                 onClick={handleToggleMode}
-                title={`Mode: ${claudeMode} (Shift+Tab to toggle)`}
+                title={`Mode: ${claudeMode} (Shift+Tab to cycle)`}
               >
-                {claudeMode === 'plan' ? 'Plan' : 'Execute'}
+                {claudeMode === 'plan' ? 'Plan' : claudeMode === 'dangerously-skip' ? 'Yolo' : 'Execute'}
               </button>
             </div>
             <div className="input-actions">

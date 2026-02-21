@@ -43,6 +43,9 @@ const PERMISSION_PROMPT_PATTERNS = /do you want to proceed|do you want to allow|
 /** Detect whether this is an Esc-to-cancel / numbered-option style prompt (vs y/n) */
 const ESC_CANCEL_PATTERN = /Esc to cancel|Tab to amend/i
 
+/** Patterns that indicate Claude is at its input prompt, waiting for user input */
+const IDLE_PROMPT_PATTERNS = /^[❯>]\s*$|^╰─+\s*$|^❯\s|^\$\s*$/m
+
 /**
  * Manages per-project PTY terminal instances.
  * Each project can have multiple terminals.
@@ -497,7 +500,14 @@ export class TerminalManager {
           this.emitPermissionRequest(id, lines)
         }
       } else {
-        this.emitClaudeStatus(id, 'idle')
+        // Only go idle if Claude is actually at its input prompt.
+        // If no prompt is detected, Claude is still working (thinking, API calls, etc.)
+        const lastLines = lines.slice(-3)
+        const lastText = lastLines.map(l => l.trim()).join('\n')
+        if (IDLE_PROMPT_PATTERNS.test(lastText)) {
+          this.emitClaudeStatus(id, 'idle')
+        }
+        // else: stay 'running' — Claude is still processing
       }
     }, 3000)
   }

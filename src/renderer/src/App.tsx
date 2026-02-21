@@ -315,7 +315,7 @@ export default function App() {
       // Track all held keys (normalized)
       heldKeysRef.current.add(normalizeKey(e.key))
 
-      // Shift+Tab — toggle plan/execute mode for active Claude terminal
+      // Shift+Tab — cycle mode (execute → plan → yolo) for active Claude terminal
       if (e.shiftKey && e.key === 'Tab') {
         e.preventDefault()
         const store = useTerminalStore.getState()
