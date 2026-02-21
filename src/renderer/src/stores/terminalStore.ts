@@ -18,7 +18,7 @@ export interface TerminalTab {
   worktreePath?: string
 }
 
-export type ClaudeMode = 'plan' | 'execute' | 'dangerously-skip'
+export type ClaudeMode = 'plan' | 'execute' | 'accept-edits' | 'dangerously-skip'
 
 interface TerminalState {
   terminals: TerminalTab[]
@@ -54,7 +54,7 @@ interface TerminalState {
   splitShell: (newId: string) => void
   unsplitShell: () => void
   setClaudeMode: (id: string, mode: ClaudeMode) => void
-  toggleClaudeMode: (id: string) => void
+  toggleClaudeMode: (id: string, skipPermissions?: boolean) => void
   setClaudeModel: (id: string, model: string) => void
   setContextUsage: (id: string, percent: number) => void
   setClaudeSessionId: (terminalId: string, sessionId: string) => void
@@ -258,10 +258,12 @@ export const useTerminalStore = create<TerminalState>((set) => ({
     }))
   },
 
-  toggleClaudeMode: (id: string): void => {
+  toggleClaudeMode: (id: string, skipPermissions?: boolean): void => {
     set(state => {
-      const current = state.claudeModes[id] || 'execute'
-      const order: ClaudeMode[] = ['execute', 'plan', 'dangerously-skip']
+      const current = state.claudeModes[id] || (skipPermissions ? 'dangerously-skip' : 'execute')
+      const order: ClaudeMode[] = skipPermissions
+        ? ['dangerously-skip', 'execute', 'accept-edits', 'plan']
+        : ['execute', 'accept-edits', 'plan']
       const next = order[(order.indexOf(current) + 1) % order.length]
       return {
         claudeModes: { ...state.claudeModes, [id]: next }

@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid'
 import * as os from 'os'
 import * as fs from 'fs'
 import * as path from 'path'
-import { spawn } from 'child_process'
+import { spawn, execFileSync } from 'child_process'
 import { TmuxSession } from './TmuxSession'
 import { broadcastSend } from '../broadcast'
 
@@ -33,6 +33,8 @@ interface ClaudeMeta {
   hasBeenRunning: boolean
   autoRenamed: boolean
   idleCycleCount: number
+  lastPaneHash: string
+  activeSubAgents: number
 }
 
 const ATTENTION_PATTERNS = /\b(allow|approve|permission|accept|trust|confirm|proceed)\b|\(y\/n\)|\(yes\/no\)|do you want|would you like|Enter to confirm|Esc to cancel|Tab to amend/i
@@ -259,7 +261,9 @@ export class TerminalManager {
       windowCheckTimer,
       hasBeenRunning: false,
       autoRenamed: false,
-      idleCycleCount: 0
+      idleCycleCount: 0,
+      lastPaneHash: '',
+      activeSubAgents: 0
     })
 
     if (knownSessionId) {
@@ -485,11 +489,44 @@ export class TerminalManager {
     return null
   }
 
+  /** Capture the last N lines of a specific tmux pane and return them.
+   *  Returns null if not a tmux terminal or capture fails. */
+  private capturePaneContent(id: string, lines = 10): string | null {
+    const managed = this.findTerminal(id)
+    if (!managed?.tmuxWindow || !this.tmuxSession) return null
+    try {
+      const output = execFileSync('tmux', [
+        'capture-pane', '-t', `${this.tmuxSession.getSessionName()}:${managed.tmuxWindow}`,
+        '-p', '-J'  // -p prints to stdout, -J joins wrapped lines
+      ], { stdio: 'pipe', encoding: 'utf-8', timeout: 2000 })
+      // Return last N non-empty lines
+      const allLines = output.split('\n')
+      const trimmed = allLines.slice(-lines).join('\n')
+      return trimmed
+    } catch {
+      return null
+    }
+  }
+
+  /** Simple hash for comparing pane content */
+  private simpleHash(s: string): string {
+    let hash = 0
+    for (let i = 0; i < s.length; i++) {
+      hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0
+    }
+    return hash.toString(36)
+  }
+
   private startSilenceTimer(id: string): void {
     const meta = this.claudeMeta.get(id)
     if (!meta) return
     if (meta.silenceTimer) clearTimeout(meta.silenceTimer)
     meta.silenceTimer = setTimeout(() => {
+      // If subagents are running, Claude is still working — stay running
+      if (meta.activeSubAgents > 0) {
+        this.emitClaudeStatus(id, 'running')
+        return
+      }
       // Read last 10 lines and check for attention patterns
       const lines = this.readOutput(id, 10)
       const text = lines.join('\n')
@@ -516,10 +553,10 @@ export class TerminalManager {
             if (m && m.status === 'running' && m.lastDataTimestamp === tsAtCheck) {
               this.emitClaudeStatus(id, 'idle')
             }
-          }, 5000)
+          }, 500)
         }
       }
-    }, 3000)
+    }, 500)
   }
 
   private emitPermissionRequest(id: string, _lines: string[]): void {
@@ -849,6 +886,8 @@ export class TerminalManager {
       if (spawnMatch && spawnMatch[1] && spawnMatch[1].trim().length >= 3) {
         const agentName = spawnMatch[1].trim().slice(0, 60)
         const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        const meta = this.claudeMeta.get(id)
+        if (meta) meta.activeSubAgents++
         try {
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             broadcastSend(this.mainWindow,'terminal:agent-spawned', id, {
@@ -864,6 +903,8 @@ export class TerminalManager {
       }
       const completeMatch = stripped.match(/(?:Task completed|✓\s*Agent|agent.*?completed|Result:)/im)
       if (completeMatch) {
+        const meta = this.claudeMeta.get(id)
+        if (meta && meta.activeSubAgents > 0) meta.activeSubAgents--
         try {
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             broadcastSend(this.mainWindow,'terminal:agent-completed', id)
@@ -888,12 +929,25 @@ export class TerminalManager {
       }
     }
 
-    // Claude status detection
+    // Claude status detection — only set 'running' if this terminal's pane content
+    // actually changed (tmux attach-session delivers redraws to all clients).
     if (this.claudeMeta.has(id)) {
       const meta = this.claudeMeta.get(id)!
-      meta.lastDataTimestamp = Date.now()
-      this.emitClaudeStatus(id, 'running')
-      this.startSilenceTimer(id)
+      const paneContent = this.capturePaneContent(id)
+      if (paneContent !== null) {
+        const hash = this.simpleHash(paneContent)
+        if (hash !== meta.lastPaneHash) {
+          meta.lastPaneHash = hash
+          meta.lastDataTimestamp = Date.now()
+          this.emitClaudeStatus(id, 'running')
+          this.startSilenceTimer(id)
+        }
+      } else {
+        // Not a tmux terminal or capture failed — fall back to old behavior
+        meta.lastDataTimestamp = Date.now()
+        this.emitClaudeStatus(id, 'running')
+        this.startSilenceTimer(id)
+      }
     }
   }
 

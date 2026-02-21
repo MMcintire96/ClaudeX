@@ -169,7 +169,7 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
   const thinkingText = useSessionStore(s => sessionId ? s.thinkingText[sessionId] ?? null : null)
   const lastEntryType = useSessionStore(s => sessionId ? s.lastEntryType[sessionId] ?? null : null)
 
-  const claudeMode = useTerminalStore(s => s.claudeModes[terminalId] || 'execute') as ClaudeMode
+  const claudeMode = useTerminalStore(s => s.claudeModes[terminalId] || (skipPermissions ? 'dangerously-skip' : 'execute')) as ClaudeMode
   const claudeModel = useTerminalStore(s => s.claudeModels[terminalId] || '')
   const claudeStatus = useTerminalStore(s => s.claudeStatuses[terminalId] || 'idle')
   const pendingPermission = useTerminalStore(s => s.pendingPermissions[terminalId])
@@ -697,11 +697,10 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     await window.api.terminal.write(activeTerminalId, '\r')
   }, [inputText, terminalId, claudeStatus, setClaudeModel, worktreeMode, worktreeLocked, projectPath, removeTerminal, addTerminal, setActiveClaudeId])
 
-  const handleToggleMode = useCallback(async () => {
-    // Send Shift+Tab escape sequence to the Claude CLI PTY
-    await window.api.terminal.write(terminalId, '\x1b[Z')
-    toggleClaudeMode(terminalId)
-  }, [terminalId, toggleClaudeMode])
+  const handleToggleMode = useCallback(() => {
+    toggleClaudeMode(terminalId, skipPermissions)
+    window.api.terminal.write(terminalId, '\x1b[Z')
+  }, [terminalId, toggleClaudeMode, skipPermissions])
 
   const pendingModelRef = useRef<string | null>(null)
 
@@ -799,12 +798,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       }
     }
 
-    // Shift+Tab — toggle plan/execute mode
-    if (e.key === 'Tab' && e.shiftKey) {
-      e.preventDefault()
-      handleToggleMode()
-      return
-    }
 
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -1274,11 +1267,11 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
                 )}
               </div>
               <button
-                className={`btn-mode-toggle ${claudeMode === 'plan' ? 'mode-plan' : claudeMode === 'dangerously-skip' ? 'mode-dangerous' : 'mode-execute'}`}
+                className={`btn-mode-toggle ${claudeMode === 'plan' ? 'mode-plan' : claudeMode === 'accept-edits' ? 'mode-accept-edits' : claudeMode === 'dangerously-skip' ? 'mode-dangerous' : 'mode-execute'}`}
                 onClick={handleToggleMode}
-                title={`Mode: ${claudeMode} (Shift+Tab to cycle)`}
+                title={`Mode: ${claudeMode}`}
               >
-                {claudeMode === 'plan' ? 'Plan' : claudeMode === 'dangerously-skip' ? 'Yolo' : 'Execute'}
+                {claudeMode === 'plan' ? 'Plan' : claudeMode === 'accept-edits' ? 'Accept Edits' : claudeMode === 'dangerously-skip' ? 'Yolo' : 'Normal'}
               </button>
             </div>
             <div className="input-actions">

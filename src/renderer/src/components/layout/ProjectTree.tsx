@@ -217,7 +217,7 @@ export default function ProjectTree({
           return (
             <button
               key={t.id}
-              className={`tree-item tree-item-thread ${isActive ? 'active' : ''}`}
+              className={`tree-item tree-item-thread ${isActive ? 'active' : ''} status-${status}`}
               onClick={() => onSelectClaudeTerminal(t.id)}
               onDoubleClick={() => setRenamingTerminalId(t.id)}
               onContextMenu={(e) => {
@@ -227,10 +227,10 @@ export default function ProjectTree({
               }}
             >
               <span
-                className={`tree-item-status-indicator ${isRunning ? 'spinning' : ''}`}
-                style={{ color: STATUS_COLORS[status] }}
+                className={`tree-item-status-indicator ${isRunning ? 'spinner' : ''} ${status === 'attention' ? 'attention' : ''}`}
+                style={!isRunning ? { color: STATUS_COLORS[status] } : undefined}
               >
-                {isRunning ? '\u25CF' : status === 'attention' ? '\u25CF' : '\u25CB'}
+                {isRunning ? '' : status === 'attention' ? '\u25CF' : '\u25CB'}
               </span>
               {isRenaming ? (
                 <InlineRename

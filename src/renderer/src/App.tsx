@@ -184,6 +184,7 @@ export default function App() {
   // Claude terminal status listener
   useEffect(() => {
     const unsub = window.api.terminal.onClaudeStatus((id: string, status: string) => {
+      console.log('[claude-status]', id, status)
       setClaudeStatus(id, status as 'running' | 'idle' | 'attention' | 'done')
       // Clear permission request when Claude resumes running (user already responded)
       if (status === 'running') {
@@ -315,20 +316,6 @@ export default function App() {
       // Track all held keys (normalized)
       heldKeysRef.current.add(normalizeKey(e.key))
 
-      // Shift+Tab — cycle mode (execute → plan → yolo) for active Claude terminal
-      if (e.shiftKey && e.key === 'Tab') {
-        e.preventDefault()
-        const store = useTerminalStore.getState()
-        const path = useProjectStore.getState().currentPath
-        if (path) {
-          const activeId = store.activeClaudeId[path]
-          if (activeId) {
-            window.api.terminal.write(activeId, '\x1b[Z')
-            store.toggleClaudeMode(activeId)
-          }
-        }
-        return
-      }
 
       // Ctrl+` to toggle terminal (hardcoded, separate from mod system)
       if ((e.ctrlKey || e.metaKey) && e.key === '`') {
