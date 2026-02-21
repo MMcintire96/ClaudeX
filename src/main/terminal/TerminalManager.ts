@@ -506,8 +506,18 @@ export class TerminalManager {
         const lastText = lastLines.map(l => l.trim()).join('\n')
         if (IDLE_PROMPT_PATTERNS.test(lastText)) {
           this.emitClaudeStatus(id, 'idle')
+        } else {
+          // Fallback: if no new data arrives for an extended period, go idle anyway.
+          // The prompt pattern may not match due to ANSI artifacts or CLI changes.
+          // Schedule a second check — if lastDataTimestamp hasn't changed, force idle.
+          const tsAtCheck = meta.lastDataTimestamp
+          setTimeout(() => {
+            const m = this.claudeMeta.get(id)
+            if (m && m.status === 'running' && m.lastDataTimestamp === tsAtCheck) {
+              this.emitClaudeStatus(id, 'idle')
+            }
+          }, 5000)
         }
-        // else: stay 'running' — Claude is still processing
       }
     }, 3000)
   }
