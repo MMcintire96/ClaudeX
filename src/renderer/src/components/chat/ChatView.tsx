@@ -155,6 +155,7 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Vim mode for chat input
+  const skipPermissions = useSettingsStore(s => s.claude.dangerouslySkipPermissions)
   const vimChatEnabled = useSettingsStore(s => s.vimChatMode)
   const inputTextRef = useRef(inputText)
   inputTextRef.current = inputText
@@ -352,22 +353,17 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
   }, [projectPath])
 
   // Ensure session exists in store and file watcher is running.
-  // Uses watch() (not read()) so that push-based updates flow even if
-  // App.tsx's onClaudeSessionId handler missed the terminal (race condition:
-  // session ID event can arrive before addTerminal completes).
+  // The primary watcher setup happens at the createClaude call site (after addTerminal).
+  // This is a fallback for edge cases (e.g. resumed sessions, /clear, or if the
+  // call site didn't set up the watcher).
   const watchedSessionRef = useRef<string | null>(null)
   useEffect(() => {
     if (!sessionId) return
     if (watchedSessionRef.current === sessionId) return
-    const session = useSessionStore.getState().sessions[sessionId]
-    if (session && session.messages.length > 0) {
-      // Already cached — just ensure watcher is running
-      watchedSessionRef.current = sessionId
-      window.api.sessionFile.watch(terminalId, sessionId, sessionProjectPath)
-      return
-    }
     watchedSessionRef.current = sessionId
-    // Create session in store immediately (even if empty) so appendEntries works
+    // If session already exists in store, the watcher was set up by the call site — skip.
+    if (useSessionStore.getState().sessions[sessionId]) return
+    // Session not in store yet — set it up as a fallback
     useSessionStore.getState().loadEntries(sessionId, sessionProjectPath, [])
     window.api.sessionFile.watch(terminalId, sessionId, sessionProjectPath).then(result => {
       if (result.success && result.entries && (result.entries as unknown[]).length > 0) {
@@ -616,6 +612,12 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       })
       setActiveClaudeId(projectPath, newResult.id)
       activeTerminalId = newResult.id
+      if (newResult.claudeSessionId) {
+        const watchPath = wtResult.worktree.worktreePath
+        useTerminalStore.getState().setClaudeSessionId(newResult.id, newResult.claudeSessionId)
+        useSessionStore.getState().loadEntries(newResult.claudeSessionId, watchPath, [])
+        window.api.sessionFile.watch(newResult.id, newResult.claudeSessionId, watchPath)
+      }
 
       // Wait for Claude CLI to initialize in the new terminal
       await new Promise(r => setTimeout(r, 1500))
@@ -1104,12 +1106,12 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
                   const pairedResult = toolResultByToolUseId.get(toolMsg.toolId)
                   const hasResult = !!pairedResult
                   const isLast = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
-                  const needsPermission = !hasResult && isLast
+                  const needsPermission = !skipPermissions && !hasResult && isLast
                   return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult ?? null} awaitingPermission={needsPermission} terminalId={terminalId} /></div>
                 }
                 const hasToolResult = toolResultByToolUseId.has(toolMsg.toolId)
                 const isLastToolUse = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
-                const awaitingPermission = !hasToolResult && isLastToolUse
+                const awaitingPermission = !skipPermissions && !hasToolResult && isLastToolUse
                 return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolUseBlock message={toolMsg} awaitingPermission={awaitingPermission} terminalId={terminalId} /></div>
               } else if (msg.type === 'tool_result') {
                 const resultMsg = msg as UIToolResultMessage

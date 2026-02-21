@@ -48,7 +48,7 @@ export interface ElectronAPI {
   }
   terminal: {
     create: (projectPath: string) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; error?: string }>
-    createClaude: (projectPath: string) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; error?: string }>
+    createClaude: (projectPath: string) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; claudeSessionId?: string; error?: string }>
     write: (id: string, data: string) => Promise<{ success: boolean }>
     resize: (id: string, cols: number, rows: number) => Promise<{ success: boolean }>
     close: (id: string) => Promise<{ success: boolean }>

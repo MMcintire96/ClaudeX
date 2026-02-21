@@ -174,13 +174,38 @@ export class SessionFileWatcher {
 
   private startFileWatch(terminalId: string, state: WatcherState): void {
     if (!state.activeFile) return
-    try {
-      state.fileWatcher = fs.watch(state.activeFile, () => {
+
+    const filePath = state.activeFile
+    const tryWatch = (): boolean => {
+      if (!fs.existsSync(filePath)) return false
+      try {
+        state.fileWatcher = fs.watch(filePath, () => {
+          this.readNewContent(terminalId, state)
+        })
+        // Read any content that appeared before the watcher was set up
         this.readNewContent(terminalId, state)
-      })
-    } catch {
-      // fs.watch failed, rely on polling via directory watch
+        return true
+      } catch {
+        return false
+      }
     }
+
+    if (tryWatch()) return
+
+    // File doesn't exist yet — poll until it appears (e.g. Claude CLI hasn't started writing)
+    let attempts = 0
+    const maxAttempts = 30
+    const timer = setInterval(() => {
+      attempts++
+      // Stop if watcher was removed or terminal unwatched
+      if (!this.watchers.has(terminalId)) {
+        clearInterval(timer)
+        return
+      }
+      if (tryWatch() || attempts >= maxAttempts) {
+        clearInterval(timer)
+      }
+    }, 1000)
   }
 
   private startDirectoryWatch(terminalId: string, state: WatcherState): void {

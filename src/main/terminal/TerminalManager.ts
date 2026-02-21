@@ -231,7 +231,7 @@ export class TerminalManager {
     }
   }
 
-  registerClaudeTerminal(id: string, knownSessionId?: string): void {
+  registerClaudeTerminal(id: string, knownSessionId?: string, pinned = false): void {
     const managed = this.findTerminal(id)
 
     // Periodic dead-pane check for tmux Claude terminals.
@@ -260,10 +260,13 @@ export class TerminalManager {
     })
 
     if (knownSessionId) {
-      // Session ID already known (e.g. resumed session) — emit immediately.
-      // Pin it so screen-clear during startup doesn't wipe it.
+      // Session ID already known (generated upfront or resumed) — emit immediately.
       this.claudeSessionIds.set(id, knownSessionId)
-      this.pinnedSessionIds.add(id)
+      // Pin resumed sessions so startup screen-clear doesn't wipe the session ID.
+      // New sessions (started with --session-id) are NOT pinned so /clear still works.
+      if (pinned) {
+        this.pinnedSessionIds.add(id)
+      }
       try {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
           broadcastSend(this.mainWindow,'terminal:claude-session-id', id, knownSessionId)

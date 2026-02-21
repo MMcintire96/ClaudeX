@@ -136,6 +136,15 @@ export default function Sidebar() {
         type: 'claude'
       })
       setActiveClaudeId(projectPath, result.id)
+      if (result.claudeSessionId) {
+        useTerminalStore.getState().setClaudeSessionId(result.id, result.claudeSessionId)
+        useSessionStore.getState().loadEntries(result.claudeSessionId, result.projectPath!, [])
+        window.api.sessionFile.watch(result.id, result.claudeSessionId, result.projectPath!).then(watchResult => {
+          if (watchResult.success && watchResult.entries && (watchResult.entries as unknown[]).length > 0) {
+            useSessionStore.getState().loadEntries(result.claudeSessionId!, result.projectPath!, watchResult.entries as SessionFileEntry[])
+          }
+        })
+      }
     }
   }, [addTerminal, setActiveClaudeId])
 
@@ -153,6 +162,15 @@ export default function Sidebar() {
           type: 'claude'
         })
         setActiveClaudeId(projectPath, result.id)
+        if (result.claudeSessionId) {
+          useTerminalStore.getState().setClaudeSessionId(result.id, result.claudeSessionId)
+          useSessionStore.getState().loadEntries(result.claudeSessionId, result.projectPath!, [])
+          window.api.sessionFile.watch(result.id, result.claudeSessionId, result.projectPath!).then(watchResult => {
+            if (watchResult.success && watchResult.entries && (watchResult.entries as unknown[]).length > 0) {
+              useSessionStore.getState().loadEntries(result.claudeSessionId!, result.projectPath!, watchResult.entries as SessionFileEntry[])
+            }
+          })
+        }
       }
     } finally {
       setCreatingThread(false)

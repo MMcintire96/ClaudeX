@@ -51,8 +51,9 @@ export function registerTerminalHandlers(
     try {
       const claudePath = findClaudeBinary()
       const terminalId = uuidv4()
+      const claudeSessionId = uuidv4()
 
-      const args: string[] = []
+      const args: string[] = ['--session-id', claudeSessionId]
 
       // Conditionally add --dangerously-skip-permissions based on settings
       const settings = settingsManager.get()
@@ -110,8 +111,8 @@ export function registerTerminalHandlers(
         terminalId
       )
 
-      terminalManager.registerClaudeTerminal(info.id)
-      return { success: true, ...info }
+      terminalManager.registerClaudeTerminal(info.id, claudeSessionId)
+      return { success: true, ...info, claudeSessionId }
     } catch (err) {
       return { success: false, error: (err as Error).message }
     }
@@ -176,7 +177,7 @@ export function registerTerminalHandlers(
         terminalId
       )
 
-      terminalManager.registerClaudeTerminal(info.id, claudeSessionId)
+      terminalManager.registerClaudeTerminal(info.id, claudeSessionId, true)
       if (name) {
         terminalManager.setTerminalName(info.id, name)
       }

@@ -28,6 +28,21 @@ export default function App() {
   const [hotkeysOpen, setHotkeysOpen] = useState(false)
   const heldKeysRef = useRef<Set<string>>(new Set())
 
+  /** Set up session store + file watcher for a newly created Claude terminal */
+  const setupSessionWatcher = (terminalId: string, claudeSessionId: string, projectPath: string) => {
+    useTerminalStore.getState().setClaudeSessionId(terminalId, claudeSessionId)
+    useSessionStore.getState().loadEntries(claudeSessionId, projectPath, [])
+    window.api.sessionFile.watch(terminalId, claudeSessionId, projectPath).then(result => {
+      if (result.success && result.entries && (result.entries as unknown[]).length > 0) {
+        useSessionStore.getState().loadEntries(
+          claudeSessionId,
+          projectPath,
+          result.entries as import('./stores/sessionStore').SessionFileEntry[]
+        )
+      }
+    })
+  }
+
   // Wire up agent event listeners
   useEffect(() => {
     const unsubEvent = window.api.agent.onEvent(({ sessionId, event }) => {
@@ -90,21 +105,23 @@ export default function App() {
     return unsub
   }, [removeTerminal])
 
-  // Push-based session ID detection
+  // Push-based session ID detection — handles /clear (new session ID for existing terminal)
+  // and any other case where the main process detects a session ID change.
+  // For new terminals, the call site sets up the watcher directly after addTerminal.
   useEffect(() => {
     const unsub = window.api.terminal.onClaudeSessionId((terminalId, sessionId) => {
+      const prevSessionId = useTerminalStore.getState().claudeSessionIds[terminalId]
       useTerminalStore.getState().setClaudeSessionId(terminalId, sessionId)
 
-      // Skip if the session is already initialized (e.g. resume handler already set it up).
-      // Re-running loadEntries with [] would wipe existing messages.
+      // Skip if this is the same session ID (already set up by the call site)
+      if (prevSessionId === sessionId) return
+
+      // Skip if the session is already initialized (call site or resume handler set it up)
       if (useSessionStore.getState().sessions[sessionId]) return
 
       const terminal = useTerminalStore.getState().terminals.find(t => t.id === terminalId)
       if (terminal) {
-        // For worktree terminals, use the worktree path for session file lookup
-        // (Claude CLI writes session files relative to its cwd)
         const watchPath = terminal.worktreePath || terminal.projectPath
-        // Always create session in store (even if file is empty / doesn't exist yet)
         useSessionStore.getState().loadEntries(sessionId, watchPath, [])
         window.api.sessionFile.watch(terminalId, sessionId, watchPath).then(result => {
           if (result.success && result.entries && (result.entries as unknown[]).length > 0) {
@@ -353,6 +370,9 @@ export default function App() {
               pid: result.pid!,
               type: 'claude'
             })
+            if (result.claudeSessionId) {
+              setupSessionWatcher(result.id, result.claudeSessionId, result.projectPath!)
+            }
           }
         })
         return

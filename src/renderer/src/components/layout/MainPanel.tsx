@@ -1,6 +1,7 @@
 import React, { useCallback, useState, useEffect } from 'react'
 import { useProjectStore } from '../../stores/projectStore'
 import { useTerminalStore } from '../../stores/terminalStore'
+import { useSessionStore, SessionFileEntry } from '../../stores/sessionStore'
 import { useUIStore } from '../../stores/uiStore'
 import ChatView from '../chat/ChatView'
 
@@ -52,6 +53,15 @@ export default function MainPanel() {
           type: 'claude'
         })
         setActiveClaudeId(currentPath, result.id)
+        if (result.claudeSessionId) {
+          useTerminalStore.getState().setClaudeSessionId(result.id, result.claudeSessionId)
+          useSessionStore.getState().loadEntries(result.claudeSessionId, result.projectPath!, [])
+          window.api.sessionFile.watch(result.id, result.claudeSessionId, result.projectPath!).then(watchResult => {
+            if (watchResult.success && watchResult.entries && (watchResult.entries as unknown[]).length > 0) {
+              useSessionStore.getState().loadEntries(result.claudeSessionId!, result.projectPath!, watchResult.entries as SessionFileEntry[])
+            }
+          })
+        }
       }
     } finally {
       setLaunching(false)
