@@ -303,6 +303,10 @@ const api = {
     openInEditor: (sessionId: string) =>
       ipcRenderer.invoke('worktree:open-in-editor', sessionId)
   },
+  screenshot: {
+    capture: () =>
+      ipcRenderer.invoke('screenshot:capture') as Promise<{ success: boolean; path?: string; error?: string }>
+  },
   utils: {
     getPathForFile: (file: File): string => {
       try {

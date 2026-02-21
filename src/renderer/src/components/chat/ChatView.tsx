@@ -854,6 +854,31 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     }
   }, [])
 
+  const [screenshotCapturing, setScreenshotCapturing] = useState(false)
+  const handleScreenshot = useCallback(async () => {
+    setScreenshotCapturing(true)
+    try {
+      const result = await window.api.screenshot.capture()
+      if (result.success && result.path) {
+        setInputText(prev => {
+          const prefix = prev.length > 0 && !prev.endsWith(' ') ? prev + ' ' : prev
+          return prefix + '@' + result.path + ' '
+        })
+        if (textareaRef.current) {
+          textareaRef.current.focus()
+          requestAnimationFrame(() => {
+            if (textareaRef.current) {
+              textareaRef.current.style.height = 'auto'
+              textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
+            }
+          })
+        }
+      }
+    } finally {
+      setScreenshotCapturing(false)
+    }
+  }, [])
+
   const handleSlashSelect = useCallback(async (cmd: string, immediate: boolean) => {
     setSlashMenuOpen(false)
     setSlashFilter('')
@@ -1260,6 +1285,17 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
                   {vim.mode === 'normal' ? 'NORMAL' : vim.mode === 'visual' ? 'VISUAL' : 'INSERT'}
                 </div>
               )}
+              <button
+                className="btn-screenshot"
+                onClick={handleScreenshot}
+                disabled={screenshotCapturing}
+                title="Take screenshot"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+              </button>
               <VoiceButton onTranscript={handleVoiceTranscript} inline />
               <button
                 className="btn-send"

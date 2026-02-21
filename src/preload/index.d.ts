@@ -139,6 +139,9 @@ export interface ElectronAPI {
     syncFromLocal: (sessionId: string, mode: 'overwrite' | 'apply') => Promise<{ success: boolean; error?: string }>
     openInEditor: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   }
+  screenshot: {
+    capture: () => Promise<{ success: boolean; path?: string; error?: string }>
+  }
   utils: {
     getPathForFile: (file: File) => string
   }

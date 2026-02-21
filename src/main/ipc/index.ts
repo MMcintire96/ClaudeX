@@ -16,6 +16,7 @@ import { SessionFileWatcher } from '../session/SessionFileWatcher'
 import { registerSessionFileHandlers } from './sessionFileHandlers'
 import { WorktreeManager } from '../worktree/WorktreeManager'
 import { registerWorktreeHandlers } from './worktreeHandlers'
+import { registerScreenshotHandlers } from './screenshotHandlers'
 
 export function registerAllHandlers(
   agentManager: AgentManager,
@@ -42,4 +43,5 @@ export function registerAllHandlers(
   if (worktreeManager) {
     registerWorktreeHandlers(worktreeManager)
   }
+  registerScreenshotHandlers()
 }
