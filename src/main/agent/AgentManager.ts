@@ -24,6 +24,7 @@ export class AgentManager {
   private mcpTempFiles: Map<string, string> = new Map()
   private deltaBuffer: Map<string, AgentEvent[]> = new Map()
   private deltaFlushPending: Set<string> = new Set()
+  private static readonly MAX_DELTA_BUFFER = 500
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
@@ -101,7 +102,10 @@ export class AgentManager {
         const buf = this.deltaBuffer.get(sessionId) ?? []
         buf.push(event)
         this.deltaBuffer.set(sessionId, buf)
-        if (!this.deltaFlushPending.has(sessionId)) {
+        // Force-flush if buffer is getting large to prevent unbounded growth
+        if (buf.length >= AgentManager.MAX_DELTA_BUFFER) {
+          this.flushDeltas(sessionId)
+        } else if (!this.deltaFlushPending.has(sessionId)) {
           this.deltaFlushPending.add(sessionId)
           setImmediate(() => this.flushDeltas(sessionId))
         }
@@ -128,6 +132,11 @@ export class AgentManager {
 
     agent.on('stderr', (data: string) => {
       broadcastSend(this.mainWindow,'agent:stderr', { sessionId, data })
+    })
+
+    agent.on('parse-error', (line: string) => {
+      console.warn(`[AgentManager] Parse error for session ${sessionId}:`, line.slice(0, 200))
+      broadcastSend(this.mainWindow,'agent:stderr', { sessionId, data: `[StreamParser] Failed to parse: ${line.slice(0, 200)}\n` })
     })
   }
 

@@ -34,7 +34,8 @@ export default function ToolUseBlock({ message, awaitingPermission, terminalId }
   const handleAllowAlways = useCallback(async () => {
     if (!terminalId || responded) return
     setResponded(true)
-    await window.api.terminal.write(terminalId, '2')
+    // Down arrow to select "Yes, and don't ask again" option, then Enter
+    await window.api.terminal.write(terminalId, '\x1b[B')
     await new Promise(r => setTimeout(r, 50))
     await window.api.terminal.write(terminalId, '\r')
   }, [terminalId, responded])

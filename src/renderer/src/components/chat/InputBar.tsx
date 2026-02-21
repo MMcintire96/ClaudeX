@@ -155,7 +155,7 @@ export default function InputBar({ sessionId }: InputBarProps) {
     setShowSlashMenu(val === '/')
     const el = e.target
     el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+    el.style.height = el.scrollHeight + 'px'
   }, [])
 
   return (

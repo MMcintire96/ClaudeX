@@ -42,31 +42,45 @@ export default function AskUserQuestionBlock({ message, terminalId, answered: al
 
     // Single select — send the answer immediately
     setAnswered(true)
-    // Claude Code TUI expects the option number (1-indexed)
-    const answer = String(optionIdx + 1)
-    await window.api.terminal.write(terminalId, answer)
-    await new Promise(r => setTimeout(r, 50))
+    // Claude Code TUI uses arrow-key navigation — press down arrow optionIdx times then Enter
+    for (let i = 0; i < optionIdx; i++) {
+      await window.api.terminal.write(terminalId, '\x1b[B')
+      await new Promise(r => setTimeout(r, 30))
+    }
     await window.api.terminal.write(terminalId, '\r')
   }, [answered, terminalId])
 
   const handleSubmitMulti = useCallback(async (question: Question) => {
     if (answered || selectedIndices.size === 0) return
     setAnswered(true)
-    // Send each selected option number separated by commas
-    const answer = Array.from(selectedIndices).sort().map(i => i + 1).join(',')
-    await window.api.terminal.write(terminalId, answer)
-    await new Promise(r => setTimeout(r, 50))
+    // Claude Code TUI multi-select: navigate with arrows, toggle with space, confirm with Enter
+    const sorted = Array.from(selectedIndices).sort((a, b) => a - b)
+    let currentPos = 0
+    for (const idx of sorted) {
+      // Move down to the target option
+      while (currentPos < idx) {
+        await window.api.terminal.write(terminalId, '\x1b[B')
+        await new Promise(r => setTimeout(r, 30))
+        currentPos++
+      }
+      // Toggle selection with space
+      await window.api.terminal.write(terminalId, ' ')
+      await new Promise(r => setTimeout(r, 30))
+    }
+    // Confirm with Enter
     await window.api.terminal.write(terminalId, '\r')
   }, [answered, selectedIndices, terminalId])
 
   const handleOther = useCallback(async () => {
     if (answered || !otherText.trim()) return
     setAnswered(true)
-    // Select "Other" option (last option + 1) and type the text
+    // Navigate to "Other" option (last in the list) and select it, then type text
     const question = questions[0]
-    const otherIdx = question ? question.options.length + 1 : 1
-    await window.api.terminal.write(terminalId, String(otherIdx))
-    await new Promise(r => setTimeout(r, 50))
+    const otherPos = question ? question.options.length : 0
+    for (let i = 0; i < otherPos; i++) {
+      await window.api.terminal.write(terminalId, '\x1b[B')
+      await new Promise(r => setTimeout(r, 30))
+    }
     await window.api.terminal.write(terminalId, '\r')
     await new Promise(r => setTimeout(r, 200))
     await window.api.terminal.write(terminalId, otherText.trim())

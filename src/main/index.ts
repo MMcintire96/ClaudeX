@@ -12,7 +12,7 @@ import { ProjectConfigManager } from './project/ProjectConfigManager'
 import { ClaudexBridgeServer } from './bridge/ClaudexBridgeServer'
 import { registerAllHandlers } from './ipc'
 import { WorktreeManager } from './worktree/WorktreeManager'
-import { addBroadcastWindow, removeBroadcastWindow } from './broadcast'
+import { addBroadcastWindow, removeBroadcastWindow, markWindowReady } from './broadcast'
 
 // Auto-grant media permissions (Electron has no native permission dialog)
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream')
@@ -128,6 +128,7 @@ function createWindow(): void {
 
   // Send restore data after renderer loads
   mainWindow.webContents.on('did-finish-load', () => {
+    if (mainWindow) markWindowReady(mainWindow)
     const savedState = sessionPersistence.loadState()
     if (savedState.sessions.length > 0) {
       mainWindow?.webContents.send('session:restore', savedState)

@@ -39,7 +39,13 @@ export default function App() {
           projectPath,
           result.entries as import('./stores/sessionStore').SessionFileEntry[]
         )
+      } else if (!result.success) {
+        console.error(`[App] Session file watch failed for ${terminalId}:`, result.error)
+        useSessionStore.getState().addSystemMessage(claudeSessionId, `Session file watcher failed: ${result.error}`)
       }
+    }).catch(err => {
+      console.error(`[App] Session file watch error for ${terminalId}:`, err)
+      useSessionStore.getState().addSystemMessage(claudeSessionId, `Session file watcher error: ${err}`)
     })
   }
 
@@ -130,7 +136,11 @@ export default function App() {
               watchPath,
               result.entries as import('./stores/sessionStore').SessionFileEntry[]
             )
+          } else if (!result.success) {
+            console.error(`[App] Session file watch failed for ${terminalId}:`, result.error)
           }
+        }).catch(err => {
+          console.error(`[App] Session file watch error for ${terminalId}:`, err)
         })
       }
     })
@@ -165,6 +175,18 @@ export default function App() {
       if (sessionId && terminal) {
         const watchPath = terminal.worktreePath || terminal.projectPath
         useSessionStore.getState().loadEntries(sessionId, watchPath, entries as import('./stores/sessionStore').SessionFileEntry[])
+      }
+    })
+    return unsub
+  }, [])
+
+  // Session file watcher error listener — surface errors to the user
+  useEffect(() => {
+    const unsub = window.api.sessionFile.onError((terminalId, message) => {
+      console.error(`[SessionFileWatcher] Error for terminal ${terminalId}:`, message)
+      const sessionId = useTerminalStore.getState().claudeSessionIds[terminalId]
+      if (sessionId) {
+        useSessionStore.getState().addSystemMessage(sessionId, `⚠ ${message}`)
       }
     })
     return unsub

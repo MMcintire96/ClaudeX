@@ -98,6 +98,7 @@ export interface ElectronAPI {
     findLatest: (projectPath: string, afterTimestamp?: number) => Promise<{ success: boolean; sessionId?: string | null; error?: string }>
     onEntries: (callback: (terminalId: string, entries: unknown[]) => void) => () => void
     onReset: (callback: (terminalId: string, entries: unknown[]) => void) => () => void
+    onError: (callback: (terminalId: string, message: string) => void) => () => void
   }
   app: {
     onBeforeClose: (callback: () => void) => () => void

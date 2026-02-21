@@ -102,8 +102,8 @@ export default function FileEditBlock({ message, result, awaitingPermission, ter
   const handleAllowAlways = useCallback(async () => {
     if (!terminalId || permissionResponded) return
     setPermissionResponded(true)
-    // Option 2: Yes, and don't ask again
-    await window.api.terminal.write(terminalId, '2')
+    // Down arrow to select "Yes, and don't ask again" option, then Enter
+    await window.api.terminal.write(terminalId, '\x1b[B')
     await new Promise(r => setTimeout(r, 50))
     await window.api.terminal.write(terminalId, '\r')
   }, [terminalId, permissionResponded])

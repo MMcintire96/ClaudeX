@@ -214,6 +214,11 @@ const api = {
       const handler = (_: unknown, terminalId: string, entries: unknown[]) => callback(terminalId, entries)
       ipcRenderer.on('session-file:reset', handler)
       return () => ipcRenderer.removeListener('session-file:reset', handler)
+    },
+    onError: (callback: (terminalId: string, message: string) => void) => {
+      const handler = (_: unknown, terminalId: string, message: string) => callback(terminalId, message)
+      ipcRenderer.on('session-file:error', handler)
+      return () => ipcRenderer.removeListener('session-file:error', handler)
     }
   },
   app: {

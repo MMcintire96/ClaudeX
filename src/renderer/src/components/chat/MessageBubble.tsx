@@ -9,7 +9,7 @@ interface Props {
 
 /** Highlight search matches within plain text */
 function HighlightedText({ text, query }: { text: string; query: string }) {
-  if (!query) return <p>{text}</p>
+  if (!query) return <p style={{ whiteSpace: 'pre-wrap' }}>{text}</p>
   const parts: React.ReactNode[] = []
   const lower = text.toLowerCase()
   const q = query.toLowerCase()
@@ -23,7 +23,7 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
     idx = lower.indexOf(q, lastIndex)
   }
   if (lastIndex < text.length) parts.push(text.slice(lastIndex))
-  return <p>{parts}</p>
+  return <p style={{ whiteSpace: 'pre-wrap' }}>{parts}</p>
 }
 
 export default function MessageBubble({ message, searchQuery = '' }: Props) {

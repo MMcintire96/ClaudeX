@@ -12,6 +12,7 @@ interface WatcherState {
   dirWatcher: fs.FSWatcher | null
   fileWatcher: fs.FSWatcher | null
   pollTimer: ReturnType<typeof setInterval> | null
+  filePollTimer: ReturnType<typeof setInterval> | null
   startedAt: number
 }
 
@@ -53,8 +54,8 @@ export class SessionFileWatcher {
         if (parsed && typeof parsed === 'object' && parsed.type) {
           entries.push(parsed)
         }
-      } catch {
-        // skip malformed lines
+      } catch (err) {
+        console.warn(`[SessionFileWatcher] Malformed JSONL line: ${trimmed.slice(0, 100)}`, err)
       }
     }
     return entries
@@ -82,7 +83,8 @@ export class SessionFileWatcher {
         filePath: files[0].fullPath,
         sessionId: files[0].name.replace(/\.jsonl$/, '')
       }
-    } catch {
+    } catch (err) {
+      console.warn('[SessionFileWatcher] Error scanning project dir:', err)
       return null
     }
   }
@@ -101,6 +103,7 @@ export class SessionFileWatcher {
       dirWatcher: null,
       fileWatcher: null,
       pollTimer: null,
+      filePollTimer: null,
       startedAt: Date.now()
     }
 
@@ -119,8 +122,8 @@ export class SessionFileWatcher {
           initialEntries = this.parseLines(content)
           state.offset = Buffer.byteLength(content, 'utf-8')
         }
-      } catch {
-        // File may not exist yet
+      } catch (err) {
+        console.warn(`[SessionFileWatcher] Error reading initial file ${filePath}:`, err)
       }
 
       this.startFileWatch(terminalId, state)
@@ -175,6 +178,12 @@ export class SessionFileWatcher {
   private startFileWatch(terminalId: string, state: WatcherState): void {
     if (!state.activeFile) return
 
+    // Clean up any previous file poll timer
+    if (state.filePollTimer) {
+      clearInterval(state.filePollTimer)
+      state.filePollTimer = null
+    }
+
     const filePath = state.activeFile
     const tryWatch = (): boolean => {
       if (!fs.existsSync(filePath)) return false
@@ -185,7 +194,8 @@ export class SessionFileWatcher {
         // Read any content that appeared before the watcher was set up
         this.readNewContent(terminalId, state)
         return true
-      } catch {
+      } catch (err) {
+        console.warn(`[SessionFileWatcher] fs.watch failed for ${filePath}:`, err)
         return false
       }
     }
@@ -194,16 +204,23 @@ export class SessionFileWatcher {
 
     // File doesn't exist yet — poll until it appears (e.g. Claude CLI hasn't started writing)
     let attempts = 0
-    const maxAttempts = 30
-    const timer = setInterval(() => {
+    const maxAttempts = 60
+    state.filePollTimer = setInterval(() => {
       attempts++
       // Stop if watcher was removed or terminal unwatched
       if (!this.watchers.has(terminalId)) {
-        clearInterval(timer)
+        if (state.filePollTimer) clearInterval(state.filePollTimer)
+        state.filePollTimer = null
         return
       }
-      if (tryWatch() || attempts >= maxAttempts) {
-        clearInterval(timer)
+      if (tryWatch()) {
+        if (state.filePollTimer) clearInterval(state.filePollTimer)
+        state.filePollTimer = null
+      } else if (attempts >= maxAttempts) {
+        console.warn(`[SessionFileWatcher] Gave up waiting for file ${filePath} after ${maxAttempts}s`)
+        this.sendError(terminalId, `Session file not found after ${maxAttempts}s — chat may not update. The session is still running in the terminal.`)
+        if (state.filePollTimer) clearInterval(state.filePollTimer)
+        state.filePollTimer = null
       }
     }, 1000)
   }
@@ -261,21 +278,25 @@ export class SessionFileWatcher {
 
       if (stat.size <= state.offset) return
 
+      const bytesToRead = stat.size - state.offset
       const fd = fs.openSync(state.activeFile, 'r')
-      const buf = Buffer.alloc(stat.size - state.offset)
-      fs.readSync(fd, buf, 0, buf.length, state.offset)
-      fs.closeSync(fd)
+      try {
+        const buf = Buffer.alloc(bytesToRead)
+        const bytesRead = fs.readSync(fd, buf, 0, buf.length, state.offset)
+        // Only advance offset by actual bytes read, not expected size
+        state.offset += bytesRead
+        const text = buf.slice(0, bytesRead).toString('utf-8')
+        const entries = this.parseLines(text)
 
-      state.offset = stat.size
-      const text = buf.toString('utf-8')
-      const entries = this.parseLines(text)
-
-      if (entries.length > 0) {
-        console.log(`[SessionFileWatcher] new entries for ${terminalId}: ${entries.length}`)
-        this.sendEntries(terminalId, entries)
+        if (entries.length > 0) {
+          console.log(`[SessionFileWatcher] new entries for ${terminalId}: ${entries.length}`)
+          this.sendEntries(terminalId, entries)
+        }
+      } finally {
+        fs.closeSync(fd)
       }
-    } catch {
-      // File may be temporarily unavailable
+    } catch (err) {
+      console.warn(`[SessionFileWatcher] Error reading content for ${terminalId}:`, err)
     }
   }
 
@@ -285,6 +306,11 @@ export class SessionFileWatcher {
 
   private sendReset(terminalId: string, entries: SessionFileEntry[]): void {
     broadcastSend(this.mainWindow, 'session-file:reset', terminalId, entries)
+  }
+
+  private sendError(terminalId: string, message: string): void {
+    console.error(`[SessionFileWatcher] Error for ${terminalId}: ${message}`)
+    broadcastSend(this.mainWindow, 'session-file:error', terminalId, message)
   }
 
   findLatestSessionId(projectPath: string, _afterTimestamp?: number): string | null {
@@ -315,6 +341,10 @@ export class SessionFileWatcher {
     if (state.pollTimer) {
       clearInterval(state.pollTimer)
       state.pollTimer = null
+    }
+    if (state.filePollTimer) {
+      clearInterval(state.filePollTimer)
+      state.filePollTimer = null
     }
     this.watchers.delete(terminalId)
   }

@@ -935,10 +935,10 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       setFilePickerFilter('')
     }
 
-    // Auto-resize
+    // Auto-resize — textarea grows to full content height, wrapper handles scroll
     const el = e.target
     el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+    el.style.height = el.scrollHeight + 'px'
   }, [])
 
   // Drag-and-drop file handling — insert dropped files as @filepath references
@@ -1221,7 +1221,7 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
         )}
 
         <div className="input-bar">
-          <div className="textarea-wrapper" style={{ position: 'relative', flex: 1 }}>
+          <div className="textarea-wrapper">
             <div className="input-highlight-overlay" aria-hidden="true">
               {inputText ? renderHighlightedInput(inputText) : <span className="input-highlight-placeholder">Ask for follow-up changes... (/ for commands)</span>}
             </div>

@@ -1500,13 +1500,19 @@ body {
   50% { opacity: 0.3; }
 }
 
+.textarea-wrapper {
+  position: relative;
+  flex: 1;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
 .input-highlight-overlay {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  padding: 6px 0;
+  padding: 8px 0;
   font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
@@ -1514,7 +1520,6 @@ body {
   word-wrap: break-word;
   color: var(--text-primary);
   pointer-events: none;
-  overflow: hidden;
 }
 .input-highlight-placeholder {
   color: var(--text-muted);
@@ -1524,18 +1529,18 @@ body {
 }
 .input-textarea {
   position: relative;
-  flex: 1;
   width: 100%;
   resize: none;
-  padding: 6px 0;
+  padding: 8px 0;
   border: none;
   background: transparent;
   color: var(--text-primary);
   font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
-  min-height: 44px;
+  min-height: 37px;
   outline: none;
+  overflow: hidden;
 }
 .input-textarea.has-content {
   color: transparent;
