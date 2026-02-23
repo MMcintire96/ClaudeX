@@ -12,6 +12,7 @@
     "package": "electron-vite build && electron-builder"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.50",
     "@huggingface/transformers": "^3.8.1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",

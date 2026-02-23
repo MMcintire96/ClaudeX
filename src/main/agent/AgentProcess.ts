@@ -132,10 +132,10 @@ export class AgentProcess extends EventEmitter {
     this._model = model
   }
 
-  private _buildBaseArgs(prompt: string): string[] {
+  private _buildBaseArgs(): string[] {
     const args = [
       '--dangerously-skip-permissions',
-      '-p', prompt,
+      '-p',
       '--output-format', 'stream-json',
       '--verbose',
       '--include-partial-messages'
@@ -158,11 +158,11 @@ export class AgentProcess extends EventEmitter {
     }
 
     const args = [
-      ...this._buildBaseArgs(initialPrompt),
+      ...this._buildBaseArgs(),
       '--session-id', this._sessionId
     ]
 
-    this._spawnProcess(args)
+    this._spawnProcess(args, initialPrompt)
   }
 
   resume(message: string): void {
@@ -171,28 +171,34 @@ export class AgentProcess extends EventEmitter {
     }
 
     const args = [
-      ...this._buildBaseArgs(message),
+      ...this._buildBaseArgs(),
       '--resume', this._sessionId
     ]
 
-    this._spawnProcess(args)
+    this._spawnProcess(args, message)
   }
 
-  private _spawnProcess(args: string[]): void {
+  private _spawnProcess(args: string[], prompt: string): void {
     this.parser.reset()
     this.stderrBuffer = ''
 
     const claudePath = getClaudePath()
     console.log(`[AgentProcess] Spawning: ${claudePath} ${args.join(' ')}`)
     console.log(`[AgentProcess] CWD: ${this._projectPath}`)
+    console.log(`[AgentProcess] Prompt length: ${prompt.length} chars (piped via stdin)`)
 
     this.process = spawn(claudePath, args, {
       cwd: this._projectPath,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
       env: getEnhancedEnv()
     })
 
     this._isRunning = true
+
+    // Pipe the prompt via stdin to avoid CLI argument length limits
+    // and issues with special characters in large pasted text blocks
+    this.process.stdin!.write(prompt)
+    this.process.stdin!.end()
 
     this.process.stdout!.setEncoding('utf-8')
     this.process.stdout!.on('data', (chunk: string) => {

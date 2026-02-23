@@ -1443,6 +1443,108 @@ body {
   font-style: italic;
 }
 
+/* ===== Plan Mode Block ===== */
+.plan-mode-block {
+  margin: 8px 0 12px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.plan-mode-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.plan-mode-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.plan-mode-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.plan-mode-permissions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.plan-mode-permissions-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.plan-mode-permission-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-primary));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+.plan-mode-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-feedback {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.btn-feedback:hover {
+  background: var(--bg-tertiary, var(--bg-secondary));
+  border-color: var(--text-muted);
+}
+
+.plan-mode-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plan-mode-feedback-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.plan-mode-feedback-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.plan-mode-feedback-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.plan-mode-answered {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* ===== INPUT BAR — ClaudeX style centered ===== */
 .input-bar-wrapper {
   padding: 0 24px 20px;

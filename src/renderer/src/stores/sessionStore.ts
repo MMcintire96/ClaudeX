@@ -147,7 +147,7 @@ export function parseEntries(entries: SessionFileEntry[]): ParseResult {
             isLatest: isLastAssistant
           })
         } else if (block.type === 'text') {
-          textAccum += block.text
+          textAccum += (typeof block.text === 'string' ? block.text : '')
         } else if (block.type === 'tool_use') {
           if (textAccum) {
             messages.push({
@@ -402,7 +402,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
         for (const block of content) {
           if (block.type === 'text') {
-            fullText += block.text as string
+            fullText += (typeof block.text === 'string' ? block.text : '')
           } else if (block.type === 'tool_use') {
             if (fullText) {
               newMessages.push({

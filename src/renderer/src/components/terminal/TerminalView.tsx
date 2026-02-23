@@ -308,7 +308,9 @@ export default function TerminalView({ terminalId, visible, active, background }
     if (!term) return
     const text = await navigator.clipboard.readText()
     if (text) {
-      window.api.terminal.write(terminalId, text)
+      // Wrap in bracket paste sequences so CLI programs (e.g. Claude Code)
+      // detect this as pasted text rather than individual keystrokes
+      window.api.terminal.write(terminalId, `\x1b[200~${text}\x1b[201~`)
     }
   }, [terminalId])
 
@@ -371,7 +373,7 @@ export default function TerminalView({ terminalId, visible, active, background }
         }
         if (e.key === 'V' || e.code === 'KeyV') {
           navigator.clipboard.readText().then(text => {
-            if (text) window.api.terminal.write(terminalId, text)
+            if (text) window.api.terminal.write(terminalId, `\x1b[200~${text}\x1b[201~`)
           })
           return false
         }

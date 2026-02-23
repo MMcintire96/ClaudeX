@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process'
+import { execFileSync, execSync } from 'child_process'
 import * as pty from 'node-pty'
 
 /**
@@ -85,6 +85,28 @@ export class TmuxSession {
     execFileSync('tmux', ['send-keys', '-t', `${this.sessionName}:${target}`, '-l', '--', keys], {
       stdio: 'pipe'
     })
+  }
+
+  /** Paste text into a tmux window using load-buffer + paste-buffer.
+   *  This respects the terminal's bracket paste mode, so CLI programs like
+   *  Claude Code treat multi-line input as a single paste rather than
+   *  executing each newline as Enter. Also avoids ARG_MAX limits. */
+  pasteText(target: string, text: string): void {
+    const bufferName = 'claudex-paste'
+    // load-buffer reads from stdin with '-'
+    execSync(`tmux load-buffer -b ${bufferName} -`, {
+      input: text,
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+    execFileSync('tmux', [
+      'paste-buffer', '-b', bufferName, '-t', `${this.sessionName}:${target}`, '-p'
+    ], { stdio: 'pipe' })
+    // Clean up the buffer
+    try {
+      execFileSync('tmux', ['delete-buffer', '-b', bufferName], { stdio: 'pipe' })
+    } catch {
+      // Buffer may already be gone
+    }
   }
 
   /** Rename a tmux window. target can be a window ID (@N) or name. */

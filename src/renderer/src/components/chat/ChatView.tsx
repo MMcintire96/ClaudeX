@@ -6,6 +6,7 @@ import ToolUseBlock from './ToolUseBlock'
 import ToolResultBlock from './ToolResultBlock'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import FileEditBlock, { isFileEditTool } from './FileEditBlock'
+import PlanModeBlock from './PlanModeBlock'
 import VoiceButton from '../common/VoiceButton'
 import WorktreeBar from './WorktreeBar'
 import { useTerminalStore } from '../../stores/terminalStore'
@@ -13,6 +14,21 @@ import type { ClaudeMode } from '../../stores/terminalStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useVimMode } from '../../hooks/useVimMode'
+
+/** Write a user message to the terminal, using bracket paste for multi-line text
+ *  so the CLI treats it as a single paste rather than executing each newline as Enter. */
+async function writeMessageToTerminal(terminalId: string, text: string): Promise<void> {
+  if (text.includes('\n') || text.includes('\r')) {
+    // Wrap in bracket paste sequences + append Enter so it's sent as one atomic paste
+    await window.api.terminal.write(terminalId, `\x1b[200~${text}\x1b[201~`)
+    await new Promise(r => setTimeout(r, 50))
+    await window.api.terminal.write(terminalId, '\r')
+  } else {
+    await window.api.terminal.write(terminalId, text)
+    await new Promise(r => setTimeout(r, 50))
+    await window.api.terminal.write(terminalId, '\r')
+  }
+}
 
 interface ChatViewProps {
   terminalId: string
@@ -398,9 +414,7 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       setPendingUserMessage(next)
 
       ;(async () => {
-        await window.api.terminal.write(terminalId, next)
-        await new Promise(r => setTimeout(r, 50))
-        await window.api.terminal.write(terminalId, '\r')
+        await writeMessageToTerminal(terminalId, next)
         sendingQueueRef.current = false
       })()
     }, 300)
@@ -635,9 +649,7 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
         await new Promise(r => setTimeout(r, 200))
       }
 
-      await window.api.terminal.write(activeTerminalId, text)
-      await new Promise(r => setTimeout(r, 50))
-      await window.api.terminal.write(activeTerminalId, '\r')
+      await writeMessageToTerminal(activeTerminalId, text)
       return
     }
 
@@ -692,9 +704,7 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       await new Promise(r => setTimeout(r, 200))
     }
 
-    await window.api.terminal.write(activeTerminalId, text)
-    await new Promise(r => setTimeout(r, 50))
-    await window.api.terminal.write(activeTerminalId, '\r')
+    await writeMessageToTerminal(activeTerminalId, text)
   }, [inputText, terminalId, claudeStatus, setClaudeModel, worktreeMode, worktreeLocked, projectPath, removeTerminal, addTerminal, setActiveClaudeId])
 
   const handleToggleMode = useCallback(() => {
@@ -1095,6 +1105,10 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
                   const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
                   return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><AskUserQuestionBlock message={toolMsg} terminalId={terminalId} answered={hasResult} /></div>
                 }
+                if (toolMsg.toolName === 'ExitPlanMode') {
+                  const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
+                  return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><PlanModeBlock message={toolMsg} terminalId={terminalId} answered={hasResult} /></div>
+                }
                 if (isFileEditTool(toolMsg.toolName)) {
                   const pairedResult = toolResultByToolUseId.get(toolMsg.toolId)
                   const hasResult = !!pairedResult
@@ -1110,6 +1124,7 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
                 const resultMsg = msg as UIToolResultMessage
                 const parentTool = toolUseById.get(resultMsg.toolUseId)
                 if (parentTool?.toolName === 'AskUserQuestion') return null
+                if (parentTool?.toolName === 'ExitPlanMode') return null
                 if (parentTool && isFileEditTool(parentTool.toolName)) return null
                 return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolResultBlock message={resultMsg} /></div>
               } else if (msg.type === 'system') {

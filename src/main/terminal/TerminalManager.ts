@@ -681,7 +681,15 @@ export class TerminalManager {
         this.killDeadTmuxTerminal(managed, id)
         return
       }
-      this.tmuxSession.sendKeys(managed.tmuxWindow, data)
+      // Detect bracket paste sequences from the renderer. Strip them and use
+      // tmux paste-buffer -p instead, which properly handles bracket paste at
+      // the tmux level (the sequences don't survive writing to the attach PTY).
+      if (data.startsWith('\x1b[200~') && data.endsWith('\x1b[201~')) {
+        const inner = data.slice(6, -6) // strip \x1b[200~ and \x1b[201~
+        this.tmuxSession.pasteText(managed.tmuxWindow, inner)
+      } else {
+        this.tmuxSession.sendKeys(managed.tmuxWindow, data)
+      }
       return
     }
 

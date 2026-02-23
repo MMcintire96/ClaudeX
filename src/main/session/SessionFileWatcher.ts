@@ -112,6 +112,7 @@ export class SessionFileWatcher {
     // If session ID is provided, attach directly to that file
     if (claudeSessionId) {
       const filePath = this.getSessionFilePath(claudeSessionId, projectPath)
+      console.log(`[SessionFileWatcher] Watching specific file: ${filePath} (exists: ${fs.existsSync(filePath)})`)
       state.activeFile = filePath
       state.activeSessionId = claudeSessionId
 
@@ -203,6 +204,7 @@ export class SessionFileWatcher {
     if (tryWatch()) return
 
     // File doesn't exist yet — poll until it appears (e.g. Claude CLI hasn't started writing)
+    console.log(`[SessionFileWatcher] File not found yet, polling: ${filePath}`)
     let attempts = 0
     const maxAttempts = 60
     state.filePollTimer = setInterval(() => {
@@ -214,10 +216,20 @@ export class SessionFileWatcher {
         return
       }
       if (tryWatch()) {
+        console.log(`[SessionFileWatcher] File appeared after ${attempts}s: ${filePath}`)
         if (state.filePollTimer) clearInterval(state.filePollTimer)
         state.filePollTimer = null
       } else if (attempts >= maxAttempts) {
-        console.warn(`[SessionFileWatcher] Gave up waiting for file ${filePath} after ${maxAttempts}s`)
+        // Log what files DO exist in the directory to help debug path mismatches
+        const dir = filePath.substring(0, filePath.lastIndexOf('/'))
+        let dirContents = '(dir does not exist)'
+        try {
+          if (fs.existsSync(dir)) {
+            const files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl'))
+            dirContents = files.length > 0 ? files.slice(-5).join(', ') : '(no .jsonl files)'
+          }
+        } catch { /* ignore */ }
+        console.warn(`[SessionFileWatcher] Gave up waiting for file ${filePath} after ${maxAttempts}s. Dir contents: ${dirContents}`)
         this.sendError(terminalId, `Session file not found after ${maxAttempts}s — chat may not update. The session is still running in the terminal.`)
         if (state.filePollTimer) clearInterval(state.filePollTimer)
         state.filePollTimer = null
