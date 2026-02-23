@@ -12,8 +12,6 @@ import { registerBrowserHandlers } from './browserHandlers'
 import { registerTerminalHandlers, BridgeInfo } from './terminalHandlers'
 import { registerSettingsHandlers } from './settingsHandlers'
 import { registerVoiceHandlers } from './voiceHandlers'
-import { SessionFileWatcher } from '../session/SessionFileWatcher'
-import { registerSessionFileHandlers } from './sessionFileHandlers'
 import { WorktreeManager } from '../worktree/WorktreeManager'
 import { registerWorktreeHandlers } from './worktreeHandlers'
 import { registerScreenshotHandlers } from './screenshotHandlers'
@@ -28,7 +26,7 @@ export function registerAllHandlers(
   bridgeInfo?: BridgeInfo,
   sessionPersistence?: SessionPersistence,
   projectConfigManager?: ProjectConfigManager,
-  sessionFileWatcher?: SessionFileWatcher,
+  _sessionFileWatcher?: unknown,
   worktreeManager?: WorktreeManager
 ): void {
   registerAgentHandlers(agentManager, worktreeManager)
@@ -37,9 +35,6 @@ export function registerAllHandlers(
   registerTerminalHandlers(terminalManager, settingsManager, bridgeInfo, sessionPersistence)
   registerSettingsHandlers(settingsManager)
   registerVoiceHandlers(voiceManager)
-  if (sessionFileWatcher) {
-    registerSessionFileHandlers(sessionFileWatcher)
-  }
   if (worktreeManager) {
     registerWorktreeHandlers(worktreeManager)
   }

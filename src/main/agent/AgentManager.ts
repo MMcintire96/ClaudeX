@@ -1,7 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
-import { writeFileSync, unlinkSync, existsSync } from 'fs'
-import { tmpdir } from 'os'
+import { existsSync } from 'fs'
 import { AgentProcess, AgentProcessOptions } from './AgentProcess'
 import type { AgentEvent, StreamEvent } from './types'
 import { broadcastSend } from '../broadcast'
@@ -21,7 +20,6 @@ export class AgentManager {
   private mainWindow: BrowserWindow | null = null
   private bridgePort = 0
   private bridgeToken = ''
-  private mcpTempFiles: Map<string, string> = new Map()
   private deltaBuffer: Map<string, AgentEvent[]> = new Map()
   private deltaFlushPending: Set<string> = new Set()
   private static readonly MAX_DELTA_BUFFER = 500
@@ -44,7 +42,7 @@ export class AgentManager {
     return join(app.getAppPath(), 'resources', 'claudex-mcp-server.js')
   }
 
-  private createMcpConfig(projectPath: string): string | null {
+  private buildMcpServers(projectPath: string): Record<string, any> | null {
     if (!this.bridgePort || !this.bridgeToken) return null
 
     const mcpServerPath = this.getMcpServerPath()
@@ -53,34 +51,16 @@ export class AgentManager {
       return null
     }
 
-    const config = {
-      mcpServers: {
-        'claudex-bridge': {
-          command: 'node',
-          args: [mcpServerPath],
-          env: {
-            CLAUDEX_BRIDGE_PORT: String(this.bridgePort),
-            CLAUDEX_BRIDGE_TOKEN: this.bridgeToken,
-            CLAUDEX_PROJECT_PATH: projectPath
-          }
+    return {
+      'claudex-bridge': {
+        command: 'node',
+        args: [mcpServerPath],
+        env: {
+          CLAUDEX_BRIDGE_PORT: String(this.bridgePort),
+          CLAUDEX_BRIDGE_TOKEN: this.bridgeToken,
+          CLAUDEX_PROJECT_PATH: projectPath
         }
       }
-    }
-
-    const tmpPath = join(tmpdir(), `claudex-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}.json`)
-    writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8')
-    return tmpPath
-  }
-
-  private cleanupTempFile(sessionId: string): void {
-    const tmpPath = this.mcpTempFiles.get(sessionId)
-    if (tmpPath) {
-      try {
-        unlinkSync(tmpPath)
-      } catch {
-        // ignore cleanup errors
-      }
-      this.mcpTempFiles.delete(sessionId)
     }
   }
 
@@ -129,40 +109,20 @@ export class AgentManager {
     agent.on('error', (err: Error) => {
       broadcastSend(this.mainWindow,'agent:error', { sessionId, error: err.message })
     })
-
-    agent.on('stderr', (data: string) => {
-      broadcastSend(this.mainWindow,'agent:stderr', { sessionId, data })
-    })
-
-    agent.on('parse-error', (line: string) => {
-      console.warn(`[AgentManager] Parse error for session ${sessionId}:`, line.slice(0, 200))
-      broadcastSend(this.mainWindow,'agent:stderr', { sessionId, data: `[StreamParser] Failed to parse: ${line.slice(0, 200)}\n` })
-    })
   }
 
   startAgent(options: AgentProcessOptions, initialPrompt: string): string {
-    // Generate MCP config for this session
-    const mcpConfigPath = this.createMcpConfig(options.projectPath)
+    const mcpServers = this.buildMcpServers(options.projectPath)
 
     const agentOptions: AgentProcessOptions = {
       ...options,
-      mcpConfigPath,
-      systemPromptAppend: mcpConfigPath ? SYSTEM_PROMPT_APPEND : null
+      mcpServers,
+      systemPromptAppend: mcpServers ? SYSTEM_PROMPT_APPEND : null
     }
 
     const agent = new AgentProcess(agentOptions)
     const sessionId = agent.sessionId
     this.wireEvents(sessionId, agent)
-
-    // Track temp file for cleanup
-    if (mcpConfigPath) {
-      this.mcpTempFiles.set(sessionId, mcpConfigPath)
-    }
-
-    // Clean up temp file when agent session closes
-    agent.on('close', () => {
-      this.cleanupTempFile(sessionId)
-    })
 
     agent.start(initialPrompt)
     this.agents.set(sessionId, agent)
@@ -171,7 +131,7 @@ export class AgentManager {
 
   /**
    * Send a follow-up message to an existing session.
-   * This re-spawns the CLI with --resume since -p mode exits after each turn.
+   * Uses SDK resume to continue the conversation.
    */
   sendMessage(sessionId: string, content: string): void {
     const agent = this.agents.get(sessionId)
@@ -183,7 +143,7 @@ export class AgentManager {
       throw new Error('Agent is still processing — wait for it to finish')
     }
 
-    // Re-wire events since we'll get a new process
+    // Re-wire events for the new query
     agent.removeAllListeners()
     this.wireEvents(sessionId, agent)
     agent.resume(content)

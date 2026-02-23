@@ -89,8 +89,6 @@ const api = {
   terminal: {
     create: (projectPath: string) =>
       ipcRenderer.invoke('terminal:create', projectPath),
-    createClaude: (projectPath: string) =>
-      ipcRenderer.invoke('terminal:create-claude', projectPath),
     write: (id: string, data: string) =>
       ipcRenderer.invoke('terminal:write', id, data),
     resize: (id: string, cols: number, rows: number) =>
@@ -110,54 +108,6 @@ const api = {
       const handler = (_: unknown, id: string, exitCode: number) => callback(id, exitCode)
       ipcRenderer.on('terminal:exit', handler)
       return () => ipcRenderer.removeListener('terminal:exit', handler)
-    },
-    onClaudeStatus: (callback: (id: string, status: string) => void) => {
-      const handler = (_: unknown, id: string, status: string) => callback(id, status)
-      ipcRenderer.on('terminal:claude-status', handler)
-      return () => ipcRenderer.removeListener('terminal:claude-status', handler)
-    },
-    onClaudeRename: (callback: (id: string, name: string) => void) => {
-      const handler = (_: unknown, id: string, name: string) => callback(id, name)
-      ipcRenderer.on('terminal:claude-rename', handler)
-      return () => ipcRenderer.removeListener('terminal:claude-rename', handler)
-    },
-    createClaudeResume: (projectPath: string, claudeSessionId: string, name?: string) =>
-      ipcRenderer.invoke('terminal:create-claude-resume', projectPath, claudeSessionId, name),
-    getClaudeSessionId: (terminalId: string) =>
-      ipcRenderer.invoke('session:get-claude-session-id', terminalId),
-    onAgentSpawned: (callback: (parentId: string, agent: { id: string; name: string; status: string; startedAt: number }) => void) => {
-      const handler = (_: unknown, parentId: string, agent: { id: string; name: string; status: string; startedAt: number }) => callback(parentId, agent)
-      ipcRenderer.on('terminal:agent-spawned', handler)
-      return () => ipcRenderer.removeListener('terminal:agent-spawned', handler)
-    },
-    onAgentCompleted: (callback: (parentId: string) => void) => {
-      const handler = (_: unknown, parentId: string) => callback(parentId)
-      ipcRenderer.on('terminal:agent-completed', handler)
-      return () => ipcRenderer.removeListener('terminal:agent-completed', handler)
-    },
-    onContextUsage: (callback: (id: string, percent: number) => void) => {
-      const handler = (_: unknown, id: string, percent: number) => callback(id, percent)
-      ipcRenderer.on('terminal:context-usage', handler)
-      return () => ipcRenderer.removeListener('terminal:context-usage', handler)
-    },
-    openExternal: (terminalId: string, projectPath: string) =>
-      ipcRenderer.invoke('terminal:open-external', terminalId, projectPath),
-    getTmuxInfo: () =>
-      ipcRenderer.invoke('terminal:get-tmux-info') as Promise<{ available: boolean; sessionName: string | null }>,
-    onClaudeSessionId: (callback: (id: string, sessionId: string) => void) => {
-      const handler = (_: unknown, id: string, sessionId: string) => callback(id, sessionId)
-      ipcRenderer.on('terminal:claude-session-id', handler)
-      return () => ipcRenderer.removeListener('terminal:claude-session-id', handler)
-    },
-    onSystemMessage: (callback: (terminalId: string, message: string) => void) => {
-      const handler = (_: unknown, terminalId: string, message: string) => callback(terminalId, message)
-      ipcRenderer.on('terminal:system-message', handler)
-      return () => ipcRenderer.removeListener('terminal:system-message', handler)
-    },
-    onPermissionRequest: (callback: (terminalId: string, permissionText: string, promptType: string) => void) => {
-      const handler = (_: unknown, terminalId: string, permissionText: string, promptType: string) => callback(terminalId, permissionText, promptType)
-      ipcRenderer.on('terminal:permission-request', handler)
-      return () => ipcRenderer.removeListener('terminal:permission-request', handler)
     }
   },
   session: {
@@ -194,31 +144,6 @@ const api = {
       const handler = (_: unknown, maximized: boolean) => callback(maximized)
       ipcRenderer.on('window:maximized-changed', handler)
       return () => ipcRenderer.removeListener('window:maximized-changed', handler)
-    }
-  },
-  sessionFile: {
-    watch: (terminalId: string, claudeSessionId: string, projectPath: string) =>
-      ipcRenderer.invoke('session-file:watch', terminalId, claudeSessionId, projectPath),
-    unwatch: (terminalId: string) =>
-      ipcRenderer.invoke('session-file:unwatch', terminalId),
-    read: (claudeSessionId: string, projectPath: string) =>
-      ipcRenderer.invoke('session-file:read', claudeSessionId, projectPath),
-    findLatest: (projectPath: string, afterTimestamp?: number) =>
-      ipcRenderer.invoke('session-file:find-latest', projectPath, afterTimestamp),
-    onEntries: (callback: (terminalId: string, entries: unknown[]) => void) => {
-      const handler = (_: unknown, terminalId: string, entries: unknown[]) => callback(terminalId, entries)
-      ipcRenderer.on('session-file:entries', handler)
-      return () => ipcRenderer.removeListener('session-file:entries', handler)
-    },
-    onReset: (callback: (terminalId: string, entries: unknown[]) => void) => {
-      const handler = (_: unknown, terminalId: string, entries: unknown[]) => callback(terminalId, entries)
-      ipcRenderer.on('session-file:reset', handler)
-      return () => ipcRenderer.removeListener('session-file:reset', handler)
-    },
-    onError: (callback: (terminalId: string, message: string) => void) => {
-      const handler = (_: unknown, terminalId: string, message: string) => callback(terminalId, message)
-      ipcRenderer.on('session-file:error', handler)
-      return () => ipcRenderer.removeListener('session-file:error', handler)
     }
   },
   app: {

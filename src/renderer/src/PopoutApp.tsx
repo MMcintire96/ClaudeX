@@ -1,13 +1,11 @@
 import React, { useEffect, useCallback } from 'react'
 import ChatView from './components/chat/ChatView'
 import { useUIStore } from './stores/uiStore'
-import { useTerminalStore } from './stores/terminalStore'
 import { useSessionStore } from './stores/sessionStore'
 import { validateTheme } from './lib/themes'
-import type { SessionFileEntry } from './stores/sessionStore'
 
 interface PopoutAppProps {
-  terminalId: string
+  terminalId: string  // Actually a sessionId passed via URL params
   projectPath: string
   initialTheme: string | null
 }
@@ -16,7 +14,7 @@ interface PopoutAppProps {
  * Minimal renderer for the popout chat window.
  * Only renders ChatView + the IPC listeners it needs.
  */
-export default function PopoutApp({ terminalId, projectPath, initialTheme }: PopoutAppProps) {
+export default function PopoutApp({ terminalId: sessionId, projectPath, initialTheme }: PopoutAppProps) {
   const theme = useUIStore(s => s.theme)
 
   // Set initial theme from query param
@@ -42,103 +40,48 @@ export default function PopoutApp({ terminalId, projectPath, initialTheme }: Pop
     return () => channel.close()
   }, [])
 
-  // Claude session ID detection
+  // Ensure session exists in store
   useEffect(() => {
-    const unsub = window.api.terminal.onClaudeSessionId((tid, sessionId) => {
-      useTerminalStore.getState().setClaudeSessionId(tid, sessionId)
-      useSessionStore.getState().loadEntries(sessionId, projectPath, [])
-      window.api.sessionFile.watch(tid, sessionId, projectPath).then(result => {
-        if (result.success && result.entries && (result.entries as unknown[]).length > 0) {
-          useSessionStore.getState().loadEntries(
-            sessionId,
-            projectPath,
-            result.entries as SessionFileEntry[]
-          )
+    const store = useSessionStore.getState()
+    if (!store.sessions[sessionId]) {
+      store.createSession(projectPath, sessionId)
+    }
+  }, [sessionId, projectPath])
+
+  // Agent SDK event listeners
+  useEffect(() => {
+    const unsubs: Array<() => void> = []
+
+    unsubs.push(window.api.agent.onEvent(({ sessionId: sid, event }) => {
+      if (sid === sessionId) {
+        useSessionStore.getState().processEvent(sid, event)
+      }
+    }))
+
+    unsubs.push(window.api.agent.onEvents(({ sessionId: sid, events }) => {
+      if (sid === sessionId) {
+        const store = useSessionStore.getState()
+        for (const event of events) {
+          store.processEvent(sid, event)
         }
-      })
-    })
-    return unsub
-  }, [projectPath])
-
-  // Session file entries (push-based)
-  useEffect(() => {
-    const unsub = window.api.sessionFile.onEntries((tid, entries) => {
-      const sessionId = useTerminalStore.getState().claudeSessionIds[tid]
-      if (!sessionId) return
-      const store = useSessionStore.getState()
-      if (store.sessions[sessionId]) {
-        store.appendEntries(sessionId, entries as SessionFileEntry[])
-      } else {
-        store.loadEntries(sessionId, projectPath, entries as SessionFileEntry[])
       }
-    })
-    return unsub
-  }, [projectPath])
+    }))
 
-  // Session file reset
-  useEffect(() => {
-    const unsub = window.api.sessionFile.onReset((tid, entries) => {
-      const sessionId = useTerminalStore.getState().claudeSessionIds[tid]
-      if (sessionId) {
-        useSessionStore.getState().loadEntries(sessionId, projectPath, entries as SessionFileEntry[])
+    unsubs.push(window.api.agent.onClosed(({ sessionId: sid }) => {
+      if (sid === sessionId) {
+        useSessionStore.getState().setProcessing(sid, false)
       }
-    })
-    return unsub
-  }, [projectPath])
+    }))
 
-  // Claude status
-  useEffect(() => {
-    const unsub = window.api.terminal.onClaudeStatus((id, status) => {
-      useTerminalStore.getState().setClaudeStatus(id, status as 'running' | 'idle' | 'attention' | 'done')
-    })
-    return unsub
-  }, [])
-
-  // Claude rename
-  useEffect(() => {
-    const unsub = window.api.terminal.onClaudeRename((id, name) => {
-      useTerminalStore.getState().autoRenameTerminal(id, name)
-    })
-    return unsub
-  }, [])
-
-  // Context usage
-  useEffect(() => {
-    const unsub = window.api.terminal.onContextUsage((id, percent) => {
-      useTerminalStore.getState().setContextUsage(id, percent)
-    })
-    return unsub
-  }, [])
-
-  // System messages
-  useEffect(() => {
-    const unsub = window.api.terminal.onSystemMessage((tid, message) => {
-      const sessionId = useTerminalStore.getState().claudeSessionIds[tid]
-      if (sessionId) {
-        useSessionStore.getState().addSystemMessage(sessionId, message)
+    unsubs.push(window.api.agent.onError(({ sessionId: sid, error }) => {
+      if (sid === sessionId) {
+        useSessionStore.getState().addSystemMessage(sid, `Error: ${error}`)
+        useSessionStore.getState().setProcessing(sid, false)
       }
-    })
-    return unsub
-  }, [])
+    }))
 
-  // Bootstrap: fetch existing session ID for the terminal if it already exists
-  useEffect(() => {
-    window.api.terminal.getClaudeSessionId(terminalId).then(sessionId => {
-      if (sessionId) {
-        useTerminalStore.getState().setClaudeSessionId(terminalId, sessionId)
-        useSessionStore.getState().loadEntries(sessionId, projectPath, [])
-        window.api.sessionFile.watch(terminalId, sessionId, projectPath).then(result => {
-          if (result.success && result.entries && (result.entries as unknown[]).length > 0) {
-            useSessionStore.getState().loadEntries(
-              sessionId,
-              projectPath,
-              result.entries as SessionFileEntry[]
-            )
-          }
-        })
-      }
-    })
-  }, [terminalId, projectPath])
+    return () => unsubs.forEach(fn => fn())
+  }, [sessionId])
 
   // Prevent drag-and-drop navigation
   useEffect(() => {
@@ -174,7 +117,7 @@ export default function PopoutApp({ terminalId, projectPath, initialTheme }: Pop
         </button>
       </div>
       <div className="popout-body">
-        <ChatView terminalId={terminalId} projectPath={projectPath} />
+        <ChatView sessionId={sessionId} projectPath={projectPath} />
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import { TerminalTab, ClaudeTerminalStatus, useTerminalStore } from '../../stores/terminalStore'
+import type { SessionState } from '../../stores/sessionStore'
 
 interface InlineRenameProps {
   value: string
@@ -42,31 +42,6 @@ function InlineRename({ value, onCommit, onCancel }: InlineRenameProps) {
   )
 }
 
-const STATUS_COLORS: Record<ClaudeTerminalStatus, string> = {
-  running: '#50fa7b',
-  attention: '#f0a030',
-  idle: '#888',
-  done: '#666'
-}
-
-function WorktreeBadge({ terminalId }: { terminalId: string }) {
-  const isWorktree = useTerminalStore(s => {
-    const tab = s.terminals.find(t => t.id === terminalId)
-    return !!tab?.worktreePath
-  })
-  if (!isWorktree) return null
-  return (
-    <span className="worktree-badge" title="Running in worktree">
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="6" y1="3" x2="6" y2="15" />
-        <circle cx="18" cy="6" r="3" />
-        <circle cx="6" cy="18" r="3" />
-        <path d="M18 9a9 9 0 0 1-9 9" />
-      </svg>
-    </span>
-  )
-}
-
 function timeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000)
   if (seconds < 60) return 'just now'
@@ -88,13 +63,12 @@ interface ProjectTreeProps {
   projectName: string
   isCurrentProject: boolean
   isGitRepo: boolean
-  claudeTerminals: TerminalTab[]
-  claudeStatuses: Record<string, ClaudeTerminalStatus>
-  activeClaudeId: string | null
+  sdkSessions: SessionState[]
+  activeSessionId: string | null
   onSwitchToProject: () => void
-  onSelectClaudeTerminal: (id: string) => void
-  onRenameClaudeTerminal: (id: string, name: string) => void
-  onCloseTerminal: (id: string) => void
+  onSelectSession: (sessionId: string) => void
+  onRenameSession: (sessionId: string, name: string) => void
+  onCloseSession: (sessionId: string) => void
   onNewThread: () => void
   onRemoveProject: () => void
   historyEntries: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>
@@ -103,7 +77,7 @@ interface ProjectTreeProps {
 
 interface ContextMenuState {
   type: 'thread' | 'project'
-  terminalId?: string
+  sessionId?: string
   x: number
   y: number
 }
@@ -113,19 +87,18 @@ export default function ProjectTree({
   projectName,
   isCurrentProject,
   isGitRepo,
-  claudeTerminals,
-  claudeStatuses,
-  activeClaudeId,
+  sdkSessions,
+  activeSessionId,
   onSwitchToProject,
-  onSelectClaudeTerminal,
-  onRenameClaudeTerminal,
-  onCloseTerminal,
+  onSelectSession,
+  onRenameSession,
+  onCloseSession,
   onNewThread,
   onRemoveProject,
   historyEntries,
   onResumeHistory,
 }: ProjectTreeProps) {
-  const [renamingTerminalId, setRenamingTerminalId] = useState<string | null>(null)
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
   const [diffStats, setDiffStats] = useState<DiffStats | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [historyExpanded, setHistoryExpanded] = useState(false)
@@ -174,7 +147,7 @@ export default function ProjectTree({
     }
   }, [isCurrentProject, onSwitchToProject])
 
-  // Sorted history: most recent first. Only sessions with user messages are persisted.
+  // Sorted history: most recent first
   const sortedHistory = historyEntries.filter(e => !!e.claudeSessionId).slice().reverse()
   const HISTORY_COLLAPSED_LIMIT = 3
   const visibleHistory = historyExpanded ? sortedHistory : sortedHistory.slice(0, HISTORY_COLLAPSED_LIMIT)
@@ -207,53 +180,62 @@ export default function ProjectTree({
       </button>
 
       <div className="project-tree-children">
-        {/* Active threads (running Claude instances) */}
-        {claudeTerminals.map((t, i) => {
-          const status = claudeStatuses[t.id] || 'idle'
-          const isActive = isCurrentProject && activeClaudeId === t.id
-          const isRenaming = renamingTerminalId === t.id
-          const displayName = t.name || `Claude Code ${i + 1}`
-          const isRunning = status === 'running'
+        {/* Active SDK sessions */}
+        {sdkSessions.map((s, i) => {
+          const isActive = isCurrentProject && activeSessionId === s.sessionId
+          const isRenaming = renamingSessionId === s.sessionId
+          const displayName = s.name || `Claude Code ${i + 1}`
+          const isRunning = s.isProcessing
+          const status = isRunning ? 'running' : 'idle'
           return (
             <button
-              key={t.id}
+              key={s.sessionId}
               className={`tree-item tree-item-thread ${isActive ? 'active' : ''} status-${status}`}
-              onClick={() => onSelectClaudeTerminal(t.id)}
-              onDoubleClick={() => setRenamingTerminalId(t.id)}
+              onClick={() => onSelectSession(s.sessionId)}
+              onDoubleClick={() => setRenamingSessionId(s.sessionId)}
               onContextMenu={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                setContextMenu({ type: 'thread', terminalId: t.id, x: e.clientX, y: e.clientY })
+                setContextMenu({ type: 'thread', sessionId: s.sessionId, x: e.clientX, y: e.clientY })
               }}
             >
               <span
-                className={`tree-item-status-indicator ${isRunning ? 'spinner' : ''} ${status === 'attention' ? 'attention' : ''}`}
-                style={!isRunning ? { color: STATUS_COLORS[status] } : undefined}
+                className={`tree-item-status-indicator ${isRunning ? 'spinner' : ''}`}
+                style={!isRunning ? { color: '#888' } : undefined}
               >
-                {isRunning ? '' : status === 'attention' ? '\u25CF' : '\u25CB'}
+                {isRunning ? '' : '\u25CB'}
               </span>
               {isRenaming ? (
                 <InlineRename
                   value={displayName}
                   onCommit={(name) => {
-                    onRenameClaudeTerminal(t.id, name)
-                    setRenamingTerminalId(null)
+                    onRenameSession(s.sessionId, name)
+                    setRenamingSessionId(null)
                   }}
-                  onCancel={() => setRenamingTerminalId(null)}
+                  onCancel={() => setRenamingSessionId(null)}
                 />
               ) : (
                 <span className="tree-item-label">
                   {displayName}
                 </span>
               )}
-              <WorktreeBadge terminalId={t.id} />
+              {s.isWorktree && (
+                <span className="worktree-badge" title="Running in worktree">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="6" y1="3" x2="6" y2="15" />
+                    <circle cx="18" cy="6" r="3" />
+                    <circle cx="6" cy="18" r="3" />
+                    <path d="M18 9a9 9 0 0 1-9 9" />
+                  </svg>
+                </span>
+              )}
               <span className="thread-time"></span>
             </button>
           )
         })}
 
         {/* Past threads (history) */}
-        {sortedHistory.length > 0 && claudeTerminals.length > 0 && (
+        {sortedHistory.length > 0 && sdkSessions.length > 0 && (
           <div className="threads-separator" />
         )}
         {visibleHistory.map(entry => (
@@ -313,7 +295,7 @@ export default function ProjectTree({
               <button
                 className="thread-context-menu-item"
                 onClick={() => {
-                  if (contextMenu.terminalId) setRenamingTerminalId(contextMenu.terminalId)
+                  if (contextMenu.sessionId) setRenamingSessionId(contextMenu.sessionId)
                   setContextMenu(null)
                 }}
               >
@@ -322,19 +304,19 @@ export default function ProjectTree({
               <button
                 className="thread-context-menu-item"
                 onClick={() => {
-                  if (contextMenu.terminalId) onCloseTerminal(contextMenu.terminalId)
+                  if (contextMenu.sessionId) onCloseSession(contextMenu.sessionId)
                   setContextMenu(null)
                 }}
               >
                 Kill session
               </button>
-              {claudeTerminals.length > 1 && (
+              {sdkSessions.length > 1 && (
                 <button
                   className="thread-context-menu-item thread-context-menu-danger"
                   onClick={() => {
-                    const others = claudeTerminals.filter(t => t.id !== contextMenu.terminalId)
-                    for (const t of others) {
-                      onCloseTerminal(t.id)
+                    const others = sdkSessions.filter(s => s.sessionId !== contextMenu.sessionId)
+                    for (const s of others) {
+                      onCloseSession(s.sessionId)
                     }
                     setContextMenu(null)
                   }}

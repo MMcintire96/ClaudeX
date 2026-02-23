@@ -7,7 +7,6 @@ import { TerminalManager } from './terminal/TerminalManager'
 import { SettingsManager } from './settings/SettingsManager'
 import { VoiceManager } from './voice/VoiceManager'
 import { SessionPersistence } from './session/SessionPersistence'
-import { SessionFileWatcher } from './session/SessionFileWatcher'
 import { ProjectConfigManager } from './project/ProjectConfigManager'
 import { ClaudexBridgeServer } from './bridge/ClaudexBridgeServer'
 import { registerAllHandlers } from './ipc'
@@ -20,13 +19,10 @@ app.commandLine.appendSwitch('use-fake-ui-for-media-stream')
 // Enable audio capture on Linux (PulseAudio/PipeWire support for AppImage/sandboxed envs)
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-features', 'PulseAudioInput,WebRTCPipeWireCapturer')
-  // Explicitly allow autoplay for audio contexts
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 }
 
-// In dev mode, use a separate config directory so a dev instance
-// can run alongside the installed AppImage without conflicts.
-// Must run before any constructor that calls app.getPath('userData').
+// In dev mode, use a separate config directory
 if (!app.isPackaged) {
   app.setName('claudex-dev')
   app.setPath('userData', join(app.getPath('appData'), 'claudex-dev'))
@@ -39,29 +35,11 @@ const terminalManager = new TerminalManager()
 const settingsManager = new SettingsManager()
 const voiceManager = new VoiceManager()
 const sessionPersistence = new SessionPersistence()
-const sessionFileWatcher = new SessionFileWatcher()
 const projectConfigManager = new ProjectConfigManager()
 const worktreeManager = new WorktreeManager()
 const bridgeServer = new ClaudexBridgeServer(terminalManager, browserManager)
 
 let mainWindow: BrowserWindow | null = null
-let sleepBlockerId: number | null = null
-
-/** Start blocking sleep if not already blocking */
-function startSleepBlock(): void {
-  if (sleepBlockerId !== null && powerSaveBlocker.isStarted(sleepBlockerId)) return
-  sleepBlockerId = powerSaveBlocker.start('prevent-app-suspension')
-  console.log('[Main] Sleep prevention started')
-}
-
-/** Stop blocking sleep */
-function stopSleepBlock(): void {
-  if (sleepBlockerId !== null && powerSaveBlocker.isStarted(sleepBlockerId)) {
-    powerSaveBlocker.stop(sleepBlockerId)
-    console.log('[Main] Sleep prevention stopped')
-  }
-  sleepBlockerId = null
-}
 
 function createWindow(): void {
   // Remove GTK/native menu bar
@@ -82,7 +60,6 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false
     },
-    // macOS: inset title bar with traffic lights; Linux/Windows: frameless
     ...(isMac
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 15, y: 15 } }
       : { frame: false })
@@ -112,10 +89,8 @@ function createWindow(): void {
   agentManager.setMainWindow(mainWindow)
   browserManager.setMainWindow(mainWindow)
   terminalManager.setMainWindow(mainWindow)
-  terminalManager.setSettingsManager(settingsManager)
-  sessionFileWatcher.setMainWindow(mainWindow)
 
-  // Prevent the window from navigating away (e.g. when a file is dropped)
+  // Prevent the window from navigating away
   mainWindow.webContents.on('will-navigate', (e) => {
     e.preventDefault()
   })
@@ -147,47 +122,11 @@ function createWindow(): void {
   ipcMain.on('app:ui-snapshot', (_event, snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[] }) => {
     if (!isClosing) return
     try {
-      const sessions: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; lastActiveAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null }> = []
-      const allTerms = terminalManager.listAll()
-      for (const t of allTerms) {
-        const claudeSessionId = terminalManager.getClaudeSessionId(t.id)
-        if (claudeSessionId) {
-          // Only persist sessions that had user interaction
-          const entries = sessionFileWatcher.readAll(claudeSessionId, t.projectPath)
-          const hasUserMessage = entries.some(e => e.type === 'user')
-          if (!hasUserMessage) continue
-
-          const createdAt = terminalManager.getCreatedAt(t.id)
-          const wtInfo = worktreeManager.getByWorktreePath(t.projectPath)
-          const originalProjectPath = wtInfo ? wtInfo.projectPath : t.projectPath
-          sessionPersistence.addToHistory({
-            id: t.id,
-            claudeSessionId,
-            projectPath: originalProjectPath,
-            name: terminalManager.getTerminalName(t.id) || 'Claude Code',
-            createdAt,
-            endedAt: Date.now(),
-            worktreePath: wtInfo ? t.projectPath : null,
-            isWorktree: !!wtInfo
-          })
-          sessions.push({
-            id: t.id,
-            claudeSessionId,
-            projectPath: originalProjectPath,
-            name: terminalManager.getTerminalName(t.id) || 'Claude Code',
-            createdAt,
-            lastActiveAt: Date.now(),
-            worktreePath: wtInfo ? t.projectPath : null,
-            isWorktree: !!wtInfo,
-            worktreeSessionId: wtInfo ? wtInfo.sessionId : null
-          })
-        }
-      }
       sessionPersistence.saveState({
         version: 1,
         activeProjectPath: snapshot.activeProjectPath,
         expandedProjects: snapshot.expandedProjects,
-        sessions,
+        sessions: [],
         theme: snapshot.theme || 'dark',
         sidebarWidth: snapshot.sidebarWidth || 240
       })
@@ -205,57 +144,21 @@ function createWindow(): void {
     e.preventDefault()
     isClosing = true
 
-    // Ask renderer for UI snapshot
     try {
       mainWindow?.webContents.send('app:before-close')
     } catch {
       // If send fails, just destroy
     }
 
-    // Timeout fallback: if renderer doesn't respond in 300ms, save defaults and destroy
+    // Timeout fallback
     setTimeout(() => {
       if (!mainWindow) return
       try {
-        const sessions: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; lastActiveAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null }> = []
-        const allTerms = terminalManager.listAll()
-        for (const t of allTerms) {
-          const claudeSessionId = terminalManager.getClaudeSessionId(t.id)
-          if (claudeSessionId) {
-            const entries = sessionFileWatcher.readAll(claudeSessionId, t.projectPath)
-            const hasUserMessage = entries.some(e => e.type === 'user')
-            if (!hasUserMessage) continue
-
-            const createdAt = terminalManager.getCreatedAt(t.id)
-            const wtInfo = worktreeManager.getByWorktreePath(t.projectPath)
-            const originalProjectPath = wtInfo ? wtInfo.projectPath : t.projectPath
-            sessionPersistence.addToHistory({
-              id: t.id,
-              claudeSessionId,
-              projectPath: originalProjectPath,
-              name: terminalManager.getTerminalName(t.id) || 'Claude Code',
-              createdAt,
-              endedAt: Date.now(),
-              worktreePath: wtInfo ? t.projectPath : null,
-              isWorktree: !!wtInfo
-            })
-            sessions.push({
-              id: t.id,
-              claudeSessionId,
-              projectPath: originalProjectPath,
-              name: terminalManager.getTerminalName(t.id) || 'Claude Code',
-              createdAt,
-              lastActiveAt: Date.now(),
-              worktreePath: wtInfo ? t.projectPath : null,
-              isWorktree: !!wtInfo,
-              worktreeSessionId: wtInfo ? wtInfo.sessionId : null
-            })
-          }
-        }
         sessionPersistence.saveState({
           version: 1,
           activeProjectPath: null,
           expandedProjects: [],
-          sessions,
+          sessions: [],
           theme: 'dark',
           sidebarWidth: 240
         })
@@ -278,7 +181,6 @@ function createWindow(): void {
 let popoutWindow: BrowserWindow | null = null
 
 function createPopoutWindow(terminalId: string, projectPath: string, theme?: string): BrowserWindow {
-  // Close existing popout if any
   if (popoutWindow && !popoutWindow.isDestroyed()) {
     popoutWindow.close()
   }
@@ -299,24 +201,20 @@ function createPopoutWindow(terminalId: string, projectPath: string, theme?: str
     alwaysOnTop: false,
   })
 
-  // Prevent navigation away
   popout.webContents.on('will-navigate', (e) => e.preventDefault())
   popout.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
   })
 
-  // Register for broadcast
   addBroadcastWindow(popout)
 
   popout.on('closed', () => {
     removeBroadcastWindow(popout)
     if (popoutWindow === popout) popoutWindow = null
-    // Notify main window that popout was closed
     mainWindow?.webContents.send('popout:closed')
   })
 
-  // Load renderer with popout query params
   const params = `?popout=true&terminalId=${encodeURIComponent(terminalId)}&projectPath=${encodeURIComponent(projectPath)}${theme ? `&theme=${encodeURIComponent(theme)}` : ''}`
   if (process.env['ELECTRON_RENDERER_URL']) {
     popout.loadURL(process.env['ELECTRON_RENDERER_URL'] + params)
@@ -343,7 +241,6 @@ ipcMain.handle('popout:close', () => {
 })
 
 app.whenReady().then(async () => {
-  // Permission handling: only grant what's needed
   const ALLOWED_PERMISSIONS = new Set(['media', 'clipboard-read', 'clipboard-sanitized-write'])
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(ALLOWED_PERMISSIONS.has(permission))
@@ -360,28 +257,7 @@ app.whenReady().then(async () => {
   registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, {
     bridgePort: bridgeServer.port,
     bridgeToken: bridgeServer.token
-  }, sessionPersistence, projectConfigManager, sessionFileWatcher, worktreeManager)
-
-  // Sleep prevention: listen for Claude terminal status changes
-  // Track which terminals are actively running Claude
-  const runningClaudeTerminals = new Set<string>()
-  ipcMain.on('__claude-status-internal', (_event, id: string, status: string) => {
-    if (status === 'running') {
-      runningClaudeTerminals.add(id)
-    } else {
-      runningClaudeTerminals.delete(id)
-    }
-    const settings = settingsManager.get()
-    if (settings.preventSleep && runningClaudeTerminals.size > 0) {
-      startSleepBlock()
-    } else {
-      stopSleepBlock()
-    }
-  })
-  // Hook into the terminal manager's status emissions
-  terminalManager.onClaudeStatusChange((id: string, status: string) => {
-    ipcMain.emit('__claude-status-internal', {}, id, status)
-  })
+  }, sessionPersistence, projectConfigManager, undefined, worktreeManager)
 
   createWindow()
 
@@ -402,7 +278,6 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
-  stopSleepBlock()
   agentManager.stopAgent()
   terminalManager.destroy()
   voiceManager.destroy()

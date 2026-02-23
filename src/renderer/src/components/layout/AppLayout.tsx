@@ -80,7 +80,7 @@ export default function AppLayout() {
   if (sidePanelView) colParts.push(`${sidePanelWidth}px`)
   const cols = colParts.join(' ')
 
-  const hasShellTerminals = terminals.some(t => t.projectPath === currentPath && t.type !== 'claude')
+  const hasShellTerminals = terminals.some(t => t.projectPath === currentPath)
   const showTerminal = terminalPanelVisible && hasShellTerminals
 
   return (

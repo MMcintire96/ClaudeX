@@ -91,8 +91,8 @@ src/
 
 ### How agents work
 
-1. `AgentManager` spawns a `claude` CLI process with streaming JSON output
-2. `StreamParser` converts the stream into typed events
+1. `AgentManager` creates an `AgentProcess` which calls `query()` from `@anthropic-ai/claude-agent-sdk`
+2. The SDK returns an async iterator of typed messages, mapped to `AgentEvent` types
 3. Events flow to the renderer via IPC and are processed by `sessionStore`
 4. Each agent gets an MCP config pointing to `ClaudexBridgeServer`, a localhost HTTP server that exposes terminal, browser, and session tools back to the agent
 

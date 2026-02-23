@@ -6,32 +6,17 @@ import ToolUseBlock from './ToolUseBlock'
 import ToolResultBlock from './ToolResultBlock'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import FileEditBlock, { isFileEditTool } from './FileEditBlock'
+import ToolCallGroup from './ToolCallGroup'
 import PlanModeBlock from './PlanModeBlock'
 import VoiceButton from '../common/VoiceButton'
 import WorktreeBar from './WorktreeBar'
-import { useTerminalStore } from '../../stores/terminalStore'
-import type { ClaudeMode } from '../../stores/terminalStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useVimMode } from '../../hooks/useVimMode'
-
-/** Write a user message to the terminal, using bracket paste for multi-line text
- *  so the CLI treats it as a single paste rather than executing each newline as Enter. */
-async function writeMessageToTerminal(terminalId: string, text: string): Promise<void> {
-  if (text.includes('\n') || text.includes('\r')) {
-    // Wrap in bracket paste sequences + append Enter so it's sent as one atomic paste
-    await window.api.terminal.write(terminalId, `\x1b[200~${text}\x1b[201~`)
-    await new Promise(r => setTimeout(r, 50))
-    await window.api.terminal.write(terminalId, '\r')
-  } else {
-    await window.api.terminal.write(terminalId, text)
-    await new Promise(r => setTimeout(r, 50))
-    await window.api.terminal.write(terminalId, '\r')
-  }
-}
+import { useAgent } from '../../hooks/useAgent'
 
 interface ChatViewProps {
-  terminalId: string
+  sessionId: string
   projectPath: string
 }
 
@@ -49,7 +34,6 @@ function VimBlockCursor({ textareaRef, text }: { textareaRef: React.RefObject<HT
       const cursor = ta.selectionStart
       const style = window.getComputedStyle(ta)
 
-      // Mirror the textarea's text styling
       mirror.style.font = style.font
       mirror.style.letterSpacing = style.letterSpacing
       mirror.style.wordSpacing = style.wordSpacing
@@ -61,7 +45,6 @@ function VimBlockCursor({ textareaRef, text }: { textareaRef: React.RefObject<HT
       mirror.style.wordWrap = 'break-word'
       mirror.style.width = ta.offsetWidth + 'px'
 
-      // Put text up to cursor in the mirror, add a span to measure position
       const before = text.slice(0, cursor)
       mirror.innerHTML = ''
       mirror.appendChild(document.createTextNode(before))
@@ -79,7 +62,6 @@ function VimBlockCursor({ textareaRef, text }: { textareaRef: React.RefObject<HT
     }
 
     measure()
-    // Re-measure on selection changes
     const ta = textareaRef.current
     const onSelect = () => requestAnimationFrame(measure)
     ta?.addEventListener('select', onSelect)
@@ -111,14 +93,6 @@ const AVAILABLE_MODELS = [
   { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
 ]
 
-// Only non-interactive commands that don't open TUI screens
-const SLASH_COMMANDS: { cmd: string; desc: string; immediate: boolean }[] = [
-  { cmd: '/clear', desc: 'Clear conversation history', immediate: true },
-  { cmd: '/compact', desc: 'Compact context with optional instructions', immediate: false },
-
-  { cmd: '/init', desc: 'Initialize CLAUDE.md', immediate: true },
-]
-
 const EMPTY_MESSAGES: UIMessage[] = []
 const MESSAGES_PER_PAGE = 50
 
@@ -141,18 +115,9 @@ function renderHighlightedInput(text: string): React.ReactNode[] {
   return parts
 }
 
-export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
-  // For session file watching, use worktree path if this terminal runs in a worktree
-  // (Claude CLI writes session files relative to its cwd)
-  const sessionProjectPath = useTerminalStore(s => {
-    const tab = s.terminals.find(t => t.id === terminalId)
-    return tab?.worktreePath || projectPath
-  })
-
+export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const [inputText, setInputText] = useState('')
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
-  const [slashMenuOpen, setSlashMenuOpen] = useState(false)
-  const [slashFilter, setSlashFilter] = useState('')
   const [filePickerOpen, setFilePickerOpen] = useState(false)
   const [filePickerFilter, setFilePickerFilter] = useState('')
   const [filePickerFiles, setFilePickerFiles] = useState<string[]>([])
@@ -178,27 +143,19 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
   const getInputText = useCallback(() => inputTextRef.current, [])
   const vim = useVimMode(textareaRef, getInputText, setInputText, vimChatEnabled)
 
-  // Read session data from stores (push-based, cached)
-  const sessionId = useTerminalStore(s => s.claudeSessionIds[terminalId])
-  const messages = useSessionStore(s => sessionId ? s.sessions[sessionId]?.messages ?? EMPTY_MESSAGES : EMPTY_MESSAGES)
-  const detectedModel = useSessionStore(s => sessionId ? s.sessions[sessionId]?.model ?? null : null)
-  const thinkingText = useSessionStore(s => sessionId ? s.thinkingText[sessionId] ?? null : null)
-  const lastEntryType = useSessionStore(s => sessionId ? s.lastEntryType[sessionId] ?? null : null)
+  // SDK agent hook
+  const { sendMessage, startNewSession, stopAgent, isProcessing, isStreaming } = useAgent(sessionId)
 
-  const claudeMode = useTerminalStore(s => s.claudeModes[terminalId] || (skipPermissions ? 'dangerously-skip' : 'execute')) as ClaudeMode
-  const claudeModel = useTerminalStore(s => s.claudeModels[terminalId] || '')
-  const claudeStatus = useTerminalStore(s => s.claudeStatuses[terminalId] || 'idle')
-  const pendingPermission = useTerminalStore(s => s.pendingPermissions[terminalId])
-  const clearPermissionRequest = useTerminalStore(s => s.clearPermissionRequest)
-  const contextUsage = useTerminalStore(s => s.contextUsage[terminalId] || 0)
-  const toggleClaudeMode = useTerminalStore(s => s.toggleClaudeMode)
-  const setClaudeModel = useTerminalStore(s => s.setClaudeModel)
+  // Read session data from stores
+  const messages = useSessionStore(s => s.sessions[sessionId]?.messages ?? EMPTY_MESSAGES)
+  const session = useSessionStore(s => s.sessions[sessionId])
+  const detectedModel = session?.model ?? null
+  const selectedModel = session?.selectedModel ?? 'claude-opus-4-6'
+  const thinkingText = useSessionStore(s => s.thinkingText[sessionId] ?? null)
+  const streamingThinkingText = useSessionStore(s => s.streamingThinkingText[sessionId] ?? null)
+
   const gitBranch = useProjectStore(s => s.gitBranches[projectPath] ?? null)
-  const isWorktreeThread = useTerminalStore(s => !!s.terminals.find(t => t.id === terminalId)?.worktreePath)
-  const setTerminalWorktree = useTerminalStore(s => s.setTerminalWorktree)
-  const addTerminal = useTerminalStore(s => s.addTerminal)
-  const removeTerminal = useTerminalStore(s => s.removeTerminal)
-  const setActiveClaudeId = useTerminalStore(s => s.setActiveClaudeId)
+  const isWorktreeThread = session?.isWorktree ?? false
   const [worktreeMode, setWorktreeMode] = useState<'local' | 'worktree'>('local')
   const [worktreeDropdownOpen, setWorktreeDropdownOpen] = useState(false)
   const [branchPickerOpen, setBranchPickerOpen] = useState(false)
@@ -207,23 +164,14 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
   const [branchFilter, setBranchFilter] = useState('')
   const branchFilterRef = useRef<HTMLInputElement>(null)
   const [worktreeLocked, setWorktreeLocked] = useState(false)
-  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null)
   const [messageQueue, setMessageQueue] = useState<string[]>([])
   const sendingQueueRef = useRef(false)
-  const slashCommandActiveRef = useRef(false)
 
-  // Show thinking only when Claude is processing a user message (not mode toggles, slash cmds, etc.)
-  const isThinking = claudeStatus === 'running' && !slashCommandActiveRef.current && (lastEntryType === 'user' || pendingUserMessage !== null)
+  // Resolve the display model: selected > detected > fallback
+  const displayModel = selectedModel || detectedModel || 'claude-opus-4-6'
 
-  // Resolve the display model: explicit pick > detected from session > fallback
-  const displayModel = claudeModel || detectedModel || 'claude-opus-4-6'
-
-  // Clear slash command suppression when Claude goes idle
-  useEffect(() => {
-    if (claudeStatus !== 'running') {
-      slashCommandActiveRef.current = false
-    }
-  }, [claudeStatus])
+  // Show thinking only when processing
+  const isThinking = isProcessing && !isStreaming
 
   // Branch picker: load branches when opened
   const setGitBranch = useProjectStore(s => s.setGitBranch)
@@ -290,7 +238,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
   const filteredPickerFiles = useMemo(() => {
     if (!filePickerFilter) return filePickerFiles.slice(0, 20)
     const q = filePickerFilter.toLowerCase()
-    // Score: prefer filename match over path match, exact prefix over contains
     const scored = filePickerFiles
       .map(f => {
         const lower = f.toLowerCase()
@@ -309,7 +256,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
   useEffect(() => {
     if (!modelPickerOpen) return
     const handler = () => setModelPickerOpen(false)
-    // Delay to avoid closing immediately from the toggle click
     const id = setTimeout(() => document.addEventListener('click', handler), 0)
     return () => {
       clearTimeout(id)
@@ -328,10 +274,9 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     }
   }, [worktreeDropdownOpen])
 
-  // Reset transient input state when terminalId changes (session switch)
+  // Reset transient input state when sessionId changes
   useEffect(() => {
     setInputText('')
-    setPendingUserMessage(null)
     setMessageQueue([])
     sendingQueueRef.current = false
     historyIndexRef.current = -1
@@ -339,9 +284,7 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     filePickerLoadedRef.current = null
     setVisibleCount(MESSAGES_PER_PAGE)
     vim.resetToInsert()
-    // Reset worktree dropdown state
-    const tab = useTerminalStore.getState().terminals.find(t => t.id === terminalId)
-    if (tab?.worktreePath) {
+    if (isWorktreeThread) {
       setWorktreeMode('worktree')
       setWorktreeLocked(true)
     } else {
@@ -349,9 +292,8 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       setWorktreeLocked(false)
     }
     setWorktreeDropdownOpen(false)
-    watchedSessionRef.current = null
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terminalId])
+  }, [sessionId])
 
   // Listen for "Add to Claude" events from DiffPanel / ProjectTree
   useEffect(() => {
@@ -368,59 +310,25 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     return () => window.removeEventListener('claude-add-file', handler)
   }, [projectPath])
 
-  // Ensure session exists in store and file watcher is running.
-  // The primary watcher setup happens at the createClaude call site (after addTerminal).
-  // This is a fallback for edge cases (e.g. resumed sessions, /clear, or if the
-  // call site didn't set up the watcher).
-  const watchedSessionRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (!sessionId) return
-    if (watchedSessionRef.current === sessionId) return
-    watchedSessionRef.current = sessionId
-    // If session already exists in store, the watcher was set up by the call site — skip.
-    if (useSessionStore.getState().sessions[sessionId]) return
-    // Session not in store yet — set it up as a fallback
-    useSessionStore.getState().loadEntries(sessionId, sessionProjectPath, [])
-    window.api.sessionFile.watch(terminalId, sessionId, sessionProjectPath).then(result => {
-      if (result.success && result.entries && (result.entries as unknown[]).length > 0) {
-        useSessionStore.getState().loadEntries(
-          sessionId,
-          sessionProjectPath,
-          result.entries as import('../../stores/sessionStore').SessionFileEntry[]
-        )
-      }
-    })
-  }, [sessionId, terminalId, sessionProjectPath])
-
-  // Clear optimistic pending message once session file catches up
-  useEffect(() => {
-    if (lastEntryType === 'user' || lastEntryType === 'assistant') {
-      setPendingUserMessage(null)
-    }
-  }, [lastEntryType])
-
-  // Drain message queue when Claude finishes responding.
-  // Wait for lastEntryType=assistant (response is in store) + idle status,
-  // with a short delay so the UI settles before sending the next message.
+  // Drain message queue when agent finishes processing
   useEffect(() => {
     if (messageQueue.length === 0) return
-    if (claudeStatus !== 'idle') return
+    if (isProcessing) return
     if (sendingQueueRef.current) return
 
     const timeout = setTimeout(() => {
       sendingQueueRef.current = true
       const next = messageQueue[0]
       setMessageQueue(q => q.slice(1))
-      setPendingUserMessage(next)
 
       ;(async () => {
-        await writeMessageToTerminal(terminalId, next)
+        await sendMessage(next)
         sendingQueueRef.current = false
       })()
     }, 300)
 
     return () => clearTimeout(timeout)
-  }, [claudeStatus, messageQueue, terminalId])
+  }, [isProcessing, messageQueue, sendMessage])
 
   // Pre-computed lookup maps to avoid O(n²) scans in the render loop
   const toolUseById = useMemo(() => {
@@ -434,6 +342,63 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     messages.forEach(m => { if (m.type === 'tool_result') map.set((m as UIToolResultMessage).toolUseId, m as UIToolResultMessage) })
     return map
   }, [messages])
+
+  // Pre-process messages into render items: groups of completed tool calls + standalone items
+  type RenderItem =
+    | { kind: 'single'; index: number; msg: UIMessage }
+    | { kind: 'group'; indices: number[]; toolNames: string[]; msgs: UIMessage[] }
+
+  const renderItems = useMemo<RenderItem[]>(() => {
+    const items: RenderItem[] = []
+    let i = 0
+    while (i < messages.length) {
+      const msg = messages[i]
+      if (msg.type === 'tool_use') {
+        const toolMsg = msg as UIToolUseMessage
+        const isGroupable = toolMsg.toolName !== 'AskUserQuestion' && toolMsg.toolName !== 'ExitPlanMode'
+        const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
+        if (isGroupable && hasResult) {
+          const groupIndices: number[] = []
+          const groupMsgs: UIMessage[] = []
+          const groupToolNames: string[] = []
+          let j = i
+          while (j < messages.length) {
+            const m = messages[j]
+            if (m.type === 'tool_use') {
+              const tm = m as UIToolUseMessage
+              const gr = tm.toolName !== 'AskUserQuestion' && tm.toolName !== 'ExitPlanMode'
+              const hr = toolResultByToolUseId.has(tm.toolId)
+              if (gr && hr) {
+                groupIndices.push(j)
+                groupMsgs.push(m)
+                groupToolNames.push(tm.toolName)
+                j++
+                if (j < messages.length && messages[j].type === 'tool_result') {
+                  groupIndices.push(j)
+                  groupMsgs.push(messages[j])
+                  j++
+                }
+                continue
+              }
+            }
+            break
+          }
+          if (groupToolNames.length > 1) {
+            items.push({ kind: 'group', indices: groupIndices, toolNames: groupToolNames, msgs: groupMsgs })
+          } else {
+            for (const idx of groupIndices) {
+              items.push({ kind: 'single', index: idx, msg: messages[idx] })
+            }
+          }
+          i = j
+          continue
+        }
+      }
+      items.push({ kind: 'single', index: i, msg: messages[i] })
+      i++
+    }
+    return items
+  }, [messages, toolResultByToolUseId])
 
   // Search: compute matching message indices
   const searchMatches = useMemo(() => {
@@ -452,7 +417,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     return indices
   }, [messages, searchQuery])
 
-  // Build a set of matching message IDs for fast lookup
   const searchMatchIds = useMemo(() => {
     const set = new Set<string>()
     searchMatches.forEach(i => set.add(messages[i].id))
@@ -461,14 +425,12 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
 
   const currentMatchMsgId = searchMatches.length > 0 ? messages[searchMatches[currentMatchIndex]]?.id : null
 
-  // Clamp currentMatchIndex when matches change
   useEffect(() => {
     if (searchMatches.length > 0 && currentMatchIndex >= searchMatches.length) {
       setCurrentMatchIndex(searchMatches.length - 1)
     }
   }, [searchMatches, currentMatchIndex])
 
-  // Scroll to current match
   useEffect(() => {
     if (!currentMatchMsgId || !listRef.current) return
     const el = listRef.current.querySelector(`[data-msg-id="${currentMatchMsgId}"]`)
@@ -477,7 +439,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     }
   }, [currentMatchMsgId])
 
-  // Ensure matched message is within visible range
   useEffect(() => {
     if (searchMatches.length === 0) return
     const absIdx = searchMatches[currentMatchIndex]
@@ -519,13 +480,12 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
 
   // Track whether user has scrolled away from bottom
   const userScrolledUpRef = useRef(false)
-  const prevClaudeStatusRef = useRef(claudeStatus)
+  const prevProcessingRef = useRef(isProcessing)
 
   useEffect(() => {
     const el = listRef.current
     if (!el) return
     const handleScroll = () => {
-      // Consider "at bottom" if within 80px of the bottom
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
       userScrolledUpRef.current = !atBottom
     }
@@ -533,128 +493,52 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     return () => el.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // When Claude finishes (running -> idle), jump to bottom
+  // When agent finishes processing, jump to bottom
   useEffect(() => {
-    if (prevClaudeStatusRef.current === 'running' && claudeStatus === 'idle') {
+    if (prevProcessingRef.current && !isProcessing) {
       userScrolledUpRef.current = false
       if (listRef.current) {
         listRef.current.scrollTop = listRef.current.scrollHeight
       }
     }
-    prevClaudeStatusRef.current = claudeStatus
-  }, [claudeStatus])
+    prevProcessingRef.current = isProcessing
+  }, [isProcessing])
 
-  // Auto-scroll to bottom only when user hasn't scrolled up (and search is not active)
+  // Auto-scroll to bottom only when user hasn't scrolled up
   useEffect(() => {
     if (searchOpen && searchQuery) return
     if (userScrolledUpRef.current) return
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight
     }
-  }, [messages, messageQueue, pendingUserMessage, searchOpen, searchQuery])
-
-  const handlePermissionAllow = useCallback(async () => {
-    const perm = pendingPermission
-    clearPermissionRequest(terminalId)
-    if (perm?.promptType === 'enter') {
-      // Enter/Esc style prompt — press Enter to confirm
-      await window.api.terminal.write(terminalId, '\r')
-    } else {
-      // y/n style prompt
-      await window.api.terminal.write(terminalId, 'y')
-      await window.api.terminal.write(terminalId, '\r')
-    }
-  }, [terminalId, clearPermissionRequest, pendingPermission])
-
-  const handlePermissionDeny = useCallback(async () => {
-    const perm = pendingPermission
-    clearPermissionRequest(terminalId)
-    if (perm?.promptType === 'enter') {
-      // Enter/Esc style prompt — press Esc to cancel
-      await window.api.terminal.write(terminalId, '\x1b')
-    } else {
-      // y/n style prompt
-      await window.api.terminal.write(terminalId, 'n')
-      await window.api.terminal.write(terminalId, '\r')
-    }
-  }, [terminalId, clearPermissionRequest, pendingPermission])
+  }, [messages, messageQueue, searchOpen, searchQuery])
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim()
     if (!text) return
 
-    // On first real message: if worktree mode selected, create worktree and restart terminal there
-    let activeTerminalId = terminalId
-    if (!worktreeLocked && worktreeMode === 'worktree' && !text.startsWith('/')) {
+    // On first real message: if worktree mode selected, use worktree
+    if (!worktreeLocked && worktreeMode === 'worktree') {
       setWorktreeLocked(true)
-      setPendingUserMessage(text)
-      setInputText('')
-      if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
-      const wtSessionId = `wt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-      const wtResult = await window.api.worktree.create({
-        projectPath,
-        sessionId: wtSessionId
-      })
-      if (!wtResult.success || !wtResult.worktree) {
-        setPendingUserMessage(null)
-        setWorktreeLocked(false)
-        return
-      }
-
-      // Grab the current terminal name before removing it
-      const oldName = useTerminalStore.getState().terminals.find(t => t.id === terminalId)?.name || 'Claude Code'
-
-      // Close the current terminal and create a new one in the worktree
-      await window.api.terminal.close(terminalId)
-      removeTerminal(terminalId)
-
-      const newResult = await window.api.terminal.createClaude(wtResult.worktree.worktreePath)
-      if (!newResult.success || !newResult.id) {
-        setPendingUserMessage(null)
-        return
-      }
-
-      // Use the original projectPath so the terminal groups under the right project
-      addTerminal({
-        id: newResult.id,
-        projectPath,
-        pid: newResult.pid!,
-        name: oldName,
-        type: 'claude',
-        worktreePath: wtResult.worktree.worktreePath
-      })
-      setActiveClaudeId(projectPath, newResult.id)
-      activeTerminalId = newResult.id
-      if (newResult.claudeSessionId) {
-        const watchPath = wtResult.worktree.worktreePath
-        useTerminalStore.getState().setClaudeSessionId(newResult.id, newResult.claudeSessionId)
-        useSessionStore.getState().loadEntries(newResult.claudeSessionId, watchPath, [])
-        window.api.sessionFile.watch(newResult.id, newResult.claudeSessionId, watchPath)
-      }
-
-      // Wait for Claude CLI to initialize in the new terminal
-      await new Promise(r => setTimeout(r, 1500))
-
-      // Add to history and send the message to the new terminal
+      // Add to history
       historyRef.current.push(text)
       historyIndexRef.current = -1
       savedInputRef.current = ''
 
-      if (pendingModelRef.current) {
-        await window.api.terminal.write(activeTerminalId, `/model ${pendingModelRef.current}`)
-        await new Promise(r => setTimeout(r, 50))
-        await window.api.terminal.write(activeTerminalId, '\r')
-        pendingModelRef.current = null
-        await new Promise(r => setTimeout(r, 200))
-      }
+      setInputText('')
+      if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
-      await writeMessageToTerminal(activeTerminalId, text)
+      // Start a new session with worktree
+      const newId = await startNewSession(text, { useWorktree: true })
+      if (!newId) {
+        setWorktreeLocked(false)
+      }
       return
     }
 
-    // Lock the dropdown after first non-slash message
-    if (!worktreeLocked && !text.startsWith('/')) {
+    // Lock the dropdown after first message
+    if (!worktreeLocked) {
       setWorktreeLocked(true)
     }
 
@@ -664,69 +548,39 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     savedInputRef.current = ''
 
     setInputText('')
-    setSlashMenuOpen(false)
-    setSlashFilter('')
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
 
-    // Handle slash commands — suppress thinking indicator for all slash cmds
-    if (text.startsWith('/')) {
-      slashCommandActiveRef.current = true
-      if (text === '/clear' || text.startsWith('/clear ')) {
-        setPendingUserMessage(null)
-        setMessageQueue([])
-      }
-      // Intercept /model — defer to next message send
-      if (text.startsWith('/model ')) {
-        const modelId = text.slice(7).trim()
-        if (modelId) {
-          setClaudeModel(terminalId, modelId)
-          pendingModelRef.current = modelId
-          return
-        }
-      }
-    } else if (claudeStatus === 'running') {
-      // Claude is busy — queue the message
+    if (isProcessing) {
+      // Agent is busy — queue the message
       setMessageQueue(q => [...q, text])
       return
+    }
+
+    // Check if session has had a first turn — if not, start new; else send follow-up
+    const sessionState = useSessionStore.getState().sessions[sessionId]
+    if (!sessionState || sessionState.messages.length === 0) {
+      // First message — start the agent
+      await startNewSession(text)
     } else {
-      // Optimistic: show user message immediately before session file catches up
-      setPendingUserMessage(text)
+      // Follow-up message
+      await sendMessage(text)
     }
-
-    // Apply pending model switch before sending the message
-    if (pendingModelRef.current) {
-      await window.api.terminal.write(activeTerminalId, `/model ${pendingModelRef.current}`)
-      await new Promise(r => setTimeout(r, 50))
-      await window.api.terminal.write(activeTerminalId, '\r')
-      pendingModelRef.current = null
-      await new Promise(r => setTimeout(r, 200))
-    }
-
-    await writeMessageToTerminal(activeTerminalId, text)
-  }, [inputText, terminalId, claudeStatus, setClaudeModel, worktreeMode, worktreeLocked, projectPath, removeTerminal, addTerminal, setActiveClaudeId])
-
-  const handleToggleMode = useCallback(() => {
-    toggleClaudeMode(terminalId, skipPermissions)
-    window.api.terminal.write(terminalId, '\x1b[Z')
-  }, [terminalId, toggleClaudeMode, skipPermissions])
-
-  const pendingModelRef = useRef<string | null>(null)
+  }, [inputText, sessionId, isProcessing, worktreeMode, worktreeLocked, startNewSession, sendMessage])
 
   const handleModelChange = useCallback((modelId: string) => {
-    setClaudeModel(terminalId, modelId)
     setModelPickerOpen(false)
-    // Defer the /model command until the next message is sent
-    pendingModelRef.current = modelId
-  }, [terminalId, setClaudeModel])
+    useSessionStore.getState().setSelectedModel(sessionId, modelId)
+    // Also tell the backend
+    window.api.agent.setModel(sessionId, modelId)
+  }, [sessionId])
 
   const handleFilePickerSelect = useCallback((filePath: string) => {
     const ta = textareaRef.current
     if (!ta) return
     const cursor = ta.selectionStart
     const text = inputText
-    // Find the @ that triggered this picker (search backwards from cursor)
     let atPos = -1
     for (let i = cursor - 1; i >= 0; i--) {
       if (text[i] === '@') { atPos = i; break }
@@ -751,17 +605,16 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     }, 0)
   }, [inputText])
 
-  // ESC interrupt tracking: 3 presses in insert mode, 2 in normal mode
+  // ESC interrupt tracking
   const escCountRef = useRef(0)
   const lastEscTimeRef = useRef(0)
   const escThresholdRef = useRef(3)
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // ESC interrupt: track consecutive ESC presses to interrupt Claude
-    if (e.key === 'Escape' && claudeStatus === 'running') {
+    // ESC interrupt: track consecutive ESC presses to stop agent
+    if (e.key === 'Escape' && isProcessing) {
       const now = Date.now()
       if (now - lastEscTimeRef.current > 1500) {
-        // Start new sequence — set threshold based on current mode
         escCountRef.current = 0
         escThresholdRef.current = (vimChatEnabled && vim.mode === 'normal') ? 2 : 3
       }
@@ -771,17 +624,14 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       if (escCountRef.current >= escThresholdRef.current) {
         e.preventDefault()
         escCountRef.current = 0
-        // Send ESC twice to interrupt Claude (native Claude CLI interrupt)
-        window.api.terminal.write(terminalId, '\x1b')
-        window.api.terminal.write(terminalId, '\x1b')
+        stopAgent()
         return
       }
     } else if (e.key !== 'Escape') {
-      // Reset ESC counter on any non-ESC key
       escCountRef.current = 0
     }
 
-    // Vim mode handling (runs first — consumes keys in normal/visual mode)
+    // Vim mode handling
     if (vim.handleKeyDown(e)) return
 
     // File picker keyboard nav
@@ -808,7 +658,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       }
     }
 
-
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -823,7 +672,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       e.preventDefault()
 
       if (historyIndexRef.current === -1) {
-        // Save current input before navigating history
         savedInputRef.current = inputText
         historyIndexRef.current = history.length - 1
       } else if (historyIndexRef.current > 0) {
@@ -844,16 +692,14 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
         historyIndexRef.current++
         setInputText(history[historyIndexRef.current])
       } else {
-        // Back to saved input
         historyIndexRef.current = -1
         setInputText(savedInputRef.current)
       }
     }
-  }, [handleSend, handleToggleMode, inputText, filePickerOpen, filteredPickerFiles, filePickerIndex, handleFilePickerSelect, vim, claudeStatus, vimChatEnabled, terminalId])
+  }, [handleSend, inputText, filePickerOpen, filteredPickerFiles, filePickerIndex, handleFilePickerSelect, vim, isProcessing, vimChatEnabled, stopAgent])
 
   const handleVoiceTranscript = useCallback((text: string) => {
     setInputText(prev => prev + text)
-    // Focus the textarea after voice input
     if (textareaRef.current) {
       textareaRef.current.focus()
     }
@@ -884,51 +730,12 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     }
   }, [])
 
-  const handleSlashSelect = useCallback(async (cmd: string, immediate: boolean) => {
-    setSlashMenuOpen(false)
-    setSlashFilter('')
-
-    if (immediate) {
-      setInputText('')
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto'
-      }
-
-      // Suppress thinking indicator for slash commands
-      slashCommandActiveRef.current = true
-
-      if (cmd === '/clear') {
-        setPendingUserMessage(null)
-      }
-
-      await window.api.terminal.write(terminalId, cmd)
-      await new Promise(r => setTimeout(r, 50))
-      await window.api.terminal.write(terminalId, '\r')
-    } else {
-      // Populate input for commands that need arguments
-      setInputText(cmd + ' ')
-      textareaRef.current?.focus()
-    }
-  }, [terminalId])
-
-
   const handleTextareaChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInputText(val)
-    // Reset history navigation when user types
     historyIndexRef.current = -1
 
-    // Slash command detection
-    if (val.startsWith('/')) {
-      const filter = val.slice(1).toLowerCase()
-      setSlashFilter(filter)
-      setSlashMenuOpen(true)
-    } else {
-      setSlashMenuOpen(false)
-      setSlashFilter('')
-    }
-
-    // @ file picker detection — find @ before cursor with no space after it
+    // @ file picker detection
     const cursor = e.target.selectionStart
     let atPos = -1
     for (let i = cursor - 1; i >= 0; i--) {
@@ -945,13 +752,13 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       setFilePickerFilter('')
     }
 
-    // Auto-resize — textarea grows to full content height, wrapper handles scroll
+    // Auto-resize
     const el = e.target
     el.style.height = 'auto'
     el.style.height = el.scrollHeight + 'px'
   }, [])
 
-  // Drag-and-drop file handling — insert dropped files as @filepath references
+  // Drag-and-drop file handling
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -987,10 +794,8 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     const paths: string[] = []
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
-      // Electron 40+: use webUtils.getPathForFile() via preload bridge
       const filePath = window.api.utils.getPathForFile(file)
       if (filePath) {
-        // Make path relative to project if it's inside the project
         const relativePath = filePath.startsWith(projectPath + '/')
           ? filePath.slice(projectPath.length + 1)
           : filePath
@@ -1006,7 +811,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
         const prefix = prev.length > 0 && !prev.endsWith(' ') ? prev + ' ' : prev
         return prefix + refs + ' '
       })
-      // Focus textarea and trigger resize
       if (textareaRef.current) {
         textareaRef.current.focus()
         requestAnimationFrame(() => {
@@ -1019,6 +823,54 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
     }
   }, [projectPath])
 
+  const renderSingleMessage = useCallback((msg: UIMessage, absIdx: number) => {
+    const isMatch = searchMatchIds.has(msg.id)
+    const isCurrent = msg.id === currentMatchMsgId
+    const matchClass = isMatch ? (isCurrent ? ' search-match search-match-current' : ' search-match') : ''
+    if (msg.type === 'text') {
+      return (
+        <div key={msg.id} data-msg-id={msg.id} className={matchClass}>
+          <MessageBubble message={msg as UITextMessage} searchQuery={searchOpen ? searchQuery : ''} />
+        </div>
+      )
+    } else if (msg.type === 'tool_use') {
+      const toolMsg = msg as UIToolUseMessage
+      if (toolMsg.toolName === 'AskUserQuestion') {
+        const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
+        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><AskUserQuestionBlock message={toolMsg} terminalId={sessionId} answered={hasResult} /></div>
+      }
+      if (toolMsg.toolName === 'ExitPlanMode') {
+        const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
+        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><PlanModeBlock message={toolMsg} terminalId={sessionId} answered={hasResult} /></div>
+      }
+      if (isFileEditTool(toolMsg.toolName)) {
+        const pairedResult = toolResultByToolUseId.get(toolMsg.toolId)
+        const hasResult = !!pairedResult
+        const isLast = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
+        const needsPermission = !skipPermissions && !hasResult && isLast
+        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult ?? null} awaitingPermission={needsPermission} terminalId={sessionId} /></div>
+      }
+      const hasToolResult = toolResultByToolUseId.has(toolMsg.toolId)
+      const isLastToolUse = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
+      const awaitingPermission = !skipPermissions && !hasToolResult && isLastToolUse
+      return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolUseBlock message={toolMsg} awaitingPermission={awaitingPermission} terminalId={sessionId} /></div>
+    } else if (msg.type === 'tool_result') {
+      const resultMsg = msg as UIToolResultMessage
+      const parentTool = toolUseById.get(resultMsg.toolUseId)
+      if (parentTool?.toolName === 'AskUserQuestion') return null
+      if (parentTool?.toolName === 'ExitPlanMode') return null
+      if (parentTool && isFileEditTool(parentTool.toolName)) return null
+      return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolResultBlock message={resultMsg} /></div>
+    } else if (msg.type === 'system') {
+      return (
+        <div key={msg.id} data-msg-id={msg.id} className={`system-message${matchClass}`}>
+          <span className="system-message-text">{msg.content}</span>
+        </div>
+      )
+    }
+    return null
+  }, [messages, searchMatchIds, currentMatchMsgId, searchOpen, searchQuery, toolResultByToolUseId, toolUseById, skipPermissions, sessionId])
+
   return (
     <div
       className={`chat-view${dragOver ? ' drag-over' : ''}`}
@@ -1028,7 +880,7 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
       onDrop={handleDrop}
     >
       {/* Worktree action bar */}
-      <WorktreeBar sessionId={sessionId || ''} terminalId={terminalId} projectPath={projectPath} />
+      <WorktreeBar sessionId={sessionId} terminalId={sessionId} projectPath={projectPath} />
 
       {/* Search bar */}
       {searchOpen && (
@@ -1075,7 +927,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
                 const scrollEl = listRef.current
                 const prevHeight = scrollEl?.scrollHeight ?? 0
                 setVisibleCount(c => Math.min(c + MESSAGES_PER_PAGE, messages.length))
-                // Preserve scroll position after loading older messages
                 requestAnimationFrame(() => {
                   if (scrollEl) {
                     scrollEl.scrollTop += scrollEl.scrollHeight - prevHeight
@@ -1086,70 +937,48 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
               Show {Math.min(MESSAGES_PER_PAGE, messages.length - visibleCount)} earlier messages
             </button>
           )}
-          {messages.length === 0 ? null : (
-            messages.slice(Math.max(0, messages.length - visibleCount)).map((msg, _i, sliced) => {
-              // Compute absolute index for lookups within the full messages array
-              const absIdx = messages.length - sliced.length + _i
-              const isMatch = searchMatchIds.has(msg.id)
-              const isCurrent = msg.id === currentMatchMsgId
-              const matchClass = isMatch ? (isCurrent ? ' search-match search-match-current' : ' search-match') : ''
-              if (msg.type === 'text') {
+          {renderItems.length === 0 ? null : (
+            renderItems.map((item, itemIdx) => {
+              if (item.kind === 'group') {
+                const startIdx = Math.max(0, messages.length - visibleCount)
+                if (item.indices[item.indices.length - 1] < startIdx) return null
                 return (
-                  <div key={msg.id} data-msg-id={msg.id} className={matchClass}>
-                    <MessageBubble message={msg as UITextMessage} searchQuery={searchOpen ? searchQuery : ''} />
-                  </div>
-                )
-              } else if (msg.type === 'tool_use') {
-                const toolMsg = msg as UIToolUseMessage
-                if (toolMsg.toolName === 'AskUserQuestion') {
-                  const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
-                  return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><AskUserQuestionBlock message={toolMsg} terminalId={terminalId} answered={hasResult} /></div>
-                }
-                if (toolMsg.toolName === 'ExitPlanMode') {
-                  const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
-                  return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><PlanModeBlock message={toolMsg} terminalId={terminalId} answered={hasResult} /></div>
-                }
-                if (isFileEditTool(toolMsg.toolName)) {
-                  const pairedResult = toolResultByToolUseId.get(toolMsg.toolId)
-                  const hasResult = !!pairedResult
-                  const isLast = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
-                  const needsPermission = !skipPermissions && !hasResult && isLast
-                  return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult ?? null} awaitingPermission={needsPermission} terminalId={terminalId} /></div>
-                }
-                const hasToolResult = toolResultByToolUseId.has(toolMsg.toolId)
-                const isLastToolUse = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
-                const awaitingPermission = !skipPermissions && !hasToolResult && isLastToolUse
-                return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolUseBlock message={toolMsg} awaitingPermission={awaitingPermission} terminalId={terminalId} /></div>
-              } else if (msg.type === 'tool_result') {
-                const resultMsg = msg as UIToolResultMessage
-                const parentTool = toolUseById.get(resultMsg.toolUseId)
-                if (parentTool?.toolName === 'AskUserQuestion') return null
-                if (parentTool?.toolName === 'ExitPlanMode') return null
-                if (parentTool && isFileEditTool(parentTool.toolName)) return null
-                return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolResultBlock message={resultMsg} /></div>
-              } else if (msg.type === 'system') {
-                return (
-                  <div key={msg.id} data-msg-id={msg.id} className={`system-message${matchClass}`}>
-                    <span className="system-message-text">{msg.content}</span>
-                  </div>
+                  <ToolCallGroup key={`group-${itemIdx}`} toolNames={item.toolNames}>
+                    {item.msgs.map(msg => renderSingleMessage(msg, messages.indexOf(msg)))}
+                  </ToolCallGroup>
                 )
               }
-              return null
+              const { msg, index: absIdx } = item
+              const startIdx = Math.max(0, messages.length - visibleCount)
+              if (absIdx < startIdx) return null
+              return renderSingleMessage(msg, absIdx)
             })
           )}
 
-          {/* Optimistic user message (shown before session file catches up) */}
-          {pendingUserMessage && (
-            <MessageBubble
-              message={{
-                id: 'pending-user',
-                role: 'user',
-                type: 'text',
-                content: pendingUserMessage,
-                timestamp: Date.now()
-              } as UITextMessage}
-            />
-          )}
+          {/* Retry button */}
+          {!isProcessing && messages.length > 0 && (() => {
+            const lastMsg = messages[messages.length - 1]
+            const isAssistantLast = lastMsg.type === 'text' && (lastMsg as UITextMessage).role === 'assistant'
+              || lastMsg.type === 'tool_use' || lastMsg.type === 'tool_result'
+            if (!isAssistantLast) return null
+            const lastUserMsg = [...messages].reverse().find(m => m.type === 'text' && (m as UITextMessage).role === 'user') as UITextMessage | undefined
+            if (!lastUserMsg) return null
+            return (
+              <button
+                className="btn-retry"
+                onClick={() => {
+                  sendMessage(lastUserMsg.content)
+                }}
+                title="Re-send last message"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10"/>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+                Retry
+              </button>
+            )
+          })()}
 
         </div>
       </div>
@@ -1162,11 +991,13 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
               <span className="thinking-dot" />
               <span className="thinking-dot" />
             </div>
-            <span className="thinking-label">
-              {thinkingText
-                ? thinkingText
-                : 'Thinking...'}
-            </span>
+            {(streamingThinkingText || thinkingText) ? (
+              <div className="thinking-label thinking-label-streaming">
+                {streamingThinkingText || thinkingText}
+              </div>
+            ) : (
+              <span className="thinking-label">Thinking...</span>
+            )}
           </div>
         )}
 
@@ -1216,38 +1047,18 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
           </div>
         )}
 
-        {/* Slash command menu */}
-        {slashMenuOpen && (
-          <div className="slash-menu">
-            {SLASH_COMMANDS
-              .filter(c => !slashFilter || c.cmd.slice(1).startsWith(slashFilter))
-              .map(c => (
-                <button
-                  key={c.cmd}
-                  className="slash-menu-item"
-                  onMouseDown={(e) => { e.preventDefault(); handleSlashSelect(c.cmd, c.immediate) }}
-                >
-                  <span className="slash-cmd">{c.cmd}</span>
-                  <span className="slash-desc">{c.desc}</span>
-                </button>
-              ))
-            }
-          </div>
-        )}
-
         <div className="input-bar">
           <div className="textarea-wrapper">
             <div className="input-highlight-overlay" aria-hidden="true">
-              {inputText ? renderHighlightedInput(inputText) : <span className="input-highlight-placeholder">Ask for follow-up changes... (/ for commands)</span>}
+              {inputText ? renderHighlightedInput(inputText) : <span className="input-highlight-placeholder">Message Claude... (Enter to send)</span>}
             </div>
             <textarea
               ref={textareaRef}
               className={`input-textarea${vimChatEnabled && vim.mode !== 'insert' ? ' vim-normal' : ''}${inputText ? ' has-content' : ''}`}
-              placeholder="Ask for follow-up changes... (/ for commands)"
+              placeholder="Message Claude... (Enter to send)"
               value={inputText}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
-              onBlur={() => { setTimeout(() => setSlashMenuOpen(false), 150) }}
               rows={2}
             />
             {vimChatEnabled && vim.mode !== 'insert' && (
@@ -1281,13 +1092,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
                   </div>
                 )}
               </div>
-              <button
-                className={`btn-mode-toggle ${claudeMode === 'plan' ? 'mode-plan' : claudeMode === 'accept-edits' ? 'mode-accept-edits' : claudeMode === 'dangerously-skip' ? 'mode-dangerous' : 'mode-execute'}`}
-                onClick={handleToggleMode}
-                title={`Mode: ${claudeMode}`}
-              >
-                {claudeMode === 'plan' ? 'Plan' : claudeMode === 'accept-edits' ? 'Accept Edits' : claudeMode === 'dangerously-skip' ? 'Yolo' : 'Normal'}
-              </button>
             </div>
             <div className="input-actions">
               {vimChatEnabled && (
@@ -1426,15 +1230,6 @@ export default function ChatView({ terminalId, projectPath }: ChatViewProps) {
             )}
           </div>
           <div className="input-footer-right">
-            <div
-              className={`context-meter ${contextUsage > 80 ? 'context-danger' : contextUsage > 50 ? 'context-warn' : ''}`}
-              title={`Context: ${contextUsage}% used, ${100 - contextUsage}% remaining`}
-            >
-              <div className="context-bar">
-                <div className="context-bar-fill" style={{ width: `${contextUsage}%` }} />
-              </div>
-              <span className="context-label">{100 - contextUsage}%</span>
-            </div>
           </div>
         </div>
       </div>

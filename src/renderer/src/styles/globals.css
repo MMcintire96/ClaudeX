@@ -1258,8 +1258,72 @@ body {
 .diff-line-added .diff-sign {
   color: #44cc44;
 }
+/* Syntax highlighting tokens in diffs — override diff color with token color */
+.diff-line .hljs-keyword { color: #c678dd; }
+.diff-line .hljs-string { color: #98c379; }
+.diff-line .hljs-number { color: #d19a66; }
+.diff-line .hljs-built_in { color: #e5c07b; }
+.diff-line .hljs-comment { color: #5c6370; font-style: italic; }
+.diff-line .hljs-type,
+.diff-line .hljs-title { color: #61afef; }
+.diff-line .hljs-attr,
+.diff-line .hljs-attribute { color: #d19a66; }
+.diff-line .hljs-literal { color: #56b6c2; }
+.diff-line .hljs-punctuation { color: #abb2bf; }
+.diff-line .hljs-meta { color: #5c6370; }
+.diff-line .hljs-selector-class,
+.diff-line .hljs-selector-tag { color: #e06c75; }
+.diff-line .hljs-template-variable,
+.diff-line .hljs-variable { color: #e06c75; }
+.diff-line .hljs-params { color: #abb2bf; }
+.diff-line .hljs-function { color: #61afef; }
+.diff-line .hljs-regexp { color: #98c379; }
 .diff-removed + .diff-added {
   border-top: 1px dashed color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+/* ===== TOOL CALL GROUP ===== */
+.tool-call-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 4px 0;
+  overflow: hidden;
+}
+.tool-call-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.tool-call-group-header:hover {
+  background: var(--bg-tertiary, var(--bg-secondary));
+  color: var(--text-primary);
+}
+.tool-call-group-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.tool-call-group-summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-call-group-chevron {
+  flex-shrink: 0;
+  font-size: 10px;
+  opacity: 0.5;
+}
+.tool-call-group-body {
+  border-top: 1px solid var(--border);
+  padding: 4px 0;
 }
 
 /* Content preview for Write tool */
@@ -1955,6 +2019,33 @@ body {
   opacity: 1;
 }
 
+/* ===== RETRY BUTTON ===== */
+.btn-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  margin: 8px 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-retry:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+.btn-retry svg {
+  opacity: 0.7;
+}
+.btn-retry:hover svg {
+  opacity: 1;
+}
+
 /* ===== THINKING INDICATOR ===== */
 .thinking-indicator {
   display: flex;
@@ -2012,6 +2103,15 @@ body {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+.thinking-label-streaming {
+  display: block;
+  max-height: 120px;
+  overflow-y: auto;
+  -webkit-line-clamp: unset;
+  -webkit-box-orient: unset;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ===== PERMISSION REQUEST BAR ===== */

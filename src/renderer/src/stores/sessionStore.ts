@@ -237,6 +237,7 @@ interface SessionStore {
 
   // Per-session metadata from JSONL file watching
   thinkingText: Record<string, string | null>
+  streamingThinkingText: Record<string, string | null>
   lastEntryType: Record<string, string | null>
 
   // Per-project memory: remembers last active session per project
@@ -263,6 +264,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: {},
   activeSessionId: null,
   thinkingText: {},
+  streamingThinkingText: {},
   lastEntryType: {},
   projectSessionMemory: {},
 
@@ -361,6 +363,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             }))
             break
           }
+          case 'content_block_start': {
+            const contentBlock = streamEvent.content_block as Record<string, unknown>
+            if (contentBlock?.type === 'thinking') {
+              set(s => ({
+                streamingThinkingText: { ...s.streamingThinkingText, [sessionId]: '' }
+              }))
+            }
+            break
+          }
           case 'content_block_delta': {
             const delta = streamEvent.delta as Record<string, unknown>
             if (delta?.type === 'text_delta') {
@@ -373,6 +384,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                   }
                 }
               }))
+            } else if (delta?.type === 'thinking_delta') {
+              set(s => ({
+                streamingThinkingText: {
+                  ...s.streamingThinkingText,
+                  [sessionId]: (s.streamingThinkingText[sessionId] || '') + (delta.thinking as string)
+                }
+              }))
             }
             break
           }
@@ -381,7 +399,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
               sessions: {
                 ...s.sessions,
                 [sessionId]: { ...s.sessions[sessionId], isStreaming: false }
-              }
+              },
+              streamingThinkingText: { ...s.streamingThinkingText, [sessionId]: null }
             }))
             break
           }
@@ -585,7 +604,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const parsed = parseEntries(entries)
     const latestThinking = parsed.thinkingBlocks.filter(t => t.isLatest)
     const thinking = latestThinking.length > 0
-      ? (() => { const t = latestThinking[latestThinking.length - 1].text; return t.length > 200 ? t.slice(0, 197) + '...' : t })()
+      ? latestThinking[latestThinking.length - 1].text
       : null
 
     set(s => {
@@ -607,7 +626,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     const latestThinking = parsed.thinkingBlocks.filter(t => t.isLatest)
     const thinking = latestThinking.length > 0
-      ? (() => { const t = latestThinking[latestThinking.length - 1].text; return t.length > 200 ? t.slice(0, 197) + '...' : t })()
+      ? latestThinking[latestThinking.length - 1].text
       : null
 
     set(s => {

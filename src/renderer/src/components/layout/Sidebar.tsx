@@ -3,9 +3,7 @@ import { useProjectStore } from '../../stores/projectStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useSessionStore } from '../../stores/sessionStore'
-import type { SessionFileEntry } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
-import CostTracker from '../common/CostTracker'
 import ProjectTree from './ProjectTree'
 
 export default function Sidebar() {
@@ -20,10 +18,14 @@ export default function Sidebar() {
   } = useUIStore()
   const { loadSettings } = useSettingsStore()
   const {
-    terminals, addTerminal, removeTerminal, switchToProjectTerminals,
-    manualRenameTerminal,
-    claudeStatuses, activeClaudeId, setActiveClaudeId
+    terminals, removeTerminal, switchToProjectTerminals
   } = useTerminalStore()
+
+  const activeSessionId = useSessionStore(s => s.activeSessionId)
+  const sessions = useSessionStore(s => s.sessions)
+  const createSession = useSessionStore(s => s.createSession)
+  const setActiveSession = useSessionStore(s => s.setActiveSession)
+  const removeSession = useSessionStore(s => s.removeSession)
 
   useEffect(() => {
     window.api.project.recent().then(setRecent)
@@ -71,119 +73,61 @@ export default function Sidebar() {
     setCreatingThread(true)
     try {
       const cleanName = entry.name.replace(/^[^\w\s]+\s*/, '') || entry.name
-      const resumePath = entry.worktreePath || entry.projectPath
-      const result = await window.api.terminal.createClaudeResume(
-        resumePath,
-        entry.claudeSessionId,
-        cleanName
-      )
-      if (result.success && result.id) {
-        addTerminal({
-          id: result.id,
-          projectPath: entry.projectPath,
-          pid: result.pid!,
-          name: cleanName,
-          type: 'claude',
-          worktreePath: entry.worktreePath || undefined
-        })
-        manualRenameTerminal(result.id, cleanName)
-        setActiveClaudeId(entry.projectPath, result.id)
 
-        // Explicitly set session ID and start watching the session file.
-        // The onClaudeSessionId listener may have fired before addTerminal,
-        // missing the terminal lookup and skipping the file watcher setup.
-        const watchPath = entry.worktreePath || entry.projectPath
-        useTerminalStore.getState().setClaudeSessionId(result.id, entry.claudeSessionId)
-        useSessionStore.getState().loadEntries(entry.claudeSessionId, watchPath, [])
-        window.api.sessionFile.watch(result.id, entry.claudeSessionId, watchPath).then(watchResult => {
-          if (watchResult.success && watchResult.entries && (watchResult.entries as unknown[]).length > 0) {
-            useSessionStore.getState().loadEntries(
-              entry.claudeSessionId,
-              watchPath,
-              watchResult.entries as SessionFileEntry[]
-            )
-          }
-        })
+      // Create a session in the store and set it active
+      createSession(entry.projectPath, entry.claudeSessionId, {
+        worktreePath: entry.worktreePath || undefined,
+      })
+      useSessionStore.getState().renameSession(entry.claudeSessionId, cleanName)
 
-        setHistoryByProject(prev => ({
-          ...prev,
-          [entry.projectPath]: (prev[entry.projectPath] || []).filter(e => e.claudeSessionId !== entry.claudeSessionId)
-        }))
-        if (entry.projectPath !== currentPath) {
-          await switchToProject(entry.projectPath)
-        }
+      setHistoryByProject(prev => ({
+        ...prev,
+        [entry.projectPath]: (prev[entry.projectPath] || []).filter(e => e.claudeSessionId !== entry.claudeSessionId)
+      }))
+      if (entry.projectPath !== currentPath) {
+        await switchToProject(entry.projectPath)
       }
     } finally {
       setCreatingThread(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addTerminal, manualRenameTerminal, setActiveClaudeId, currentPath])
+  }, [createSession, currentPath])
 
-  const getClaudeTerminalsForProject = (projectPath: string) =>
-    terminals.filter(t => t.projectPath === projectPath && t.type === 'claude')
+  const getSessionsForProject = (projectPath: string) => {
+    return Object.values(sessions)
+      .filter(s => s.projectPath === projectPath)
+      .sort((a, b) => a.createdAt - b.createdAt)
+  }
 
-  const ensureClaudeTerminal = useCallback(async (projectPath: string) => {
-    const current = useTerminalStore.getState().terminals
-    const existing = current.filter(t => t.type === 'claude' && t.projectPath === projectPath)
+  const ensureSession = useCallback((projectPath: string) => {
+    const existing = Object.values(useSessionStore.getState().sessions)
+      .filter(s => s.projectPath === projectPath)
     if (existing.length > 0) return
-    const result = await window.api.terminal.createClaude(projectPath)
-    if (result.success && result.id) {
-      addTerminal({
-        id: result.id,
-        projectPath: result.projectPath!,
-        pid: result.pid!,
-        name: 'Claude Code',
-        type: 'claude'
-      })
-      setActiveClaudeId(projectPath, result.id)
-      if (result.claudeSessionId) {
-        useTerminalStore.getState().setClaudeSessionId(result.id, result.claudeSessionId)
-        useSessionStore.getState().loadEntries(result.claudeSessionId, result.projectPath!, [])
-        window.api.sessionFile.watch(result.id, result.claudeSessionId, result.projectPath!).then(watchResult => {
-          if (watchResult.success && watchResult.entries && (watchResult.entries as unknown[]).length > 0) {
-            useSessionStore.getState().loadEntries(result.claudeSessionId!, result.projectPath!, watchResult.entries as SessionFileEntry[])
-          }
-        })
-      }
-    }
-  }, [addTerminal, setActiveClaudeId])
+    // Create an empty SDK session for the project
+    const sessionId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    createSession(projectPath, sessionId)
+  }, [createSession])
 
-  const handleNewClaudeTerminal = useCallback(async (projectPath: string) => {
+  const handleNewThread = useCallback(async (projectPath: string) => {
     setCreatingThread(true)
     try {
-      const result = await window.api.terminal.createClaude(projectPath)
-      if (result.success && result.id) {
-        const count = terminals.filter(t => t.type === 'claude' && t.projectPath === projectPath).length
-        addTerminal({
-          id: result.id,
-          projectPath: result.projectPath!,
-          pid: result.pid!,
-          name: `Claude Code${count > 0 ? ` ${count + 1}` : ''}`,
-          type: 'claude'
-        })
-        setActiveClaudeId(projectPath, result.id)
-        if (result.claudeSessionId) {
-          useTerminalStore.getState().setClaudeSessionId(result.id, result.claudeSessionId)
-          useSessionStore.getState().loadEntries(result.claudeSessionId, result.projectPath!, [])
-          window.api.sessionFile.watch(result.id, result.claudeSessionId, result.projectPath!).then(watchResult => {
-            if (watchResult.success && watchResult.entries && (watchResult.entries as unknown[]).length > 0) {
-              useSessionStore.getState().loadEntries(result.claudeSessionId!, result.projectPath!, watchResult.entries as SessionFileEntry[])
-            }
-          })
-        }
-      }
+      const count = Object.values(useSessionStore.getState().sessions)
+        .filter(s => s.projectPath === projectPath).length
+      const sessionId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      createSession(projectPath, sessionId)
+      useSessionStore.getState().renameSession(sessionId, `Claude Code${count > 0 ? ` ${count + 1}` : ''}`)
     } finally {
       setCreatingThread(false)
     }
-  }, [terminals, addTerminal, setActiveClaudeId])
+  }, [createSession])
 
-  const handleSelectClaudeTerminal = useCallback(async (terminalId: string) => {
-    const tab = terminals.find(t => t.id === terminalId)
-    if (tab && tab.projectPath !== currentPath) {
-      await switchToProject(tab.projectPath)
+  const handleSelectSession = useCallback(async (sessionId: string) => {
+    const session = useSessionStore.getState().sessions[sessionId]
+    if (session && session.projectPath !== currentPath) {
+      await switchToProject(session.projectPath)
     }
-    setActiveClaudeId(tab?.projectPath || currentPath || '', terminalId)
-  }, [terminals, currentPath, setActiveClaudeId])
+    setActiveSession(sessionId)
+  }, [currentPath, setActiveSession])
 
   const handleOpenProject = useCallback(async () => {
     const result = await window.api.project.open()
@@ -193,9 +137,9 @@ export default function Sidebar() {
       const lastPanel = projectSidePanelMemory[result.path]
       setSidePanelView(lastPanel ? { type: lastPanel, projectPath: result.path } : null)
       switchToProjectTerminals(result.path)
-      ensureClaudeTerminal(result.path)
+      ensureSession(result.path)
     }
-  }, [setProject, setRecent, projectSidePanelMemory, setSidePanelView, switchToProjectTerminals, ensureClaudeTerminal])
+  }, [setProject, setRecent, projectSidePanelMemory, setSidePanelView, switchToProjectTerminals, ensureSession])
 
   const switchToProject = useCallback(async (path: string) => {
     if (path === currentPath) return
@@ -205,24 +149,37 @@ export default function Sidebar() {
     const lastPanel = projectSidePanelMemory[path]
     setSidePanelView(lastPanel ? { type: lastPanel, projectPath: path } : null)
     switchToProjectTerminals(path)
-    ensureClaudeTerminal(path)
-  }, [currentPath, setProject, projectSidePanelMemory, setSidePanelView, switchToProjectTerminals, ensureClaudeTerminal])
+    // Set active session to last known for this project
+    const lastSession = useSessionStore.getState().getLastSessionForProject(path)
+    if (lastSession) {
+      setActiveSession(lastSession)
+    } else {
+      ensureSession(path)
+    }
+  }, [currentPath, setProject, projectSidePanelMemory, setSidePanelView, switchToProjectTerminals, ensureSession, setActiveSession])
 
-  const handleCloseTerminal = useCallback((id: string) => {
-    window.api.terminal.close(id)
-    removeTerminal(id)
-  }, [removeTerminal])
+  const handleCloseSession = useCallback((sessionId: string) => {
+    window.api.agent.stop(sessionId).catch(() => {})
+    removeSession(sessionId)
+  }, [removeSession])
 
   const handleRemoveProject = useCallback((projectPath: string) => {
+    // Close shell terminals
     const projectTerminals = terminals.filter(t => t.projectPath === projectPath)
     for (const t of projectTerminals) {
       window.api.terminal.close(t.id)
       removeTerminal(t.id)
     }
+    // Close SDK sessions
+    const projectSessions = Object.values(sessions).filter(s => s.projectPath === projectPath)
+    for (const s of projectSessions) {
+      window.api.agent.stop(s.sessionId).catch(() => {})
+      removeSession(s.sessionId)
+    }
     removeProject(projectPath)
     window.api.project.removeRecent(projectPath)
     setSidePanelView(null)
-  }, [terminals, removeTerminal, removeProject, setSidePanelView])
+  }, [terminals, sessions, removeTerminal, removeSession, removeProject, setSidePanelView])
 
   const projectList = recentProjects.map(p => ({
     path: p.path,
@@ -250,7 +207,6 @@ export default function Sidebar() {
     setDragIndex(index)
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('text/plain', String(index))
-    // Use the project-tree node as drag image
     if (dragNodeRef.current) {
       e.dataTransfer.setDragImage(dragNodeRef.current, 0, 0)
     }
@@ -289,7 +245,7 @@ export default function Sidebar() {
       <div className="sidebar-new-thread">
         <button
           className="btn btn-primary btn-new-thread"
-          onClick={() => currentPath && handleNewClaudeTerminal(currentPath)}
+          onClick={() => currentPath && handleNewThread(currentPath)}
           disabled={!currentPath || creatingThread}
         >
           {creatingThread ? 'Starting...' : '+ New thread'}
@@ -316,14 +272,13 @@ export default function Sidebar() {
               projectName={proj.name}
               isCurrentProject={proj.isCurrent}
               isGitRepo={proj.isGitRepo}
-              claudeTerminals={getClaudeTerminalsForProject(proj.path)}
-              claudeStatuses={claudeStatuses}
-              activeClaudeId={activeClaudeId[proj.path] || null}
+              sdkSessions={getSessionsForProject(proj.path)}
+              activeSessionId={activeSessionId}
               onSwitchToProject={() => switchToProject(proj.path)}
-              onSelectClaudeTerminal={handleSelectClaudeTerminal}
-              onRenameClaudeTerminal={manualRenameTerminal}
-              onCloseTerminal={handleCloseTerminal}
-              onNewThread={() => handleNewClaudeTerminal(proj.path)}
+              onSelectSession={handleSelectSession}
+              onRenameSession={(id, name) => useSessionStore.getState().renameSession(id, name)}
+              onCloseSession={handleCloseSession}
+              onNewThread={() => handleNewThread(proj.path)}
               onRemoveProject={() => handleRemoveProject(proj.path)}
               historyEntries={historyByProject[proj.path] || []}
               onResumeHistory={handleResumeHistory}
@@ -340,7 +295,6 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="sidebar-footer">
-        <CostTracker />
         <div className="sidebar-footer-row">
           <button className="btn" onClick={handleOpenProject} style={{ flex: 1 }}>
             Open project

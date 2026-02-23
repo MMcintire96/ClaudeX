@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import DiffView from './DiffView'
 import CommitModal from '../git/CommitModal'
-import { useTerminalStore } from '../../stores/terminalStore'
+import { useSessionStore } from '../../stores/sessionStore'
 
 
 interface FileStatus {
@@ -64,14 +64,12 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
 
   const toggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
 
-  const terminals = useTerminalStore(s => s.terminals)
-  const activeClaudeId = useTerminalStore(s => s.activeClaudeId[projectPath])
-
-  // If the active Claude terminal runs in a worktree, show that worktree's diff
-  const diffPath = useTerminalStore(s => {
-    if (!activeClaudeId) return projectPath
-    const tab = s.terminals.find(t => t.id === activeClaudeId)
-    return tab?.worktreePath || projectPath
+  // If the active session runs in a worktree, show that worktree's diff
+  const diffPath = useSessionStore(s => {
+    const sessionId = s.activeSessionId
+    if (!sessionId) return projectPath
+    const session = s.sessions[sessionId]
+    return session?.worktreePath || projectPath
   })
 
   // Context menu state
@@ -193,26 +191,15 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     setSelectedFile(null)
   }, [loadStatus, loadDiff, diffPath])
 
-  // Auto-refresh on Claude terminal output
+  // Auto-refresh when agent session completes
   useEffect(() => {
-    const claudeIds = new Set(
-      terminals.filter(t => t.type === 'claude' && t.projectPath === projectPath).map(t => t.id)
-    )
-
-    const unsubData = window.api.terminal.onData((id: string) => {
-      if (!claudeIds.has(id)) return
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(quietRefresh, 1500)
-    })
-
     const unsubClosed = window.api.agent.onClosed(quietRefresh)
 
     return () => {
-      unsubData()
       unsubClosed()
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [terminals, projectPath, quietRefresh])
+  }, [projectPath, quietRefresh])
 
   const handleFileClick = useCallback((path: string) => {
     if (selectedFile === path) {

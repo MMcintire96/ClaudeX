@@ -1,6 +1,48 @@
 import React, { useState, useMemo, useCallback } from 'react'
+import hljs from 'highlight.js/lib/core'
+import typescript from 'highlight.js/lib/languages/typescript'
+import javascript from 'highlight.js/lib/languages/javascript'
+import python from 'highlight.js/lib/languages/python'
+import css from 'highlight.js/lib/languages/css'
+import json from 'highlight.js/lib/languages/json'
+import bash from 'highlight.js/lib/languages/bash'
+import xml from 'highlight.js/lib/languages/xml'
+import markdown from 'highlight.js/lib/languages/markdown'
+import rust from 'highlight.js/lib/languages/rust'
+import go from 'highlight.js/lib/languages/go'
+import java from 'highlight.js/lib/languages/java'
+import yaml from 'highlight.js/lib/languages/yaml'
+import sql from 'highlight.js/lib/languages/sql'
 import type { UIToolUseMessage, UIToolResultMessage } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+
+// Register languages for syntax highlighting in diffs
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('html', xml)
+hljs.registerLanguage('markdown', markdown)
+hljs.registerLanguage('rust', rust)
+hljs.registerLanguage('go', go)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('yaml', yaml)
+hljs.registerLanguage('sql', sql)
+
+const EXT_TO_LANG: Record<string, string> = {
+  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+  py: 'python', css: 'css', json: 'json', sh: 'bash', bash: 'bash', zsh: 'bash',
+  html: 'html', htm: 'html', xml: 'xml', svg: 'xml', md: 'markdown',
+  rs: 'rust', go: 'go', java: 'java', yml: 'yaml', yaml: 'yaml', sql: 'sql',
+}
+
+function detectLanguage(filePath: string): string | null {
+  const ext = filePath.split('.').pop()?.toLowerCase()
+  return ext ? EXT_TO_LANG[ext] ?? null : null
+}
 
 interface Props {
   message: UIToolUseMessage
@@ -84,6 +126,53 @@ const FILE_TOOLS = new Set(['Edit', 'Write', 'Read', 'Bash', 'Grep', 'Glob', 'No
 
 export function isFileEditTool(toolName: string): boolean {
   return FILE_TOOLS.has(toolName)
+}
+
+function DiffView({ oldString, newString, filePath }: { oldString: string; newString: string; filePath: string }) {
+  const highlighted = useMemo(() => {
+    const lang = detectLanguage(filePath)
+    const highlightLine = (line: string): string => {
+      if (!lang) return escapeHtml(line)
+      try {
+        return hljs.highlight(line, { language: lang, ignoreIllegals: true }).value
+      } catch {
+        return escapeHtml(line)
+      }
+    }
+    return {
+      oldLines: oldString ? oldString.split('\n').map(highlightLine) : [],
+      newLines: newString ? newString.split('\n').map(highlightLine) : [],
+    }
+  }, [oldString, newString, filePath])
+
+  return (
+    <div className="file-edit-diff">
+      {highlighted.oldLines.length > 0 && (
+        <div className="diff-removed">
+          {highlighted.oldLines.map((html, i) => (
+            <div key={`old-${i}`} className="diff-line diff-line-removed">
+              <span className="diff-sign">-</span>
+              <span dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
+          ))}
+        </div>
+      )}
+      {highlighted.newLines.length > 0 && (
+        <div className="diff-added">
+          {highlighted.newLines.map((html, i) => (
+            <div key={`new-${i}`} className="diff-line diff-line-added">
+              <span className="diff-sign">+</span>
+              <span dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 export default function FileEditBlock({ message, result, awaitingPermission, terminalId }: Props) {
@@ -179,30 +268,9 @@ export default function FileEditBlock({ message, result, awaitingPermission, ter
 
       {expanded && (
         <div className="file-edit-body">
-          {/* Edit: show diff */}
+          {/* Edit: show diff with syntax highlighting */}
           {message.toolName === 'Edit' && oldString != null && newString != null && (
-            <div className="file-edit-diff">
-              {oldString && (
-                <div className="diff-removed">
-                  {oldString.split('\n').map((line, i) => (
-                    <div key={`old-${i}`} className="diff-line diff-line-removed">
-                      <span className="diff-sign">-</span>
-                      <span>{line}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {newString && (
-                <div className="diff-added">
-                  {newString.split('\n').map((line, i) => (
-                    <div key={`new-${i}`} className="diff-line diff-line-added">
-                      <span className="diff-sign">+</span>
-                      <span>{line}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <DiffView oldString={oldString} newString={newString} filePath={filePath} />
           )}
 
           {/* Write: show content preview */}

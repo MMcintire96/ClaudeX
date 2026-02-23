@@ -70,7 +70,7 @@ export default function TerminalPanel() {
             </div>
           </div>
         ) : (
-          terminals.filter(t => t.type !== 'claude').map(t => (
+          terminals.map(t => (
             <TerminalView
               key={t.id}
               terminalId={t.id}

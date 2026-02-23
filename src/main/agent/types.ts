@@ -1,4 +1,4 @@
-// Types for Claude CLI stream-json protocol
+// Types for Claude Agent SDK message protocol
 
 export interface SystemInitEvent {
   type: 'system'
@@ -89,6 +89,8 @@ export interface AssistantMessageEvent {
       cache_read_input_tokens?: number
     }
   }
+  parent_tool_use_id?: string | null
+  uuid?: string
   session_id: string
 }
 
@@ -110,6 +112,7 @@ export interface ToolResultEvent {
   tool_use_id: string
   content: string | Array<{ type: 'text'; text: string }>
   is_error?: boolean
+  uuid?: string
   session_id: string
 }
 
@@ -130,6 +133,9 @@ export interface ResultEvent {
 export interface StreamEvent {
   type: 'stream_event'
   event: StreamSubEvent
+  parent_tool_use_id?: string | null
+  uuid?: string
+  session_id?: string
 }
 
 export type AgentEvent =

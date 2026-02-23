@@ -26,7 +26,7 @@ No test or lint commands are currently configured.
 
 ### Agent System (main process)
 
-`AgentManager` → `AgentProcess` → spawns `claude` CLI with streaming JSON output → `StreamParser` converts to typed events → sent to renderer via IPC `agent:event` → `sessionStore.processEvent()` updates UI state.
+`AgentManager` → `AgentProcess` → calls `query()` from `@anthropic-ai/claude-agent-sdk` → async iterator yields typed SDK messages → mapped to `AgentEvent` types → sent to renderer via IPC `agent:event` → `sessionStore.processEvent()` updates UI state.
 
 Each agent session gets an MCP config pointing to `ClaudexBridgeServer`, a localhost HTTP server (token-secured) that exposes terminal, browser, and session tools to the Claude agent.
 

@@ -1,23 +1,20 @@
 import React, { useCallback, useState, useEffect } from 'react'
 import { useProjectStore } from '../../stores/projectStore'
-import { useTerminalStore } from '../../stores/terminalStore'
-import { useSessionStore, SessionFileEntry } from '../../stores/sessionStore'
+import { useSessionStore } from '../../stores/sessionStore'
 import { useUIStore } from '../../stores/uiStore'
 import ChatView from '../chat/ChatView'
 
 export default function MainPanel() {
   const currentPath = useProjectStore(s => s.currentPath)
-  const addTerminal = useTerminalStore(s => s.addTerminal)
-  const activeClaudeId = useTerminalStore(s => s.activeClaudeId)
-  const setActiveClaudeId = useTerminalStore(s => s.setActiveClaudeId)
+  const activeSessionId = useSessionStore(s => s.activeSessionId)
+  const createSession = useSessionStore(s => s.createSession)
+  const setActiveSession = useSessionStore(s => s.setActiveSession)
   const chatDetached = useUIStore(s => s.chatDetached)
   const toggleChatDetached = useUIStore(s => s.toggleChatDetached)
 
-  const activeId = currentPath ? activeClaudeId[currentPath] : null
-
   const [launching, setLaunching] = useState(false)
 
-  // Listen for popout window being closed externally (user closes the window)
+  // Listen for popout window being closed externally
   useEffect(() => {
     const unsub = window.api.popout.onClosed(() => {
       const state = useUIStore.getState()
@@ -30,47 +27,31 @@ export default function MainPanel() {
 
   // When detach state changes, create or close the popout window
   useEffect(() => {
-    if (chatDetached && activeId && currentPath) {
+    if (chatDetached && activeSessionId && currentPath) {
       const theme = useUIStore.getState().theme
-      window.api.popout.create(activeId, currentPath, theme)
+      window.api.popout.create(activeSessionId, currentPath, theme)
     } else if (!chatDetached) {
       window.api.popout.close()
     }
-  }, [chatDetached, activeId, currentPath])
+  }, [chatDetached, activeSessionId, currentPath])
 
   const handleLaunchClaude = useCallback(async () => {
     if (!currentPath) return
     setLaunching(true)
     try {
-      const result = await window.api.terminal.createClaude(currentPath)
-      if (result.success && result.id) {
-        const count = useTerminalStore.getState().terminals.filter(t => t.type === 'claude' && t.projectPath === currentPath).length
-        addTerminal({
-          id: result.id,
-          projectPath: result.projectPath!,
-          pid: result.pid!,
-          name: `Claude Code${count > 0 ? ` ${count + 1}` : ''}`,
-          type: 'claude'
-        })
-        setActiveClaudeId(currentPath, result.id)
-        if (result.claudeSessionId) {
-          useTerminalStore.getState().setClaudeSessionId(result.id, result.claudeSessionId)
-          useSessionStore.getState().loadEntries(result.claudeSessionId, result.projectPath!, [])
-          window.api.sessionFile.watch(result.id, result.claudeSessionId, result.projectPath!).then(watchResult => {
-            if (watchResult.success && watchResult.entries && (watchResult.entries as unknown[]).length > 0) {
-              useSessionStore.getState().loadEntries(result.claudeSessionId!, result.projectPath!, watchResult.entries as SessionFileEntry[])
-            }
-          })
-        }
-      }
+      const count = Object.values(useSessionStore.getState().sessions)
+        .filter(s => s.projectPath === currentPath).length
+      const sessionId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      createSession(currentPath, sessionId)
+      useSessionStore.getState().renameSession(sessionId, `Claude Code${count > 0 ? ` ${count + 1}` : ''}`)
     } finally {
       setLaunching(false)
     }
-  }, [currentPath, addTerminal, setActiveClaudeId])
+  }, [currentPath, createSession])
 
   return (
     <main className="main-panel">
-      {activeId ? (
+      {activeSessionId ? (
         chatDetached ? (
           <div className="empty-state">
             <div className="empty-state-icon">
@@ -90,8 +71,8 @@ export default function MainPanel() {
         ) : (
           <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
             <ChatView
-              key={activeId}
-              terminalId={activeId}
+              key={activeSessionId}
+              sessionId={activeSessionId}
               projectPath={currentPath!}
             />
           </div>

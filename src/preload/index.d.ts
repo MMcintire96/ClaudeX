@@ -48,7 +48,6 @@ export interface ElectronAPI {
   }
   terminal: {
     create: (projectPath: string) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; error?: string }>
-    createClaude: (projectPath: string) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; claudeSessionId?: string; error?: string }>
     write: (id: string, data: string) => Promise<{ success: boolean }>
     resize: (id: string, cols: number, rows: number) => Promise<{ success: boolean }>
     close: (id: string) => Promise<{ success: boolean }>
@@ -56,18 +55,6 @@ export interface ElectronAPI {
     rename: (id: string, name: string) => Promise<{ success: boolean }>
     onData: (callback: (id: string, data: string) => void) => () => void
     onExit: (callback: (id: string, exitCode: number) => void) => () => void
-    onClaudeStatus: (callback: (id: string, status: string) => void) => () => void
-    onClaudeRename: (callback: (id: string, name: string) => void) => () => void
-    createClaudeResume: (projectPath: string, claudeSessionId: string, name?: string) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; error?: string }>
-    getClaudeSessionId: (terminalId: string) => Promise<string | null>
-    onAgentSpawned: (callback: (parentId: string, agent: { id: string; name: string; status: string; startedAt: number }) => void) => () => void
-    onAgentCompleted: (callback: (parentId: string) => void) => () => void
-    onContextUsage: (callback: (id: string, percent: number) => void) => () => void
-    openExternal: (terminalId: string, projectPath: string) => Promise<{ success: boolean; error?: string }>
-    getTmuxInfo: () => Promise<{ available: boolean; sessionName: string | null }>
-    onClaudeSessionId: (callback: (id: string, sessionId: string) => void) => () => void
-    onSystemMessage: (callback: (terminalId: string, message: string) => void) => () => void
-    onPermissionRequest: (callback: (terminalId: string, permissionText: string, promptType: string) => void) => () => void
   }
   session: {
     history: (projectPath: string) => Promise<Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>>
@@ -90,15 +77,6 @@ export interface ElectronAPI {
     reload: () => Promise<void>
     devtools: () => Promise<void>
     onMaximizedChanged: (callback: (maximized: boolean) => void) => () => void
-  }
-  sessionFile: {
-    watch: (terminalId: string, claudeSessionId: string, projectPath: string) => Promise<{ success: boolean; entries?: unknown[]; error?: string }>
-    unwatch: (terminalId: string) => Promise<{ success: boolean; error?: string }>
-    read: (claudeSessionId: string, projectPath: string) => Promise<{ success: boolean; entries?: unknown[]; error?: string }>
-    findLatest: (projectPath: string, afterTimestamp?: number) => Promise<{ success: boolean; sessionId?: string | null; error?: string }>
-    onEntries: (callback: (terminalId: string, entries: unknown[]) => void) => () => void
-    onReset: (callback: (terminalId: string, entries: unknown[]) => void) => () => void
-    onError: (callback: (terminalId: string, message: string) => void) => () => void
   }
   app: {
     onBeforeClose: (callback: () => void) => () => void

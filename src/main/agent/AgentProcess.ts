@@ -1,98 +1,33 @@
-import { spawn, ChildProcess, execSync } from 'child_process'
-import { existsSync } from 'fs'
+import { query, type Query } from '@anthropic-ai/claude-agent-sdk'
 import { EventEmitter } from 'events'
+import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
-import { StreamParser } from './StreamParser'
+import { app } from 'electron'
 import type { AgentEvent } from './types'
 
 export interface AgentProcessOptions {
   projectPath: string
   sessionId?: string
   model?: string | null
-  mcpConfigPath?: string | null
+  mcpServers?: Record<string, any> | null
   systemPromptAppend?: string | null
 }
 
 /**
- * Resolve the absolute path to the `claude` binary.
- * Electron processes often have a stripped-down PATH that doesn't include
- * ~/.local/bin or other user dirs, so we search common locations.
- */
-export function findClaudeBinary(): string {
-  // 1. Try common install locations directly
-  const home = process.env.HOME || process.env.USERPROFILE || ''
-  const candidates = [
-    `${home}/.local/bin/claude`,
-    `${home}/.claude/local/bin/claude`,
-    '/usr/local/bin/claude',
-    '/usr/bin/claude',
-    `${home}/.nvm/versions/node/current/bin/claude`
-  ]
-
-  for (const p of candidates) {
-    if (existsSync(p)) return p
-  }
-
-  // 2. Ask the user's default shell
-  try {
-    const resolved = execSync('bash -ilc "which claude" 2>/dev/null', {
-      encoding: 'utf-8',
-      timeout: 5000
-    }).trim()
-    if (resolved && existsSync(resolved)) return resolved
-  } catch {
-    // ignore
-  }
-
-  // 3. Fall back to bare name (will fail if not in Electron's PATH)
-  return 'claude'
-}
-
-let _claudePath: string | null = null
-function getClaudePath(): string {
-  if (!_claudePath) {
-    _claudePath = findClaudeBinary()
-  }
-  return _claudePath
-}
-
-/**
- * Build a PATH that includes common user binary directories.
- */
-export function getEnhancedEnv(): NodeJS.ProcessEnv {
-  const home = process.env.HOME || ''
-  const extraPaths = [
-    `${home}/.local/bin`,
-    `${home}/.claude/local/bin`,
-    '/usr/local/bin'
-  ].filter(existsSync)
-
-  const currentPath = process.env.PATH || ''
-  const env = { ...process.env, PATH: [...extraPaths, currentPath].join(':') }
-
-  // Remove env vars that would make the child claude think it's nested
-  delete env.CLAUDECODE
-  delete env.CLAUDE_CODE_ENTRYPOINT
-
-  return env
-}
-
-/**
- * Manages a single Claude CLI process with stream-json protocol.
- * Each call to start() or resume() spawns a new `claude -p` process.
- * The session is maintained via --session-id / --resume flags.
+ * Manages a single Claude agent session using the Claude Agent SDK.
+ * Each call to start() or resume() runs a query() that yields typed messages
+ * via an async iterator. The session is maintained via sessionId / resume options.
  */
 export class AgentProcess extends EventEmitter {
-  private process: ChildProcess | null = null
-  private parser: StreamParser
+  private _query: Query | null = null
+  private abortController: AbortController | null = null
   private _sessionId: string
   private _projectPath: string
   private _model: string | null
-  private _mcpConfigPath: string | null
+  private _mcpServers: Record<string, any> | null
   private _systemPromptAppend: string | null
   private _isRunning = false
   private _hasCompletedFirstTurn = false
-  private stderrBuffer = ''
 
   get sessionId(): string {
     return this._sessionId
@@ -115,131 +50,172 @@ export class AgentProcess extends EventEmitter {
     this._sessionId = options.sessionId ?? uuidv4()
     this._projectPath = options.projectPath
     this._model = options.model ?? null
-    this._mcpConfigPath = options.mcpConfigPath ?? null
+    this._mcpServers = options.mcpServers ?? null
     this._systemPromptAppend = options.systemPromptAppend ?? null
-    this.parser = new StreamParser()
-
-    this.parser.on('event', (event: AgentEvent) => {
-      this.emit('event', event)
-    })
-
-    this.parser.on('parse-error', (line: string) => {
-      this.emit('parse-error', line)
-    })
   }
 
   setModel(model: string | null): void {
     this._model = model
   }
 
-  private _buildBaseArgs(): string[] {
-    const args = [
-      '--dangerously-skip-permissions',
-      '-p',
-      '--output-format', 'stream-json',
-      '--verbose',
-      '--include-partial-messages'
-    ]
-    if (this._model) {
-      args.push('--model', this._model)
-    }
-    if (this._mcpConfigPath) {
-      args.push('--mcp-config', this._mcpConfigPath)
-    }
-    if (this._systemPromptAppend) {
-      args.push('--append-system-prompt', this._systemPromptAppend)
-    }
-    return args
-  }
-
   start(initialPrompt: string): void {
-    if (this.process) {
+    if (this._query) {
       throw new Error('Agent process already running')
     }
-
-    const args = [
-      ...this._buildBaseArgs(),
-      '--session-id', this._sessionId
-    ]
-
-    this._spawnProcess(args, initialPrompt)
+    this._runQuery(initialPrompt, false)
   }
 
   resume(message: string): void {
-    if (this.process) {
+    if (this._query) {
       throw new Error('Agent process already running')
     }
-
-    const args = [
-      ...this._buildBaseArgs(),
-      '--resume', this._sessionId
-    ]
-
-    this._spawnProcess(args, message)
-  }
-
-  private _spawnProcess(args: string[], prompt: string): void {
-    this.parser.reset()
-    this.stderrBuffer = ''
-
-    const claudePath = getClaudePath()
-    console.log(`[AgentProcess] Spawning: ${claudePath} ${args.join(' ')}`)
-    console.log(`[AgentProcess] CWD: ${this._projectPath}`)
-    console.log(`[AgentProcess] Prompt length: ${prompt.length} chars (piped via stdin)`)
-
-    this.process = spawn(claudePath, args, {
-      cwd: this._projectPath,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: getEnhancedEnv()
-    })
-
-    this._isRunning = true
-
-    // Pipe the prompt via stdin to avoid CLI argument length limits
-    // and issues with special characters in large pasted text blocks
-    this.process.stdin!.write(prompt)
-    this.process.stdin!.end()
-
-    this.process.stdout!.setEncoding('utf-8')
-    this.process.stdout!.on('data', (chunk: string) => {
-      this.parser.feed(chunk)
-    })
-
-    this.process.stderr!.setEncoding('utf-8')
-    this.process.stderr!.on('data', (chunk: string) => {
-      this.stderrBuffer += chunk
-      this.emit('stderr', chunk)
-    })
-
-    this.process.on('close', (code: number | null) => {
-      this.parser.flush()
-      this._isRunning = false
-      this._hasCompletedFirstTurn = true
-      this.process = null
-      console.log(`[AgentProcess] Closed with code ${code}`)
-      this.emit('close', code)
-    })
-
-    this.process.on('error', (err: Error) => {
-      this._isRunning = false
-      this.process = null
-      console.error(`[AgentProcess] Spawn error:`, err.message)
-      this.emit('error', err)
-    })
+    this._runQuery(message, true)
   }
 
   stop(): void {
-    if (this.process) {
-      this.process.kill('SIGTERM')
-      setTimeout(() => {
-        if (this.process) {
-          this.process.kill('SIGKILL')
-        }
-      }, 5000)
+    if (this._query) {
+      this._query.close()
+      this._query = null
+    }
+    this.abortController?.abort()
+  }
+
+  private _runQuery(prompt: string, isResume: boolean): void {
+    this.abortController = new AbortController()
+
+    const options: Record<string, any> = {
+      abortController: this.abortController,
+      cwd: this._projectPath,
+      permissionMode: 'bypassPermissions' as const,
+      allowDangerouslySkipPermissions: true,
+      includePartialMessages: true,
+      persistSession: true,
+    }
+
+    // In packaged app, the SDK is loaded from app.asar but cli.js must be
+    // spawned as a real file. Point to the asarUnpack'd copy.
+    if (app.isPackaged) {
+      options.pathToClaudeCodeExecutable = join(
+        process.resourcesPath,
+        'app.asar.unpacked',
+        'node_modules',
+        '@anthropic-ai',
+        'claude-agent-sdk',
+        'cli.js'
+      )
+      console.log(`[AgentProcess] Using unpacked CLI: ${options.pathToClaudeCodeExecutable}`)
+    }
+
+    if (isResume) {
+      options.resume = this._sessionId
+    } else {
+      options.sessionId = this._sessionId
+    }
+
+    if (this._model) {
+      options.model = this._model
+    }
+
+    if (this._mcpServers) {
+      options.mcpServers = this._mcpServers
+    }
+
+    if (this._systemPromptAppend) {
+      options.systemPrompt = {
+        type: 'preset' as const,
+        preset: 'claude_code' as const,
+        append: this._systemPromptAppend
+      }
+    }
+
+    console.log(`[AgentProcess] Starting SDK query (resume=${isResume})`)
+    console.log(`[AgentProcess] CWD: ${this._projectPath}`)
+    console.log(`[AgentProcess] Prompt length: ${prompt.length} chars`)
+
+    this._isRunning = true
+
+    const iter = query({ prompt, options })
+    this._query = iter
+
+    this._consumeIterator(iter)
+  }
+
+  private async _consumeIterator(iter: Query): Promise<void> {
+    try {
+      for await (const message of iter) {
+        // The SDK yields typed messages — forward ones the renderer understands
+        this._mapAndEmit(message)
+      }
+
+      // Iterator completed normally
+      this._isRunning = false
+      this._hasCompletedFirstTurn = true
+      this._query = null
+      console.log('[AgentProcess] Query completed')
+      this.emit('close', 0)
+    } catch (err: any) {
+      this._isRunning = false
+      this._query = null
+
+      // AbortError is expected when stop() is called
+      if (err?.name === 'AbortError' || this.abortController?.signal.aborted) {
+        this._hasCompletedFirstTurn = true
+        console.log('[AgentProcess] Query aborted')
+        this.emit('close', 0)
+        return
+      }
+
+      console.error('[AgentProcess] Query error:', err?.message || err)
+      this.emit('error', err instanceof Error ? err : new Error(String(err)))
     }
   }
 
-  getStderrOutput(): string {
-    return this.stderrBuffer
+  private _mapAndEmit(message: any): void {
+    switch (message.type) {
+      case 'system':
+        // SDKSystemMessage — pass through, shapes match
+        this.emit('event', message as AgentEvent)
+        break
+
+      case 'stream_event':
+        // SDKPartialAssistantMessage — already has { type: 'stream_event', event: ... }
+        // which matches our StreamEvent shape exactly
+        this.emit('event', message as AgentEvent)
+        break
+
+      case 'assistant':
+        // SDKAssistantMessage — { type: 'assistant', message: BetaMessage, session_id }
+        // Matches our AssistantMessageEvent shape
+        this.emit('event', message as AgentEvent)
+        break
+
+      case 'tool_result':
+        // SDKToolResultMessage — matches our ToolResultEvent
+        this.emit('event', message as AgentEvent)
+        break
+
+      case 'result': {
+        // SDKResultMessage — map to our ResultEvent shape
+        const resultEvent: AgentEvent = {
+          type: 'result',
+          subtype: message.subtype === 'success' ? 'success' : 'error',
+          session_id: message.session_id,
+          is_error: message.subtype !== 'success',
+          total_cost_usd: message.total_cost_usd,
+          cost_usd: message.total_cost_usd,
+          num_turns: message.num_turns,
+          duration_ms: message.duration_ms,
+          duration_api_ms: message.duration_api_ms,
+          result: message.result,
+          error: message.errors?.join('\n'),
+        }
+        this.emit('event', resultEvent)
+        break
+      }
+
+      default:
+        // Other SDK message types (status, hook, etc.) — ignore for now
+        break
+    }
   }
 }

@@ -13,7 +13,6 @@ const SLASH_COMMANDS = [
   { cmd: '/models', desc: 'Change the model' },
   { cmd: '/compact', desc: 'Compact conversation context' },
   { cmd: '/clear', desc: 'Clear chat history' },
-  { cmd: '/cost', desc: 'Show session cost' }
 ]
 
 interface InputBarProps {
@@ -33,9 +32,6 @@ export default function InputBar({ sessionId }: InputBarProps) {
     sessionId ? s.sessions[sessionId] ?? null : null
   )
   const selectedModel = session?.selectedModel ?? 'claude-opus-4-6'
-  const costUsd = session?.costUsd ?? 0
-  const totalCostUsd = session?.totalCostUsd ?? 0
-
   const handleSlashCommand = useCallback((command: string): boolean => {
     const cmd = command.trim().toLowerCase()
 
@@ -48,13 +44,7 @@ export default function InputBar({ sessionId }: InputBarProps) {
         if (match) {
           useSessionStore.getState().setSelectedModel(sessionId, match)
           window.api.agent.setModel(sessionId, match)
-          useSessionStore.getState().processEvent(sessionId, {
-            type: 'result',
-            subtype: 'success',
-            cost_usd: costUsd,
-            total_cost_usd: totalCostUsd,
-            num_turns: session?.numTurns ?? 0
-          })
+          useSessionStore.getState().addSystemMessage(sessionId, `Model changed to ${match}`)
         } else {
           useSessionStore.getState().setError(sessionId, `Unknown model: ${modelArg}. Available: ${AVAILABLE_MODELS.join(', ')}`)
         }
@@ -78,25 +68,8 @@ export default function InputBar({ sessionId }: InputBarProps) {
       return true
     }
 
-    if (cmd === '/cost' && sessionId) {
-      const s = useSessionStore.getState().sessions[sessionId]
-      if (s) {
-        useSessionStore.getState().addUserMessage(sessionId, '/cost')
-        const msg = `Session cost: $${(s.costUsd || 0).toFixed(4)} | Total: $${(s.totalCostUsd || 0).toFixed(4)} | Turns: ${s.numTurns}`
-        useSessionStore.getState().processEvent(sessionId, {
-          type: 'assistant',
-          message: {
-            id: `cost-${Date.now()}`,
-            content: [{ type: 'text', text: msg }],
-            model: s.model
-          }
-        })
-      }
-      return true
-    }
-
     return false
-  }, [sessionId, isRunning, sendMessage, costUsd, totalCostUsd, session])
+  }, [sessionId, isRunning, sendMessage, session])
 
   const handleSelectModel = useCallback((model: string) => {
     if (sessionId) {

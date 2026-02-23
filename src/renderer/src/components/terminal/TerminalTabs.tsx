@@ -56,7 +56,7 @@ export default function TerminalTabs() {
 
   const [renamingId, setRenamingId] = useState<string | null>(null)
 
-  const projectTerminals = terminals.filter(t => t.projectPath === currentPath && t.type !== 'claude')
+  const projectTerminals = terminals.filter(t => t.projectPath === currentPath)
   const isShellSplit = shellSplitIds.length === 2
 
   const handleNew = useCallback(async () => {
