@@ -880,7 +880,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       onDrop={handleDrop}
     >
       {/* Worktree action bar */}
-      <WorktreeBar sessionId={sessionId} terminalId={sessionId} projectPath={projectPath} />
+      <WorktreeBar sessionId={sessionId} projectPath={projectPath} />
 
       {/* Search bar */}
       {searchOpen && (

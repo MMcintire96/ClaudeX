@@ -1,41 +1,28 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
+import { useSessionStore } from '../../stores/sessionStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 
 interface WorktreeBarProps {
   sessionId: string
-  terminalId: string
   projectPath: string
 }
 
-export default function WorktreeBar({ sessionId, terminalId, projectPath }: WorktreeBarProps) {
-  const terminal = useTerminalStore(s => s.terminals.find(t => t.id === terminalId))
+export default function WorktreeBar({ sessionId, projectPath }: WorktreeBarProps) {
+  const session = useSessionStore(s => s.sessions[sessionId])
   const addTerminal = useTerminalStore(s => s.addTerminal)
-  const removeTerminal = useTerminalStore(s => s.removeTerminal)
   const [showBranchInput, setShowBranchInput] = useState(false)
   const [branchName, setBranchName] = useState('')
-  const [worktreeBranch, setWorktreeBranch] = useState<string | null>(null)
   const [showSyncMenu, setShowSyncMenu] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
   const [syncResult, setSyncResult] = useState<{ ok: boolean; message: string } | null>(null)
-  const [wtSessionId, setWtSessionId] = useState<string | null>(null)
   const [discarded, setDiscarded] = useState(false)
 
-  const worktreePath = terminal?.worktreePath
+  const worktreePath = session?.worktreePath
+  const wtSessionId = session?.worktreeSessionId
+  const worktreeBranch = session?.worktreeBranch ?? null
 
-  // Look up worktree session ID from the registry
-  useEffect(() => {
-    if (!worktreePath) return
-    window.api.worktree.list(projectPath).then(worktrees => {
-      const match = worktrees.find(w => w.worktreePath === worktreePath)
-      if (match) {
-        setWtSessionId(match.sessionId)
-        if (match.branchName) setWorktreeBranch(match.branchName)
-      }
-    })
-  }, [worktreePath, projectPath])
-
-  if (!worktreePath || discarded || !wtSessionId) return null
+  if (!worktreePath || !session?.isWorktree || discarded || !wtSessionId) return null
 
   const handleOpenTerminal = async () => {
     const result = await window.api.terminal.create(worktreePath)
@@ -57,7 +44,7 @@ export default function WorktreeBar({ sessionId, terminalId, projectPath }: Work
     try {
       const result = await window.api.worktree.createBranch(wtSessionId, branchName.trim())
       if (result.success) {
-        setWorktreeBranch(branchName.trim())
+        useSessionStore.getState().setWorktreeBranch(sessionId, branchName.trim())
         setShowBranchInput(false)
         setBranchName('')
       }
@@ -89,11 +76,8 @@ export default function WorktreeBar({ sessionId, terminalId, projectPath }: Work
     setShowDiscardConfirm(false)
     setActionInProgress('discard')
     try {
-      // Close the terminal and remove from store
-      await window.api.terminal.close(terminalId)
-      removeTerminal(terminalId)
-      // Remove the worktree directory
       await window.api.worktree.remove(wtSessionId)
+      setDiscarded(true)
     } catch {
       // Best effort cleanup
     } finally {
