@@ -37,7 +37,15 @@ export interface UISystemMessage {
   timestamp: number
 }
 
-export type UIMessage = UITextMessage | UIToolUseMessage | UIToolResultMessage | UISystemMessage
+export interface UIThinkingMessage {
+  id: string
+  role: 'assistant'
+  type: 'thinking'
+  content: string
+  timestamp: number
+}
+
+export type UIMessage = UITextMessage | UIToolUseMessage | UIToolResultMessage | UISystemMessage | UIThinkingMessage
 
 export interface SessionFileEntry {
   type: string
@@ -146,6 +154,23 @@ export function parseEntries(entries: SessionFileEntry[]): ParseResult {
             text: block.thinking,
             isLatest: isLastAssistant
           })
+          if (textAccum) {
+            messages.push({
+              id: uid(),
+              role: 'assistant',
+              type: 'text',
+              content: textAccum,
+              timestamp: now
+            } as UITextMessage)
+            textAccum = ''
+          }
+          messages.push({
+            id: uid(),
+            role: 'assistant',
+            type: 'thinking',
+            content: block.thinking,
+            timestamp: now
+          } as UIThinkingMessage)
         } else if (block.type === 'text') {
           textAccum += (typeof block.text === 'string' ? block.text : '')
         } else if (block.type === 'tool_use') {
@@ -238,6 +263,7 @@ interface SessionStore {
   // Per-session metadata from JSONL file watching
   thinkingText: Record<string, string | null>
   streamingThinkingText: Record<string, string | null>
+  streamingThinkingComplete: Record<string, boolean>
   lastEntryType: Record<string, string | null>
 
   // Per-project memory: remembers last active session per project
@@ -265,6 +291,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   activeSessionId: null,
   thinkingText: {},
   streamingThinkingText: {},
+  streamingThinkingComplete: {},
   lastEntryType: {},
   projectSessionMemory: {},
 
@@ -367,9 +394,21 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             const contentBlock = streamEvent.content_block as Record<string, unknown>
             if (contentBlock?.type === 'thinking') {
               set(s => ({
-                streamingThinkingText: { ...s.streamingThinkingText, [sessionId]: '' }
+                streamingThinkingText: { ...s.streamingThinkingText, [sessionId]: '' },
+                streamingThinkingComplete: { ...s.streamingThinkingComplete, [sessionId]: false }
               }))
             }
+            break
+          }
+          case 'content_block_stop': {
+            set(s => {
+              if (s.streamingThinkingText[sessionId] != null) {
+                return {
+                  streamingThinkingComplete: { ...s.streamingThinkingComplete, [sessionId]: true }
+                }
+              }
+              return {}
+            })
             break
           }
           case 'content_block_delta': {
@@ -400,7 +439,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 ...s.sessions,
                 [sessionId]: { ...s.sessions[sessionId], isStreaming: false }
               },
-              streamingThinkingText: { ...s.streamingThinkingText, [sessionId]: null }
+              streamingThinkingText: { ...s.streamingThinkingText, [sessionId]: null },
+              streamingThinkingComplete: { ...s.streamingThinkingComplete, [sessionId]: false }
             }))
             break
           }
@@ -420,7 +460,25 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         let fullText = ''
 
         for (const block of content) {
-          if (block.type === 'text') {
+          if (block.type === 'thinking' && block.thinking) {
+            if (fullText) {
+              newMessages.push({
+                id: `text-${msg.id}-${now}-${newMessages.length}`,
+                role: 'assistant',
+                type: 'text',
+                content: fullText,
+                timestamp: now
+              })
+              fullText = ''
+            }
+            newMessages.push({
+              id: `thinking-${msg.id}-${now}-${newMessages.length}`,
+              role: 'assistant',
+              type: 'thinking',
+              content: block.thinking as string,
+              timestamp: now
+            })
+          } else if (block.type === 'text') {
             fullText += (typeof block.text === 'string' ? block.text : '')
           } else if (block.type === 'tool_use') {
             if (fullText) {

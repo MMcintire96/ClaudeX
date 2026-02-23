@@ -2114,6 +2114,83 @@ body {
   word-break: break-word;
 }
 
+/* ===== THINKING BLOCK (inline in messages) ===== */
+.thinking-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 8px 0;
+  overflow: hidden;
+  animation: thinking-fade-in 0.3s ease;
+}
+
+.thinking-block-streaming {
+  border-color: var(--accent);
+}
+
+.thinking-block-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: left;
+  font-family: inherit;
+}
+
+.thinking-block-header:hover {
+  background: var(--bg-tertiary, var(--bg-secondary));
+  color: var(--text-primary);
+}
+
+.thinking-block-dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.thinking-block-icon {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.thinking-block-summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+.thinking-block-chevron {
+  flex-shrink: 0;
+  font-size: 10px;
+  opacity: 0.5;
+}
+
+.thinking-block-body {
+  border-top: 1px solid var(--border);
+  padding: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--bg-tertiary, var(--bg-secondary));
+}
+
+.thinking-block-text {
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
 /* ===== PERMISSION REQUEST BAR ===== */
 .permission-request-bar {
   display: flex;

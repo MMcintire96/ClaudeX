@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import type { UIMessage, UITextMessage, UIToolUseMessage, UIToolResultMessage } from '../../stores/sessionStore'
+import type { UIMessage, UITextMessage, UIToolUseMessage, UIToolResultMessage, UIThinkingMessage } from '../../stores/sessionStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import MessageBubble from './MessageBubble'
 import ToolUseBlock from './ToolUseBlock'
@@ -8,6 +8,7 @@ import AskUserQuestionBlock from './AskUserQuestionBlock'
 import FileEditBlock, { isFileEditTool } from './FileEditBlock'
 import ToolCallGroup from './ToolCallGroup'
 import PlanModeBlock from './PlanModeBlock'
+import ThinkingBlock from './ThinkingBlock'
 import VoiceButton from '../common/VoiceButton'
 import WorktreeBar from './WorktreeBar'
 import { useProjectStore } from '../../stores/projectStore'
@@ -153,6 +154,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const selectedModel = session?.selectedModel ?? 'claude-opus-4-6'
   const thinkingText = useSessionStore(s => s.thinkingText[sessionId] ?? null)
   const streamingThinkingText = useSessionStore(s => s.streamingThinkingText[sessionId] ?? null)
+  const streamingThinkingComplete = useSessionStore(s => s.streamingThinkingComplete[sessionId] ?? false)
 
   const gitBranch = useProjectStore(s => s.gitBranches[projectPath] ?? null)
   const isWorktreeThread = session?.isWorktree ?? false
@@ -861,6 +863,17 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       if (parentTool?.toolName === 'ExitPlanMode') return null
       if (parentTool && isFileEditTool(parentTool.toolName)) return null
       return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolResultBlock message={resultMsg} /></div>
+    } else if (msg.type === 'thinking') {
+      return (
+        <div key={msg.id} data-msg-id={msg.id}>
+          <ThinkingBlock
+            text={(msg as UIThinkingMessage).content}
+            isStreaming={false}
+            isComplete={true}
+            defaultExpanded={false}
+          />
+        </div>
+      )
     } else if (msg.type === 'system') {
       return (
         <div key={msg.id} data-msg-id={msg.id} className={`system-message${matchClass}`}>
@@ -955,6 +968,16 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
             })
           )}
 
+          {/* Streaming thinking block */}
+          {streamingThinkingText !== null && (
+            <ThinkingBlock
+              text={streamingThinkingText}
+              isStreaming={!streamingThinkingComplete}
+              isComplete={streamingThinkingComplete}
+              defaultExpanded={true}
+            />
+          )}
+
           {/* Retry button */}
           {!isProcessing && messages.length > 0 && (() => {
             const lastMsg = messages[messages.length - 1]
@@ -983,21 +1006,15 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
         </div>
       </div>
       <div className="chat-view-input-wrapper">
-        {/* Thinking / loading indicator */}
-        {isThinking && (
+        {/* Processing indicator — only shown before thinking starts */}
+        {isThinking && streamingThinkingText === null && (
           <div className="thinking-indicator">
             <div className="thinking-dots">
               <span className="thinking-dot" />
               <span className="thinking-dot" />
               <span className="thinking-dot" />
             </div>
-            {(streamingThinkingText || thinkingText) ? (
-              <div className="thinking-label thinking-label-streaming">
-                {streamingThinkingText || thinkingText}
-              </div>
-            ) : (
-              <span className="thinking-label">Thinking...</span>
-            )}
+            <span className="thinking-label">Processing...</span>
           </div>
         )}
 
