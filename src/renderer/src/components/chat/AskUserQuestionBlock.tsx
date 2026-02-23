@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import type { UIToolUseMessage } from '../../stores/sessionStore'
+import { useSessionStore, type UIToolUseMessage } from '../../stores/sessionStore'
 
 interface Option {
   label: string
@@ -15,11 +15,11 @@ interface Question {
 
 interface Props {
   message: UIToolUseMessage
-  terminalId: string
+  sessionId: string
   answered?: boolean
 }
 
-export default function AskUserQuestionBlock({ message, terminalId, answered: alreadyAnswered }: Props) {
+export default function AskUserQuestionBlock({ message, sessionId, answered: alreadyAnswered }: Props) {
   const [answered, setAnswered] = useState(alreadyAnswered || false)
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set())
   const [otherText, setOtherText] = useState('')
@@ -27,7 +27,12 @@ export default function AskUserQuestionBlock({ message, terminalId, answered: al
 
   const questions: Question[] = message.input?.questions as Question[] || []
 
-  const handleSelect = useCallback(async (questionIdx: number, optionIdx: number, question: Question) => {
+  const resumeAgent = useCallback(async (response: string) => {
+    useSessionStore.getState().setProcessing(sessionId, true)
+    await window.api.agent.send(sessionId, response)
+  }, [sessionId])
+
+  const handleSelect = useCallback(async (_questionIdx: number, optionIdx: number, question: Question) => {
     if (answered) return
 
     if (question.multiSelect) {
@@ -40,53 +45,26 @@ export default function AskUserQuestionBlock({ message, terminalId, answered: al
       return
     }
 
-    // Single select — send the answer immediately
+    // Single select — send the selected option's label as the response
     setAnswered(true)
-    // Claude Code TUI uses arrow-key navigation — press down arrow optionIdx times then Enter
-    for (let i = 0; i < optionIdx; i++) {
-      await window.api.terminal.write(terminalId, '\x1b[B')
-      await new Promise(r => setTimeout(r, 30))
-    }
-    await window.api.terminal.write(terminalId, '\r')
-  }, [answered, terminalId])
+    const selected = question.options[optionIdx]
+    await resumeAgent(selected?.label ?? String(optionIdx))
+  }, [answered, resumeAgent])
 
   const handleSubmitMulti = useCallback(async (question: Question) => {
     if (answered || selectedIndices.size === 0) return
     setAnswered(true)
-    // Claude Code TUI multi-select: navigate with arrows, toggle with space, confirm with Enter
+    // Send all selected option labels joined together
     const sorted = Array.from(selectedIndices).sort((a, b) => a - b)
-    let currentPos = 0
-    for (const idx of sorted) {
-      // Move down to the target option
-      while (currentPos < idx) {
-        await window.api.terminal.write(terminalId, '\x1b[B')
-        await new Promise(r => setTimeout(r, 30))
-        currentPos++
-      }
-      // Toggle selection with space
-      await window.api.terminal.write(terminalId, ' ')
-      await new Promise(r => setTimeout(r, 30))
-    }
-    // Confirm with Enter
-    await window.api.terminal.write(terminalId, '\r')
-  }, [answered, selectedIndices, terminalId])
+    const labels = sorted.map(idx => question.options[idx]?.label).filter(Boolean)
+    await resumeAgent(labels.join(', '))
+  }, [answered, selectedIndices, resumeAgent])
 
   const handleOther = useCallback(async () => {
     if (answered || !otherText.trim()) return
     setAnswered(true)
-    // Navigate to "Other" option (last in the list) and select it, then type text
-    const question = questions[0]
-    const otherPos = question ? question.options.length : 0
-    for (let i = 0; i < otherPos; i++) {
-      await window.api.terminal.write(terminalId, '\x1b[B')
-      await new Promise(r => setTimeout(r, 30))
-    }
-    await window.api.terminal.write(terminalId, '\r')
-    await new Promise(r => setTimeout(r, 200))
-    await window.api.terminal.write(terminalId, otherText.trim())
-    await new Promise(r => setTimeout(r, 50))
-    await window.api.terminal.write(terminalId, '\r')
-  }, [answered, otherText, questions, terminalId])
+    await resumeAgent(otherText.trim())
+  }, [answered, otherText, resumeAgent])
 
   if (questions.length === 0) {
     return (

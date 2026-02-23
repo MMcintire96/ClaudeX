@@ -837,11 +837,11 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       const toolMsg = msg as UIToolUseMessage
       if (toolMsg.toolName === 'AskUserQuestion') {
         const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
-        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><AskUserQuestionBlock message={toolMsg} terminalId={sessionId} answered={hasResult} /></div>
+        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><AskUserQuestionBlock message={toolMsg} sessionId={sessionId} answered={hasResult} /></div>
       }
       if (toolMsg.toolName === 'ExitPlanMode') {
         const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
-        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><PlanModeBlock message={toolMsg} terminalId={sessionId} answered={hasResult} /></div>
+        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><PlanModeBlock message={toolMsg} sessionId={sessionId} answered={hasResult} /></div>
       }
       if (isFileEditTool(toolMsg.toolName)) {
         const pairedResult = toolResultByToolUseId.get(toolMsg.toolId)

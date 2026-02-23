@@ -1,51 +1,43 @@
 import React, { useState, useCallback } from 'react'
-import type { UIToolUseMessage } from '../../stores/sessionStore'
+import { useSessionStore, type UIToolUseMessage } from '../../stores/sessionStore'
 
 interface Props {
   message: UIToolUseMessage
-  terminalId: string
+  sessionId: string
   answered?: boolean
 }
 
 /**
  * Renders ExitPlanMode tool calls with Approve / Give Feedback / Reject buttons.
- * Claude CLI's ExitPlanMode presents a plan for user approval — the terminal
- * expects Enter to approve, Esc to reject, or typed text for feedback.
+ * Sends the user's response via the SDK agent API (agent.send) to resume the session.
  */
-export default function PlanModeBlock({ message, terminalId, answered: alreadyAnswered }: Props) {
+export default function PlanModeBlock({ message, sessionId, answered: alreadyAnswered }: Props) {
   const [answered, setAnswered] = useState(alreadyAnswered || false)
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedbackText, setFeedbackText] = useState('')
 
+  const resumeAgent = useCallback(async (response: string) => {
+    useSessionStore.getState().setProcessing(sessionId, true)
+    await window.api.agent.send(sessionId, response)
+  }, [sessionId])
+
   const handleApprove = useCallback(async () => {
     if (answered) return
     setAnswered(true)
-    // Enter to approve the plan
-    await window.api.terminal.write(terminalId, '\r')
-  }, [answered, terminalId])
+    await resumeAgent('yes')
+  }, [answered, resumeAgent])
 
   const handleReject = useCallback(async () => {
     if (answered) return
     setAnswered(true)
-    // Esc to reject the plan
-    await window.api.terminal.write(terminalId, '\x1b')
-  }, [answered, terminalId])
+    await resumeAgent('no')
+  }, [answered, resumeAgent])
 
   const handleSendFeedback = useCallback(async () => {
     if (answered || !feedbackText.trim()) return
     setAnswered(true)
-    // Type feedback text then Enter — Claude CLI reads it as user response
-    const text = feedbackText.trim()
-    if (text.includes('\n') || text.includes('\r')) {
-      await window.api.terminal.write(terminalId, `\x1b[200~${text}\x1b[201~`)
-      await new Promise(r => setTimeout(r, 50))
-      await window.api.terminal.write(terminalId, '\r')
-    } else {
-      await window.api.terminal.write(terminalId, text)
-      await new Promise(r => setTimeout(r, 50))
-      await window.api.terminal.write(terminalId, '\r')
-    }
-  }, [answered, feedbackText, terminalId])
+    await resumeAgent(feedbackText.trim())
+  }, [answered, feedbackText, resumeAgent])
 
   // Extract any allowed prompts info from the tool input
   const allowedPrompts = message.input?.allowedPrompts as Array<{ tool: string; prompt: string }> | undefined
