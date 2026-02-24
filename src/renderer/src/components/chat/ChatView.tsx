@@ -7,12 +7,14 @@ import ToolResultBlock from './ToolResultBlock'
 import AskUserQuestionBlock from './AskUserQuestionBlock'
 import FileEditBlock, { isFileEditTool } from './FileEditBlock'
 import ToolCallGroup from './ToolCallGroup'
+import ReadGroup from './ReadGroup'
 import PlanModeBlock from './PlanModeBlock'
 import TodoBlock from './TodoBlock'
 import ThinkingBlock from './ThinkingBlock'
 import VoiceButton from '../common/VoiceButton'
 import WorktreeBar from './WorktreeBar'
 import { useProjectStore } from '../../stores/projectStore'
+import { AVAILABLE_MODELS, DEFAULT_MODEL, getModelLabel } from '../../constants/models'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useVimMode } from '../../hooks/useVimMode'
 import { useAgent } from '../../hooks/useAgent'
@@ -89,12 +91,6 @@ function VimBlockCursor({ textareaRef, text }: { textareaRef: React.RefObject<HT
   )
 }
 
-const AVAILABLE_MODELS = [
-  { id: 'claude-opus-4-6', label: 'Opus 4.6' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
-]
-
 const EMPTY_MESSAGES: UIMessage[] = []
 const MESSAGES_PER_PAGE = 50
 
@@ -154,7 +150,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const session = useSessionStore(s => s.sessions[sessionId])
   const isForkParent = session?.isForkParent ?? false
   const detectedModel = session?.model ?? null
-  const selectedModel = session?.selectedModel ?? 'claude-opus-4-6'
+  const selectedModel = session?.selectedModel ?? DEFAULT_MODEL
   const thinkingText = useSessionStore(s => s.thinkingText[sessionId] ?? null)
   const streamingThinkingText = useSessionStore(s => s.streamingThinkingText[sessionId] ?? null)
   const streamingThinkingComplete = useSessionStore(s => s.streamingThinkingComplete[sessionId] ?? false)
@@ -173,7 +169,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const sendingQueueRef = useRef(false)
 
   // Resolve the display model: selected > detected > fallback
-  const displayModel = selectedModel || detectedModel || 'claude-opus-4-6'
+  const displayModel = selectedModel || detectedModel || DEFAULT_MODEL
 
   // Show thinking only when processing
   const isThinking = isProcessing && !isStreaming
@@ -362,6 +358,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   type RenderItem =
     | { kind: 'single'; index: number; msg: UIMessage }
     | { kind: 'group'; indices: number[]; toolNames: string[]; msgs: UIMessage[] }
+    | { kind: 'read-group'; indices: number[]; toolUses: UIToolUseMessage[]; results: (UIToolResultMessage | null)[] }
 
   const renderItems = useMemo<RenderItem[]>(() => {
     const items: RenderItem[] = []
@@ -400,7 +397,15 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
             break
           }
           if (groupToolNames.length > 1) {
-            items.push({ kind: 'group', indices: groupIndices, toolNames: groupToolNames, msgs: groupMsgs })
+            // Check if all tools in this group are Read — use compact ReadGroup
+            const allReads = groupToolNames.every(n => n === 'Read')
+            if (allReads) {
+              const toolUses = groupMsgs.filter(m => m.type === 'tool_use') as UIToolUseMessage[]
+              const results = toolUses.map(tu => toolResultByToolUseId.get(tu.toolId) ?? null)
+              items.push({ kind: 'read-group', indices: groupIndices, toolUses, results })
+            } else {
+              items.push({ kind: 'group', indices: groupIndices, toolNames: groupToolNames, msgs: groupMsgs })
+            }
           } else {
             for (const idx of groupIndices) {
               items.push({ kind: 'single', index: idx, msg: messages[idx] })
@@ -976,6 +981,11 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
           )}
           {renderItems.length === 0 ? null : (
             renderItems.map((item, itemIdx) => {
+              if (item.kind === 'read-group') {
+                const startIdx = Math.max(0, messages.length - visibleCount)
+                if (item.indices[item.indices.length - 1] < startIdx) return null
+                return <ReadGroup key={`rg-${itemIdx}`} toolUses={item.toolUses} results={item.results} />
+              }
               if (item.kind === 'group') {
                 const startIdx = Math.max(0, messages.length - visibleCount)
                 if (item.indices[item.indices.length - 1] < startIdx) return null
@@ -1133,7 +1143,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
                   onClick={() => setModelPickerOpen(!modelPickerOpen)}
                   title="Change model"
                 >
-                  {AVAILABLE_MODELS.find(m => m.id === displayModel)?.label || displayModel.split('-').slice(1).join(' ')}
+                  {getModelLabel(displayModel)}
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>

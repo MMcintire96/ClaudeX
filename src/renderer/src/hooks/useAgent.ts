@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useProjectStore } from '../stores/projectStore'
+import { DEFAULT_MODEL } from '../constants/models'
 
 export interface WorktreeOptions {
   useWorktree: boolean
@@ -28,7 +29,7 @@ export function useAgent(sessionId: string | null) {
       return null
     }
 
-    const result = await window.api.agent.start(currentPath, prompt, 'claude-opus-4-6', worktreeOptions)
+    const result = await window.api.agent.start(currentPath, prompt, DEFAULT_MODEL, worktreeOptions)
     if (!result.success || !result.sessionId) {
       return null
     }

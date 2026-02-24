@@ -17,6 +17,7 @@ interface TerminalState {
   projectTerminalMemory: Record<string, string>
   manuallyRenamed: Record<string, boolean>
   shellSplitIds: string[]
+  splitRatio: number
 
   addTerminal: (tab: TerminalTab) => void
   removeTerminal: (id: string) => void
@@ -29,6 +30,7 @@ interface TerminalState {
   setPanelHeight: (h: number) => void
   splitShell: (newId: string) => void
   unsplitShell: () => void
+  setSplitRatio: (ratio: number) => void
 }
 
 export const useTerminalStore = create<TerminalState>((set) => ({
@@ -39,6 +41,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   projectTerminalMemory: {},
   manuallyRenamed: {},
   shellSplitIds: [],
+  splitRatio: 0.5,
 
   addTerminal: (tab: TerminalTab): void => {
     set(state => ({
@@ -144,8 +147,13 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       const first = state.shellSplitIds[0]
       return {
         shellSplitIds: [],
+        splitRatio: 0.5,
         activeTerminalId: first || state.activeTerminalId
       }
     })
+  },
+
+  setSplitRatio: (ratio: number): void => {
+    set({ splitRatio: Math.max(0.15, Math.min(0.85, ratio)) })
   }
 }))

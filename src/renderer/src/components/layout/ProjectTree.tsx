@@ -1,39 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import type { SessionState, UIToolUseMessage, UIToolResultMessage } from '../../stores/sessionStore'
-
-/** Check if a session's last pending tool_use needs user input (question, plan, or permission). */
-function sessionNeedsInput(session: SessionState): boolean {
-  const msgs = session.messages
-  if (msgs.length === 0) return false
-
-  // Build a set of tool_use IDs that have results
-  const answeredToolIds = new Set<string>()
-  for (const m of msgs) {
-    if (m.type === 'tool_result') answeredToolIds.add((m as UIToolResultMessage).toolUseId)
-  }
-
-  // Walk from end: find the last tool_use without a result
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    const m = msgs[i]
-    if (m.type === 'tool_use') {
-      const tu = m as UIToolUseMessage
-      if (!answeredToolIds.has(tu.toolId)) {
-        // Unanswered tool_use: if it's AskUserQuestion or ExitPlanMode, needs input
-        if (tu.toolName === 'AskUserQuestion' || tu.toolName === 'ExitPlanMode') return true
-        // Any other unanswered tool_use at the tail means permission is needed
-        return true
-      }
-      // If the last tool_use already has a result, no input needed
-      return false
-    }
-    // Skip tool_result, text, thinking — keep looking for a tool_use
-    if (m.type === 'text' || m.type === 'thinking' || m.type === 'system') {
-      // If we hit a text/thinking message before any tool_use, no input needed
-      return false
-    }
-  }
-  return false
-}
+import { sessionNeedsInput, type SessionState } from '../../stores/sessionStore'
 
 interface InlineRenameProps {
   value: string
@@ -292,6 +258,9 @@ export default function ProjectTree({
                 </span>
               )}
               <span className="thread-time"></span>
+              {needsInput && !isActive && (
+                <span className="thread-needs-input-badge" title="Needs your input" />
+              )}
             </button>
           )
         })}

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, globalShortcut, session, Menu, ipcMain, powerSaveBlocker } from 'electron'
+import { app, BrowserWindow, shell, globalShortcut, session, Menu, ipcMain } from 'electron'
 import { join } from 'path'
 import { AgentManager } from './agent/AgentManager'
 import { ProjectManager } from './project/ProjectManager'
@@ -118,7 +118,6 @@ function createWindow(): void {
   // Deferred close: request UI snapshot from renderer before saving
   let isClosing = false
   ipcMain.on('app:ui-snapshot', (_event, snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; sessions?: unknown[] }) => {
-    if (!isClosing) return
     try {
       sessionPersistence.saveState({
         version: 1,
@@ -131,10 +130,12 @@ function createWindow(): void {
     } catch (err) {
       console.error('[Main] Failed to save session state:', err)
     }
-    agentManager.stopAgent()
-    terminalManager.destroy()
-    browserManager.destroy()
-    mainWindow?.destroy()
+    if (isClosing) {
+      agentManager.stopAgent()
+      terminalManager.destroy()
+      browserManager.destroy()
+      mainWindow?.destroy()
+    }
   })
 
   mainWindow.on('close', (e) => {

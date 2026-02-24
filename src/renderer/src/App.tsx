@@ -3,7 +3,7 @@ import AppLayout from './components/layout/AppLayout'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import HotkeysModal from './components/common/HotkeysModal'
 import CommandPalette from './components/common/CommandPalette'
-import { useSessionStore } from './stores/sessionStore'
+import { useSessionStore, sessionNeedsInput } from './stores/sessionStore'
 import { useUIStore } from './stores/uiStore'
 import { useTerminalStore } from './stores/terminalStore'
 import { useProjectStore } from './stores/projectStore'
@@ -63,6 +63,39 @@ export default function App() {
       unsubTitle()
     }
   }, [processEvent, setProcessing, setError, renameSession])
+
+  // Centralized notification: fire when any non-active session transitions to needsInput
+  const sessions = useSessionStore(s => s.sessions)
+  const activeSessionId = useSessionStore(s => s.activeSessionId)
+  const notifiedSessionsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    for (const [sid, session] of Object.entries(sessions)) {
+      const needs = sessionNeedsInput(session)
+      if (needs && sid !== activeSessionId && !notifiedSessionsRef.current.has(sid)) {
+        notifiedSessionsRef.current.add(sid)
+        // Fire browser notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const lastMsg = [...session.messages].reverse().find(m => m.type === 'tool_use')
+          const toolName = lastMsg && 'toolName' in lastMsg ? (lastMsg as { toolName: string }).toolName : ''
+          let body = 'A session needs your attention'
+          if (toolName === 'AskUserQuestion') body = 'Claude has a question for you'
+          else if (toolName === 'ExitPlanMode') body = 'A plan is ready for your review'
+          else body = `${toolName || 'A tool'} requires permission`
+
+          new Notification(`${session.name || 'Claude Code'}`, {
+            body,
+            silent: false
+          })
+        } else if ('Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission()
+        }
+      } else if (!needs && notifiedSessionsRef.current.has(sid)) {
+        // Clear notification tracking when input is no longer needed
+        notifiedSessionsRef.current.delete(sid)
+      }
+    }
+  }, [sessions, activeSessionId])
 
   // Prevent Electron from opening dropped files in the browser window
   useEffect(() => {
@@ -149,6 +182,23 @@ export default function App() {
       })
     })
     return unsub
+  }, [])
+
+  // Auto-save session state every 30s for crash recovery
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const uiState = useUIStore.getState()
+      const projectState = useProjectStore.getState()
+      const sessions = useSessionStore.getState().getSerializableSessions()
+      window.api.app.sendUiSnapshot({
+        theme: uiState.theme,
+        sidebarWidth: uiState.sidebarWidth,
+        activeProjectPath: projectState.currentPath,
+        expandedProjects: projectState.expandedProjects,
+        sessions
+      })
+    }, 30_000)
+    return () => clearInterval(interval)
   }, [])
 
   // Keyboard shortcuts

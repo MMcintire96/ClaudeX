@@ -2,12 +2,7 @@ import React, { useState, useRef, useCallback, KeyboardEvent } from 'react'
 import { useAgent } from '../../hooks/useAgent'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useProjectStore } from '../../stores/projectStore'
-
-const AVAILABLE_MODELS = [
-  'claude-opus-4-6',
-  'claude-sonnet-4-5-20250929',
-  'claude-haiku-4-5-20251001'
-]
+import { AVAILABLE_MODELS, DEFAULT_MODEL, MODEL_IDS } from '../../constants/models'
 
 const SLASH_COMMANDS = [
   { cmd: '/models', desc: 'Change the model' },
@@ -31,7 +26,7 @@ export default function InputBar({ sessionId }: InputBarProps) {
   const session = useSessionStore(s =>
     sessionId ? s.sessions[sessionId] ?? null : null
   )
-  const selectedModel = session?.selectedModel ?? 'claude-opus-4-6'
+  const selectedModel = session?.selectedModel ?? DEFAULT_MODEL
   const handleSlashCommand = useCallback((command: string): boolean => {
     const cmd = command.trim().toLowerCase()
 
@@ -39,14 +34,15 @@ export default function InputBar({ sessionId }: InputBarProps) {
       const modelArg = cmd.replace(/^\/models?\s*/, '').trim()
       if (modelArg && sessionId) {
         const match = AVAILABLE_MODELS.find(m =>
-          m.includes(modelArg) || m.toLowerCase().includes(modelArg.toLowerCase())
+          m.id.includes(modelArg) || m.id.toLowerCase().includes(modelArg.toLowerCase()) ||
+          m.label.toLowerCase().includes(modelArg.toLowerCase())
         )
         if (match) {
-          useSessionStore.getState().setSelectedModel(sessionId, match)
-          window.api.agent.setModel(sessionId, match)
-          useSessionStore.getState().addSystemMessage(sessionId, `Model changed to ${match}`)
+          useSessionStore.getState().setSelectedModel(sessionId, match.id)
+          window.api.agent.setModel(sessionId, match.id)
+          useSessionStore.getState().addSystemMessage(sessionId, `Model changed to ${match.label}`)
         } else {
-          useSessionStore.getState().setError(sessionId, `Unknown model: ${modelArg}. Available: ${AVAILABLE_MODELS.join(', ')}`)
+          useSessionStore.getState().setError(sessionId, `Unknown model: ${modelArg}. Available: ${MODEL_IDS.join(', ')}`)
         }
       } else {
         setShowModelPicker(true)
@@ -139,12 +135,12 @@ export default function InputBar({ sessionId }: InputBarProps) {
           <div className="slash-menu-header">Select model:</div>
           {AVAILABLE_MODELS.map(m => (
             <button
-              key={m}
-              className={`slash-menu-item ${selectedModel === m ? 'active' : ''}`}
-              onClick={() => handleSelectModel(m)}
+              key={m.id}
+              className={`slash-menu-item ${selectedModel === m.id ? 'active' : ''}`}
+              onClick={() => handleSelectModel(m.id)}
             >
-              {m}
-              {selectedModel === m && ' (current)'}
+              {m.label}
+              {selectedModel === m.id && ' (current)'}
             </button>
           ))}
           <button className="slash-menu-item" onClick={() => setShowModelPicker(false)}>

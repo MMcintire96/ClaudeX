@@ -1335,6 +1335,116 @@ body {
   padding: 4px 0;
 }
 
+/* ===== READ GROUP ===== */
+.read-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 4px 0;
+  overflow: hidden;
+}
+.read-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.read-group-header:hover {
+  background: var(--bg-tertiary, var(--bg-secondary));
+  color: var(--text-primary);
+}
+.read-group-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.read-group-summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.read-group-error-badge {
+  font-size: 10px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.read-group-chevron {
+  flex-shrink: 0;
+  font-size: 10px;
+  opacity: 0.5;
+}
+.read-group-body {
+  border-top: 1px solid var(--border);
+}
+.read-group-file {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+.read-group-file:last-child {
+  border-bottom: none;
+}
+.read-group-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 12px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  cursor: pointer;
+  text-align: left;
+}
+.read-group-file-row:hover {
+  background: var(--bg-hover);
+}
+.read-group-file-chevron {
+  flex-shrink: 0;
+  font-size: 9px;
+  opacity: 0.4;
+  width: 10px;
+}
+.read-group-file-path {
+  flex: 1;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.read-group-file-error .read-group-file-path {
+  color: var(--danger);
+}
+.read-group-file-error-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+.read-group-file-result {
+  padding: 4px 12px 8px 28px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.read-group-file-result pre {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
 /* Content preview for Write tool */
 .file-edit-content-preview {
   padding: 8px 12px;
@@ -3478,6 +3588,22 @@ body {
   font-size: 8px;
 }
 
+/* Red dot badge for non-active sessions needing input */
+.thread-needs-input-badge {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+  background: #e53935;
+  box-shadow: 0 0 4px 1px rgba(229, 57, 53, 0.5);
+  margin-left: auto;
+  animation: red-dot-pulse 1.5s ease-in-out infinite;
+}
+@keyframes red-dot-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px 1px rgba(229, 57, 53, 0.5); }
+  50% { opacity: 0.7; box-shadow: 0 0 8px 2px rgba(229, 57, 53, 0.6); }
+}
+
 /* ===== THREAD CONTEXT MENU ===== */
 .thread-context-menu {
   position: fixed;
@@ -4655,9 +4781,14 @@ body {
 }
 
 .terminal-split-divider {
-  width: 2px;
+  width: 6px;
   background: var(--border);
   flex-shrink: 0;
+  cursor: col-resize;
+  transition: background 0.15s;
+}
+.terminal-split-divider:hover {
+  background: var(--accent, #007acc);
 }
 
 .terminal-tab.split-active,
