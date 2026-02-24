@@ -1408,6 +1408,30 @@ body {
   background: var(--bg-secondary);
   border-radius: var(--radius);
   border: 1px solid var(--border);
+  position: relative;
+}
+
+.ask-user-block.needs-input {
+}
+
+.needs-input-indicator {
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--warning, #f0a030);
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 0 0 1px var(--warning, #f0a030);
+  animation: pulse-orange 2s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes pulse-orange {
+  0%, 100% { box-shadow: 0 0 0 1px var(--warning, #f0a030); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning, #f0a030) 30%, transparent); }
 }
 
 .ask-user-question {
@@ -1647,6 +1671,10 @@ body {
   background: var(--bg-secondary);
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  position: relative;
+}
+
+.plan-mode-block.needs-input {
 }
 
 .plan-mode-header {
@@ -2446,6 +2474,7 @@ body {
 .tool-use-block.awaiting-permission,
 .file-edit-block.awaiting-permission {
   border: 1px solid var(--warning, #f0a030);
+  position: relative;
 }
 
 .permission-request-inline {
@@ -3438,6 +3467,11 @@ body {
 @keyframes attention-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+.tree-item-status-indicator.needs-input {
+  color: var(--warning, #f0a030);
+  animation: attention-pulse 1.5s ease-in-out infinite;
+  font-size: 12px;
 }
 .tree-item-status-indicator.past {
   color: var(--text-muted);
@@ -5067,6 +5101,68 @@ body {
   flex-shrink: 0;
   color: var(--accent);
   opacity: 0.7;
+}
+
+/* ===== FORK BADGES ===== */
+.fork-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.fork-parent-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.35;
+  color: var(--text-muted);
+}
+
+.btn-fork {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-fork:hover {
+  color: var(--accent);
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.btn-fork:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.fork-parent-notice {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  margin: 0 8px 4px;
+}
+
+.input-bar-disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 /* ===== COMMIT MODAL ===== */

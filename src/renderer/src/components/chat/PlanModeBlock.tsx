@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useSessionStore, type UIToolUseMessage } from '../../stores/sessionStore'
 
 interface Props {
@@ -42,8 +42,25 @@ export default function PlanModeBlock({ message, sessionId, answered: alreadyAns
   // Extract any allowed prompts info from the tool input
   const allowedPrompts = message.input?.allowedPrompts as Array<{ tool: string; prompt: string }> | undefined
 
+  const needsInput = !answered
+  const notifiedRef = useRef(false)
+  useEffect(() => {
+    if (needsInput && !notifiedRef.current) {
+      notifiedRef.current = true
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Claude needs your input', {
+          body: 'A plan is ready for your review',
+          silent: false
+        })
+      } else if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission()
+      }
+    }
+  }, [needsInput])
+
   return (
-    <div className="plan-mode-block">
+    <div className={`plan-mode-block${needsInput ? ' needs-input' : ''}`}>
+      {needsInput && <div className="needs-input-indicator" />}
       <div className="plan-mode-header">
         <svg className="plan-mode-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />

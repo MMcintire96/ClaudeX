@@ -178,7 +178,7 @@ function createWindow(): void {
 // Popout chat window management
 let popoutWindow: BrowserWindow | null = null
 
-function createPopoutWindow(terminalId: string, projectPath: string, theme?: string): BrowserWindow {
+function createPopoutWindow(terminalId: string, projectPath: string, theme?: string, sessionSnapshot?: unknown): BrowserWindow {
   if (popoutWindow && !popoutWindow.isDestroyed()) {
     popoutWindow.close()
   }
@@ -207,6 +207,13 @@ function createPopoutWindow(terminalId: string, projectPath: string, theme?: str
 
   addBroadcastWindow(popout)
 
+  // Send session snapshot to popout once it finishes loading
+  popout.webContents.on('did-finish-load', () => {
+    if (sessionSnapshot) {
+      popout.webContents.send('popout:init', { session: sessionSnapshot })
+    }
+  })
+
   popout.on('closed', () => {
     removeBroadcastWindow(popout)
     if (popoutWindow === popout) popoutWindow = null
@@ -226,8 +233,8 @@ function createPopoutWindow(terminalId: string, projectPath: string, theme?: str
   return popout
 }
 
-ipcMain.handle('popout:create', (_event, terminalId: string, projectPath: string, theme?: string) => {
-  createPopoutWindow(terminalId, projectPath, theme)
+ipcMain.handle('popout:create', (_event, terminalId: string, projectPath: string, theme?: string, sessionSnapshot?: unknown) => {
+  createPopoutWindow(terminalId, projectPath, theme, sessionSnapshot)
   return { success: true }
 })
 
@@ -252,6 +259,7 @@ app.whenReady().then(async () => {
   await terminalManager.init()
   await bridgeServer.start()
   agentManager.setBridgeInfo(bridgeServer.port, bridgeServer.token)
+  agentManager.setSettingsManager(settingsManager)
   registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, {
     bridgePort: bridgeServer.port,
     bridgeToken: bridgeServer.token

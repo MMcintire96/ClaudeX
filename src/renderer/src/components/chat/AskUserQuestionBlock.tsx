@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useSessionStore, type UIToolUseMessage } from '../../stores/sessionStore'
 
 interface Option {
@@ -137,8 +137,25 @@ export default function AskUserQuestionBlock({ message, sessionId, answered: alr
   const isQuestionAnswered = (qi: number) => qi in answers
   const isMultiQuestion = questions.length > 1
 
+  const needsInput = !submitted
+  const notifiedRef = useRef(false)
+  useEffect(() => {
+    if (needsInput && !notifiedRef.current) {
+      notifiedRef.current = true
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Claude needs your input', {
+          body: questions[0]?.question || 'A question requires your response',
+          silent: false
+        })
+      } else if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission()
+      }
+    }
+  }, [needsInput])
+
   return (
-    <div className="ask-user-block">
+    <div className={`ask-user-block${needsInput ? ' needs-input' : ''}`}>
+      {needsInput && <div className="needs-input-indicator" />}
       {questions.map((q, qi) => {
         const qAnswered = isQuestionAnswered(qi)
         const qDisabled = submitted

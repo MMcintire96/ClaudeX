@@ -187,6 +187,63 @@ export default function Sidebar() {
     setHistoryByProject(prev => ({ ...prev, [projectPath]: [] }))
   }, [])
 
+  const handleForkSession = useCallback(async (sessionId: string) => {
+    const session = useSessionStore.getState().sessions[sessionId]
+    console.log('[handleForkSession] sessionId:', sessionId, 'session:', session ? { messages: session.messages.length, projectPath: session.projectPath, worktreePath: session.worktreePath } : null)
+    if (!session || session.messages.length === 0) return
+
+    // Stop the agent if running
+    await window.api.agent.stop(sessionId).catch(() => {})
+
+    const sdkSessionId = session.sessionId
+    const effectivePath = session.worktreePath || session.projectPath
+    console.log('[handleForkSession] calling fork:', { sdkSessionId, effectivePath })
+
+    const result = await window.api.agent.fork(sessionId, effectivePath, sdkSessionId)
+    console.log('[handleForkSession] result:', result)
+    if (!result.success || !result.forkA || !result.forkB) return
+
+    const parentName = session.name || 'Session'
+    const store = useSessionStore.getState()
+
+    store.restoreSession({
+      id: result.forkA.sessionId,
+      projectPath: session.projectPath,
+      name: `${parentName} (Fork A)`,
+      messages: [...session.messages],
+      model: session.model,
+      totalCostUsd: session.totalCostUsd,
+      numTurns: session.numTurns,
+      selectedModel: session.selectedModel,
+      createdAt: Date.now(),
+      worktreePath: result.forkA.worktreePath,
+      isWorktree: true,
+      worktreeSessionId: result.forkA.worktreeSessionId,
+      forkedFrom: sessionId,
+      forkLabel: 'A'
+    })
+
+    store.restoreSession({
+      id: result.forkB.sessionId,
+      projectPath: session.projectPath,
+      name: `${parentName} (Fork B)`,
+      messages: [...session.messages],
+      model: session.model,
+      totalCostUsd: session.totalCostUsd,
+      numTurns: session.numTurns,
+      selectedModel: session.selectedModel,
+      createdAt: Date.now(),
+      worktreePath: result.forkB.worktreePath,
+      isWorktree: true,
+      worktreeSessionId: result.forkB.worktreeSessionId,
+      forkedFrom: sessionId,
+      forkLabel: 'B'
+    })
+
+    store.markAsForked(sessionId, [result.forkA.sessionId, result.forkB.sessionId])
+    store.setActiveSession(result.forkA.sessionId)
+  }, [])
+
   const handleRemoveProject = useCallback((projectPath: string) => {
     // Close shell terminals
     const projectTerminals = terminals.filter(t => t.projectPath === projectPath)
@@ -305,6 +362,7 @@ export default function Sidebar() {
               onNewThread={() => handleNewThread(proj.path)}
               onRemoveProject={() => handleRemoveProject(proj.path)}
               onClearOldSessions={() => handleClearOldSessions(proj.path)}
+              onForkSession={handleForkSession}
               historyEntries={historyByProject[proj.path] || []}
               onResumeHistory={handleResumeHistory}
             />

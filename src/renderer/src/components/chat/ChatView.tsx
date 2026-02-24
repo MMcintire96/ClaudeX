@@ -147,11 +147,12 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const vim = useVimMode(textareaRef, getInputText, setInputText, vimChatEnabled)
 
   // SDK agent hook
-  const { sendMessage, startNewSession, stopAgent, isProcessing, isStreaming } = useAgent(sessionId)
+  const { sendMessage, startNewSession, stopAgent, forkSession, isProcessing, isStreaming } = useAgent(sessionId)
 
   // Read session data from stores
   const messages = useSessionStore(s => s.sessions[sessionId]?.messages ?? EMPTY_MESSAGES)
   const session = useSessionStore(s => s.sessions[sessionId])
+  const isForkParent = session?.isForkParent ?? false
   const detectedModel = session?.model ?? null
   const selectedModel = session?.selectedModel ?? 'claude-opus-4-6'
   const thinkingText = useSessionStore(s => s.thinkingText[sessionId] ?? null)
@@ -1100,19 +1101,25 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
           </div>
         )}
 
-        <div className="input-bar">
+        {isForkParent && (
+          <div className="fork-parent-notice">
+            This conversation was forked. Switch to a fork in the sidebar to continue.
+          </div>
+        )}
+        <div className={`input-bar${isForkParent ? ' input-bar-disabled' : ''}`}>
           <div className="textarea-wrapper">
             <div className="input-highlight-overlay" aria-hidden="true">
-              {inputText ? renderHighlightedInput(inputText) : <span className="input-highlight-placeholder">Message Claude... (Enter to send)</span>}
+              {inputText ? renderHighlightedInput(inputText) : <span className="input-highlight-placeholder">{isForkParent ? 'Session forked — switch to a fork to continue' : 'Message Claude... (Enter to send)'}</span>}
             </div>
             <textarea
               ref={textareaRef}
               className={`input-textarea${vimChatEnabled && vim.mode !== 'insert' ? ' vim-normal' : ''}${inputText ? ' has-content' : ''}`}
-              placeholder="Message Claude... (Enter to send)"
+              placeholder={isForkParent ? 'Session forked — switch to a fork to continue' : 'Message Claude... (Enter to send)'}
               value={inputText}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
               rows={2}
+              disabled={isForkParent}
             />
             {vimChatEnabled && vim.mode !== 'insert' && (
               <VimBlockCursor textareaRef={textareaRef} text={inputText} />
@@ -1158,6 +1165,23 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
                 </svg>
                 Plan
               </button>
+              {messages.length > 0 && !isForkParent && (
+                <button
+                  className={`btn-fork`}
+                  onClick={() => forkSession()}
+                  disabled={isProcessing || messages.length === 0}
+                  title="Fork conversation into two parallel worktree sessions"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="18" r="3"/>
+                    <circle cx="6" cy="6" r="3"/>
+                    <circle cx="18" cy="6" r="3"/>
+                    <path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9"/>
+                    <line x1="12" y1="12" x2="12" y2="15"/>
+                  </svg>
+                  Fork
+                </button>
+              )}
             </div>
             <div className="input-actions">
               {vimChatEnabled && (

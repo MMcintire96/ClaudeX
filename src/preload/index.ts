@@ -44,6 +44,8 @@ const api = {
     },
     resume: (sessionId: string, projectPath: string, message: string, model?: string | null) =>
       ipcRenderer.invoke('agent:resume', sessionId, projectPath, message, model),
+    fork: (sourceSessionId: string, projectPath: string, sourceSdkSessionId: string | null) =>
+      ipcRenderer.invoke('agent:fork', sourceSessionId, projectPath, sourceSdkSessionId),
   },
   project: {
     open: () =>
@@ -165,14 +167,19 @@ const api = {
       ipcRenderer.send('app:ui-snapshot', snapshot)
   },
   popout: {
-    create: (terminalId: string, projectPath: string, theme?: string) =>
-      ipcRenderer.invoke('popout:create', terminalId, projectPath, theme),
+    create: (terminalId: string, projectPath: string, theme?: string, sessionSnapshot?: unknown) =>
+      ipcRenderer.invoke('popout:create', terminalId, projectPath, theme, sessionSnapshot),
     close: () =>
       ipcRenderer.invoke('popout:close'),
     onClosed: (callback: () => void) => {
       const handler = () => callback()
       ipcRenderer.on('popout:closed', handler)
       return () => ipcRenderer.removeListener('popout:closed', handler)
+    },
+    onInit: (callback: (data: { session: unknown }) => void) => {
+      const handler = (_: unknown, data: { session: unknown }) => callback(data)
+      ipcRenderer.on('popout:init', handler)
+      return () => ipcRenderer.removeListener('popout:init', handler)
     }
   },
   browser: {

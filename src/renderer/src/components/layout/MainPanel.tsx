@@ -29,7 +29,27 @@ export default function MainPanel() {
   useEffect(() => {
     if (chatDetached && activeSessionId && currentPath) {
       const theme = useUIStore.getState().theme
-      window.api.popout.create(activeSessionId, currentPath, theme)
+      // Serialize current session state so the popout window gets existing messages
+      const session = useSessionStore.getState().sessions[activeSessionId]
+      const sessionSnapshot = session ? {
+        id: session.sessionId,
+        projectPath: session.projectPath,
+        name: session.name,
+        messages: session.messages,
+        model: session.model,
+        totalCostUsd: session.totalCostUsd,
+        numTurns: session.numTurns,
+        selectedModel: session.selectedModel,
+        createdAt: session.createdAt,
+        worktreePath: session.worktreePath,
+        isWorktree: session.isWorktree,
+        worktreeSessionId: session.worktreeSessionId,
+        forkedFrom: session.forkedFrom,
+        forkChildren: session.forkChildren,
+        forkLabel: session.forkLabel,
+        isForkParent: session.isForkParent
+      } : null
+      window.api.popout.create(activeSessionId, currentPath, theme, sessionSnapshot)
     } else if (!chatDetached) {
       window.api.popout.close()
     }

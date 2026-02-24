@@ -40,12 +40,22 @@ export default function PopoutApp({ terminalId: sessionId, projectPath, initialT
     return () => channel.close()
   }, [])
 
-  // Ensure session exists in store
+  // Restore session from snapshot sent by main window, or create empty fallback
   useEffect(() => {
     const store = useSessionStore.getState()
+    // Create a blank session immediately so ChatView has something to render
     if (!store.sessions[sessionId]) {
       store.createSession(projectPath, sessionId)
     }
+
+    // Listen for the full session snapshot from the main window
+    const unsub = window.api.popout.onInit(({ session }) => {
+      if (session && typeof session === 'object') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        useSessionStore.getState().restoreSession(session as any)
+      }
+    })
+    return unsub
   }, [sessionId, projectPath])
 
   // Agent SDK event listeners

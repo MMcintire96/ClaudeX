@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import type { UIToolUseMessage } from '../../stores/sessionStore'
 
 interface Props {
@@ -46,8 +46,25 @@ export default function ToolUseBlock({ message, awaitingPermission, terminalId }
     await window.api.terminal.write(terminalId, '\x1b')
   }, [terminalId, responded])
 
+  const needsInput = awaitingPermission && !responded
+  const notifiedRef = useRef(false)
+  useEffect(() => {
+    if (needsInput && !notifiedRef.current) {
+      notifiedRef.current = true
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Claude needs your approval', {
+          body: `${message.toolName} requires permission`,
+          silent: false
+        })
+      } else if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission()
+      }
+    }
+  }, [needsInput])
+
   return (
-    <div className={`tool-use-block${awaitingPermission && !responded ? ' awaiting-permission' : ''}`}>
+    <div className={`tool-use-block${needsInput ? ' awaiting-permission' : ''}`}>
+      {needsInput && <div className="needs-input-indicator" />}
       <button
         className="tool-use-header"
         onClick={() => setExpanded(!expanded)}

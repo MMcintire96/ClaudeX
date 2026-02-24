@@ -17,6 +17,10 @@ export interface PersistedSession {
   worktreePath?: string | null
   isWorktree?: boolean
   worktreeSessionId?: string | null
+  forkedFrom?: string | null
+  forkChildren?: string[] | null
+  forkLabel?: string | null
+  isForkParent?: boolean
 }
 
 export interface PersistedAppState {

@@ -1,10 +1,11 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Notification } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { AgentProcess, AgentProcessOptions } from './AgentProcess'
 import type { AgentEvent, StreamEvent } from './types'
 import { broadcastSend } from '../broadcast'
 import { generateSessionTitle } from './TitleGenerator'
+import type { SettingsManager } from '../settings/SettingsManager'
 
 const SYSTEM_PROMPT_APPEND =
   'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
@@ -26,6 +27,7 @@ export class AgentManager {
   private static readonly MAX_DELTA_BUFFER = 500
   private initialPrompts: Map<string, string> = new Map()
   private titleGenerated: Set<string> = new Set()
+  private settingsManager: SettingsManager | null = null
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
@@ -34,6 +36,10 @@ export class AgentManager {
   setBridgeInfo(port: number, token: string): void {
     this.bridgePort = port
     this.bridgeToken = token
+  }
+
+  setSettingsManager(manager: SettingsManager): void {
+    this.settingsManager = manager
   }
 
   private getMcpServerPath(): string {
@@ -107,6 +113,19 @@ export class AgentManager {
     agent.on('close', (code: number | null) => {
       this.flushDeltas(sessionId)
       broadcastSend(this.mainWindow,'agent:closed', { sessionId, code })
+
+      // Show native notification when agent finishes and window is not focused
+      if (this.settingsManager?.get().notificationSounds !== false) {
+        const isFocused = this.mainWindow?.isFocused() ?? false
+        if (!isFocused && Notification.isSupported()) {
+          const n = new Notification({
+            title: 'Claude finished',
+            body: code === 0 || code === null ? 'Task completed' : `Agent exited with code ${code}`,
+            silent: false
+          })
+          n.show()
+        }
+      }
 
       // Generate title after first successful turn
       const prompt = this.initialPrompts.get(sessionId)

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import hljs from 'highlight.js/lib/core'
 import typescript from 'highlight.js/lib/languages/typescript'
 import javascript from 'highlight.js/lib/languages/javascript'
@@ -241,8 +241,25 @@ export default function FileEditBlock({ message, result, awaitingPermission, ter
     return lines.slice(0, 6).join('\n') + `\n... (${lines.length} lines total)`
   }, [result])
 
+  const needsInput = awaitingPermission && !permissionResponded
+  const notifiedRef = useRef(false)
+  useEffect(() => {
+    if (needsInput && !notifiedRef.current) {
+      notifiedRef.current = true
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Claude needs your approval', {
+          body: `${message.toolName} ${filePath ? shortPath(filePath) : ''} requires permission`,
+          silent: false
+        })
+      } else if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission()
+      }
+    }
+  }, [needsInput])
+
   return (
-    <div className={`file-edit-block ${hasError ? 'file-edit-error' : ''}${awaitingPermission && !permissionResponded ? ' awaiting-permission' : ''}`}>
+    <div className={`file-edit-block ${hasError ? 'file-edit-error' : ''}${needsInput ? ' awaiting-permission' : ''}`}>
+      {needsInput && <div className="needs-input-indicator" />}
       <button
         className="file-edit-header"
         onClick={() => setExpanded(!expanded)}

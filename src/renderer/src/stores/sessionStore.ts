@@ -231,6 +231,11 @@ export interface SessionState {
   worktreeBranch: string | null
   worktreeSessionId: string | null
   isRestored: boolean
+  // Fork metadata
+  forkedFrom: string | null
+  forkChildren: string[] | null
+  forkLabel: string | null
+  isForkParent: boolean
 }
 
 function createSessionState(sessionId: string, projectPath: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }): SessionState {
@@ -254,7 +259,11 @@ function createSessionState(sessionId: string, projectPath: string, worktreeOpts
     isWorktree: !!worktreeOpts?.worktreePath,
     worktreeBranch: null,
     worktreeSessionId: worktreeOpts?.worktreeSessionId ?? null,
-    isRestored: false
+    isRestored: false,
+    forkedFrom: null,
+    forkChildren: null,
+    forkLabel: null,
+    isForkParent: false
   }
 }
 
@@ -286,9 +295,10 @@ interface SessionStore {
   loadEntries: (sessionId: string, projectPath: string, entries: SessionFileEntry[]) => void
   appendEntries: (sessionId: string, entries: SessionFileEntry[]) => void
   addSystemMessage: (sessionId: string, content: string) => void
-  restoreSession: (data: { id: string; projectPath: string; name: string; messages?: unknown[]; model?: string | null; totalCostUsd?: number; numTurns?: number; selectedModel?: string | null; createdAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null }) => void
+  restoreSession: (data: { id: string; projectPath: string; name: string; messages?: unknown[]; model?: string | null; totalCostUsd?: number; numTurns?: number; selectedModel?: string | null; createdAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null; forkedFrom?: string | null; forkLabel?: string | null; forkChildren?: string[] | null; isForkParent?: boolean }) => void
   clearRestored: (sessionId: string) => void
-  getSerializableSessions: () => Array<{ id: string; projectPath: string; name: string; messages: UIMessage[]; model: string | null; totalCostUsd: number; numTurns: number; selectedModel: string | null; createdAt: number; lastActiveAt: number; worktreePath: string | null; isWorktree: boolean; worktreeSessionId: string | null }>
+  markAsForked: (sessionId: string, childIds: [string, string]) => void
+  getSerializableSessions: () => Array<{ id: string; projectPath: string; name: string; messages: UIMessage[]; model: string | null; totalCostUsd: number; numTurns: number; selectedModel: string | null; createdAt: number; lastActiveAt: number; worktreePath: string | null; isWorktree: boolean; worktreeSessionId: string | null; forkedFrom: string | null; forkChildren: string[] | null; forkLabel: string | null; isForkParent: boolean }>
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -751,7 +761,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       isWorktree: data.isWorktree ?? false,
       worktreeBranch: null,
       worktreeSessionId: data.worktreeSessionId ?? null,
-      isRestored: true
+      isRestored: true,
+      forkedFrom: data.forkedFrom ?? null,
+      forkChildren: data.forkChildren ?? null,
+      forkLabel: data.forkLabel ?? null,
+      isForkParent: data.isForkParent ?? false
     }
     set(s => ({
       sessions: { ...s.sessions, [data.id]: session },
@@ -771,7 +785,23 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     })
   },
 
-  getSerializableSessions: (): Array<{ id: string; projectPath: string; name: string; messages: UIMessage[]; model: string | null; totalCostUsd: number; numTurns: number; selectedModel: string | null; createdAt: number; lastActiveAt: number; worktreePath: string | null; isWorktree: boolean; worktreeSessionId: string | null }> => {
+  markAsForked: (sessionId: string, childIds: [string, string]): void => {
+    set(s => {
+      if (!s.sessions[sessionId]) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: {
+            ...s.sessions[sessionId],
+            isForkParent: true,
+            forkChildren: childIds
+          }
+        }
+      }
+    })
+  },
+
+  getSerializableSessions: (): Array<{ id: string; projectPath: string; name: string; messages: UIMessage[]; model: string | null; totalCostUsd: number; numTurns: number; selectedModel: string | null; createdAt: number; lastActiveAt: number; worktreePath: string | null; isWorktree: boolean; worktreeSessionId: string | null; forkedFrom: string | null; forkChildren: string[] | null; forkLabel: string | null; isForkParent: boolean }> => {
     const state = get()
     return Object.values(state.sessions)
       .filter(s => s.messages.length > 0)
@@ -788,7 +818,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         lastActiveAt: Date.now(),
         worktreePath: s.worktreePath,
         isWorktree: s.isWorktree,
-        worktreeSessionId: s.worktreeSessionId
+        worktreeSessionId: s.worktreeSessionId,
+        forkedFrom: s.forkedFrom,
+        forkChildren: s.forkChildren,
+        forkLabel: s.forkLabel,
+        isForkParent: s.isForkParent
       }))
   }
 }))

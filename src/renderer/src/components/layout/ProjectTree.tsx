@@ -1,5 +1,39 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import type { SessionState } from '../../stores/sessionStore'
+import type { SessionState, UIToolUseMessage, UIToolResultMessage } from '../../stores/sessionStore'
+
+/** Check if a session's last pending tool_use needs user input (question, plan, or permission). */
+function sessionNeedsInput(session: SessionState): boolean {
+  const msgs = session.messages
+  if (msgs.length === 0) return false
+
+  // Build a set of tool_use IDs that have results
+  const answeredToolIds = new Set<string>()
+  for (const m of msgs) {
+    if (m.type === 'tool_result') answeredToolIds.add((m as UIToolResultMessage).toolUseId)
+  }
+
+  // Walk from end: find the last tool_use without a result
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i]
+    if (m.type === 'tool_use') {
+      const tu = m as UIToolUseMessage
+      if (!answeredToolIds.has(tu.toolId)) {
+        // Unanswered tool_use: if it's AskUserQuestion or ExitPlanMode, needs input
+        if (tu.toolName === 'AskUserQuestion' || tu.toolName === 'ExitPlanMode') return true
+        // Any other unanswered tool_use at the tail means permission is needed
+        return true
+      }
+      // If the last tool_use already has a result, no input needed
+      return false
+    }
+    // Skip tool_result, text, thinking — keep looking for a tool_use
+    if (m.type === 'text' || m.type === 'thinking' || m.type === 'system') {
+      // If we hit a text/thinking message before any tool_use, no input needed
+      return false
+    }
+  }
+  return false
+}
 
 interface InlineRenameProps {
   value: string
@@ -72,6 +106,7 @@ interface ProjectTreeProps {
   onNewThread: () => void
   onRemoveProject: () => void
   onClearOldSessions: () => void
+  onForkSession: (sessionId: string) => void
   historyEntries: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>
   onResumeHistory: (entry: { claudeSessionId?: string; projectPath: string; name: string; worktreePath?: string | null; isWorktree?: boolean }) => void
 }
@@ -97,6 +132,7 @@ export default function ProjectTree({
   onNewThread,
   onRemoveProject,
   onClearOldSessions,
+  onForkSession,
   historyEntries,
   onResumeHistory,
 }: ProjectTreeProps) {
@@ -188,7 +224,8 @@ export default function ProjectTree({
           const isRenaming = renamingSessionId === s.sessionId
           const displayName = s.name || `Claude Code ${i + 1}`
           const isRunning = s.isProcessing
-          const status = isRunning ? 'running' : 'idle'
+          const needsInput = sessionNeedsInput(s)
+          const status = needsInput ? 'needs-input' : isRunning ? 'running' : 'idle'
           return (
             <button
               key={s.sessionId}
@@ -202,10 +239,10 @@ export default function ProjectTree({
               }}
             >
               <span
-                className={`tree-item-status-indicator ${isRunning ? 'spinner' : ''}`}
-                style={!isRunning ? { color: '#888' } : undefined}
+                className={`tree-item-status-indicator ${needsInput ? 'needs-input' : isRunning ? 'spinner' : ''}`}
+                style={!isRunning && !needsInput ? { color: '#888' } : undefined}
               >
-                {isRunning ? '' : '\u25CB'}
+                {needsInput ? '\u25CF' : isRunning ? '' : '\u25CB'}
               </span>
               {isRenaming ? (
                 <InlineRename
@@ -221,13 +258,36 @@ export default function ProjectTree({
                   {displayName}
                 </span>
               )}
-              {s.isWorktree && (
+              {s.isWorktree && !s.forkLabel && (
                 <span className="worktree-badge" title="Running in worktree">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="6" y1="3" x2="6" y2="15" />
                     <circle cx="18" cy="6" r="3" />
                     <circle cx="6" cy="18" r="3" />
                     <path d="M18 9a9 9 0 0 1-9 9" />
+                  </svg>
+                </span>
+              )}
+              {s.forkLabel && (
+                <span className="fork-badge" title={`Fork ${s.forkLabel}`}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="18" r="3"/>
+                    <circle cx="6" cy="6" r="3"/>
+                    <circle cx="18" cy="6" r="3"/>
+                    <path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9"/>
+                    <line x1="12" y1="12" x2="12" y2="15"/>
+                  </svg>
+                  {s.forkLabel}
+                </span>
+              )}
+              {s.isForkParent && (
+                <span className="fork-parent-badge" title="Forked">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="18" r="3"/>
+                    <circle cx="6" cy="6" r="3"/>
+                    <circle cx="18" cy="6" r="3"/>
+                    <path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9"/>
+                    <line x1="12" y1="12" x2="12" y2="15"/>
                   </svg>
                 </span>
               )}
@@ -314,6 +374,21 @@ export default function ProjectTree({
               >
                 Rename
               </button>
+              {(() => {
+                const ctxSession = sdkSessions.find(s => s.sessionId === contextMenu.sessionId)
+                const canFork = ctxSession && ctxSession.messages.length > 0 && !ctxSession.isForkParent
+                return canFork ? (
+                  <button
+                    className="thread-context-menu-item"
+                    onClick={() => {
+                      if (contextMenu.sessionId) onForkSession(contextMenu.sessionId)
+                      setContextMenu(null)
+                    }}
+                  >
+                    Fork conversation
+                  </button>
+                ) : null
+              })()}
               <button
                 className="thread-context-menu-item"
                 onClick={() => {

@@ -22,6 +22,12 @@ export interface ElectronAPI {
     onStderr: (callback: (data: { sessionId: string; data: string }) => void) => () => void
     onTitle: (callback: (data: { sessionId: string; title: string }) => void) => () => void
     resume: (sessionId: string, projectPath: string, message: string, model?: string | null) => Promise<{ success: boolean; sessionId?: string; error?: string }>
+    fork: (sourceSessionId: string, projectPath: string, sourceSdkSessionId: string | null) => Promise<{
+      success: boolean
+      forkA?: { sessionId: string; worktreePath: string; worktreeSessionId: string }
+      forkB?: { sessionId: string; worktreePath: string; worktreeSessionId: string }
+      error?: string
+    }>
   }
   project: {
     open: () => Promise<{ success: boolean; path?: string; isGitRepo?: boolean; canceled?: boolean }>
@@ -86,9 +92,10 @@ export interface ElectronAPI {
     sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; sessions?: unknown[] }) => void
   }
   popout: {
-    create: (terminalId: string, projectPath: string, theme?: string) => Promise<{ success: boolean }>
+    create: (terminalId: string, projectPath: string, theme?: string, sessionSnapshot?: unknown) => Promise<{ success: boolean }>
     close: () => Promise<{ success: boolean }>
     onClosed: (callback: () => void) => () => void
+    onInit: (callback: (data: { session: unknown }) => void) => () => void
   }
   browser: {
     navigate: (url: string) => Promise<{ success: boolean; error?: string }>
