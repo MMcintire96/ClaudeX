@@ -129,6 +129,16 @@ export interface ElectronAPI {
     syncFromLocal: (sessionId: string, mode: 'overwrite' | 'apply') => Promise<{ success: boolean; error?: string }>
     openInEditor: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   }
+  neovim: {
+    create: (projectPath: string, filePath?: string) => Promise<{ success: boolean; projectPath?: string; pid?: number; error?: string }>
+    write: (projectPath: string, data: string) => Promise<{ success: boolean }>
+    resize: (projectPath: string, cols: number, rows: number) => Promise<{ success: boolean }>
+    openFile: (projectPath: string, filePath: string) => Promise<{ success: boolean }>
+    close: (projectPath: string) => Promise<{ success: boolean }>
+    isRunning: (projectPath: string) => Promise<boolean>
+    onData: (callback: (projectPath: string, data: string) => void) => () => void
+    onExit: (callback: (projectPath: string, exitCode: number) => void) => () => void
+  }
   screenshot: {
     capture: () => Promise<{ success: boolean; path?: string; error?: string }>
   }

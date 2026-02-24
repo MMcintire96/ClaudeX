@@ -29,7 +29,7 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
 export default function MessageBubble({ message, searchQuery = '' }: Props) {
   return (
     <div className={`message-bubble ${message.role}`}>
-      <div className="message-role">{message.role === 'user' ? 'You' : 'Claude'}</div>
+      {message.role === 'assistant' && <div className="message-role">Claude</div>}
       <div className="message-content">
         {message.role === 'assistant' ? (
           <MarkdownRenderer content={message.content} />

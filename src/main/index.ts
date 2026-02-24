@@ -11,6 +11,7 @@ import { ProjectConfigManager } from './project/ProjectConfigManager'
 import { ClaudexBridgeServer } from './bridge/ClaudexBridgeServer'
 import { registerAllHandlers } from './ipc'
 import { WorktreeManager } from './worktree/WorktreeManager'
+import { NeovimManager } from './neovim/NeovimManager'
 import { addBroadcastWindow, removeBroadcastWindow, markWindowReady } from './broadcast'
 
 // Auto-grant media permissions (Electron has no native permission dialog)
@@ -37,6 +38,7 @@ const voiceManager = new VoiceManager()
 const sessionPersistence = new SessionPersistence()
 const projectConfigManager = new ProjectConfigManager()
 const worktreeManager = new WorktreeManager()
+const neovimManager = new NeovimManager()
 const bridgeServer = new ClaudexBridgeServer(terminalManager, browserManager)
 
 let mainWindow: BrowserWindow | null = null
@@ -89,6 +91,7 @@ function createWindow(): void {
   agentManager.setMainWindow(mainWindow)
   browserManager.setMainWindow(mainWindow)
   terminalManager.setMainWindow(mainWindow)
+  neovimManager.setMainWindow(mainWindow)
 
   // Prevent the window from navigating away
   mainWindow.webContents.on('will-navigate', (e) => {
@@ -133,6 +136,7 @@ function createWindow(): void {
     if (isClosing) {
       agentManager.stopAgent()
       terminalManager.destroy()
+      neovimManager.destroy()
       browserManager.destroy()
       mainWindow?.destroy()
     }
@@ -166,6 +170,7 @@ function createWindow(): void {
       }
       agentManager.stopAgent()
       terminalManager.destroy()
+      neovimManager.destroy()
       browserManager.destroy()
       mainWindow?.destroy()
     }, 300)
@@ -264,7 +269,7 @@ app.whenReady().then(async () => {
   registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, {
     bridgePort: bridgeServer.port,
     bridgeToken: bridgeServer.token
-  }, sessionPersistence, projectConfigManager, undefined, worktreeManager)
+  }, sessionPersistence, projectConfigManager, undefined, worktreeManager, neovimManager)
 
   createWindow()
 
@@ -278,6 +283,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   agentManager.stopAgent()
   terminalManager.destroy()
+  neovimManager.destroy()
   if (process.platform !== 'darwin') {
     app.quit()
   }
@@ -287,6 +293,7 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   agentManager.stopAgent()
   terminalManager.destroy()
+  neovimManager.destroy()
   voiceManager.destroy()
   bridgeServer.stop()
   worktreeManager.cleanupAll().catch(() => {})

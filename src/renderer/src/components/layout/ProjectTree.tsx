@@ -258,7 +258,7 @@ export default function ProjectTree({
                 </span>
               )}
               <span className="thread-time"></span>
-              {needsInput && !isActive && (
+              {needsInput && (
                 <span className="thread-needs-input-badge" title="Needs your input" />
               )}
             </button>

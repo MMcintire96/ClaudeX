@@ -101,7 +101,7 @@ export default function Sidebar() {
   const getSessionsForProject = (projectPath: string) => {
     return Object.values(sessions)
       .filter(s => s.projectPath === projectPath)
-      .sort((a, b) => a.createdAt - b.createdAt)
+      .sort((a, b) => b.createdAt - a.createdAt)
   }
 
   const ensureSession = useCallback((projectPath: string) => {

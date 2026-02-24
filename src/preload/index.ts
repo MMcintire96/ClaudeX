@@ -255,6 +255,30 @@ const api = {
     capture: () =>
       ipcRenderer.invoke('screenshot:capture') as Promise<{ success: boolean; path?: string; error?: string }>
   },
+  neovim: {
+    create: (projectPath: string, filePath?: string) =>
+      ipcRenderer.invoke('neovim:create', projectPath, filePath),
+    write: (projectPath: string, data: string) =>
+      ipcRenderer.invoke('neovim:write', projectPath, data),
+    resize: (projectPath: string, cols: number, rows: number) =>
+      ipcRenderer.invoke('neovim:resize', projectPath, cols, rows),
+    openFile: (projectPath: string, filePath: string) =>
+      ipcRenderer.invoke('neovim:open-file', projectPath, filePath),
+    close: (projectPath: string) =>
+      ipcRenderer.invoke('neovim:close', projectPath),
+    isRunning: (projectPath: string) =>
+      ipcRenderer.invoke('neovim:is-running', projectPath) as Promise<boolean>,
+    onData: (callback: (projectPath: string, data: string) => void) => {
+      const handler = (_: unknown, projectPath: string, data: string) => callback(projectPath, data)
+      ipcRenderer.on('neovim:data', handler)
+      return () => ipcRenderer.removeListener('neovim:data', handler)
+    },
+    onExit: (callback: (projectPath: string, exitCode: number) => void) => {
+      const handler = (_: unknown, projectPath: string, exitCode: number) => callback(projectPath, exitCode)
+      ipcRenderer.on('neovim:exit', handler)
+      return () => ipcRenderer.removeListener('neovim:exit', handler)
+    }
+  },
   utils: {
     getPathForFile: (file: File): string => {
       try {

@@ -15,6 +15,8 @@ import { registerVoiceHandlers } from './voiceHandlers'
 import { WorktreeManager } from '../worktree/WorktreeManager'
 import { registerWorktreeHandlers } from './worktreeHandlers'
 import { registerScreenshotHandlers } from './screenshotHandlers'
+import { NeovimManager } from '../neovim/NeovimManager'
+import { registerNeovimHandlers } from './neovimHandlers'
 
 export function registerAllHandlers(
   agentManager: AgentManager,
@@ -27,7 +29,8 @@ export function registerAllHandlers(
   sessionPersistence?: SessionPersistence,
   projectConfigManager?: ProjectConfigManager,
   _sessionFileWatcher?: unknown,
-  worktreeManager?: WorktreeManager
+  worktreeManager?: WorktreeManager,
+  neovimManager?: NeovimManager
 ): void {
   registerAgentHandlers(agentManager, worktreeManager, sessionPersistence)
   registerProjectHandlers(projectManager, projectConfigManager, terminalManager)
@@ -39,4 +42,7 @@ export function registerAllHandlers(
     registerWorktreeHandlers(worktreeManager)
   }
   registerScreenshotHandlers()
+  if (neovimManager) {
+    registerNeovimHandlers(neovimManager)
+  }
 }

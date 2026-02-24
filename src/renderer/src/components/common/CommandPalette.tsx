@@ -4,6 +4,7 @@ import { useSessionStore } from '../../stores/sessionStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useEditorStore } from '../../stores/editorStore'
 import { THEME_META, ThemeName } from '../../lib/themes'
 
 type PaletteCategory = 'command' | 'file' | 'session' | 'terminal' | 'project' | 'branch' | 'theme'
@@ -217,6 +218,16 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         }
       },
       {
+        id: 'cmd:toggle-editor',
+        category: 'command',
+        label: 'Toggle Editor',
+        shortcut: `${modLabel}+E`,
+        action: () => {
+          const { mainPanelTab, setMainPanelTab } = useEditorStore.getState()
+          setMainPanelTab(mainPanelTab === 'editor' ? 'chat' : 'editor')
+        }
+      },
+      {
         id: 'cmd:toggle-popout',
         category: 'command',
         label: 'Toggle Chat Pop-out',
@@ -246,7 +257,16 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         label: f.split('/').pop() || f,
         description: f,
         action: () => {
-          if (currentPath) window.api.project.openInEditor(currentPath, f)
+          if (!currentPath) return
+          const editorState = useEditorStore.getState()
+          if (editorState.activeEditors[currentPath]) {
+            // Open in embedded neovim
+            window.api.neovim.openFile(currentPath, f)
+            editorState.setMainPanelTab('editor')
+          } else {
+            // Fallback to external editor
+            window.api.project.openInEditor(currentPath, f)
+          }
         }
       })
     }

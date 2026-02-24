@@ -12,21 +12,14 @@ export function sessionNeedsInput(session: SessionState): boolean {
     if (m.type === 'tool_result') answeredToolIds.add((m as UIToolResultMessage).toolUseId)
   }
 
-  // Walk from end: find the last tool_use without a result
+  // Walk from end: skip non-tool_use messages (text can appear after tool_use in same turn),
+  // stop at the first answered tool_use (everything before is old).
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i]
-    if (m.type === 'tool_use') {
-      const tu = m as UIToolUseMessage
-      if (!answeredToolIds.has(tu.toolId)) {
-        // Unanswered tool_use: needs input
-        if (tu.toolName === 'AskUserQuestion' || tu.toolName === 'ExitPlanMode') return true
-        return true
-      }
-      return false
-    }
-    if (m.type === 'text' || m.type === 'thinking' || m.type === 'system') {
-      return false
-    }
+    if (m.type !== 'tool_use') continue
+    const tu = m as UIToolUseMessage
+    if (answeredToolIds.has(tu.toolId)) return false
+    if (tu.toolName === 'AskUserQuestion' || tu.toolName === 'ExitPlanMode') return true
   }
   return false
 }

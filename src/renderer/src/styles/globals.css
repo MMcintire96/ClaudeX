@@ -529,6 +529,72 @@ body {
   flex: 1;
 }
 
+.main-panel-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+  padding: 0 8px;
+}
+
+.main-panel-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  user-select: none;
+}
+
+.main-panel-tab:hover {
+  color: var(--text-primary);
+}
+
+.main-panel-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-primary, #7aa2f7);
+}
+
+.main-panel-tab svg {
+  opacity: 0.7;
+}
+
+.main-panel-tab.active svg {
+  opacity: 1;
+}
+
+/* Neovim editor */
+.neovim-editor-wrapper {
+  flex: 1;
+  overflow: hidden;
+}
+
+.neovim-editor-xterm {
+  height: 100%;
+}
+
+.neovim-editor-xterm .xterm {
+  height: 100%;
+  padding: 0;
+}
+
+.neovim-editor-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
 /* Title bar — spans full app width (rendered in AppLayout, above the grid) */
 .main-header {
   height: 40px;
