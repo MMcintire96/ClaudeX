@@ -93,7 +93,9 @@ const api = {
     gitRemotes: (projectPath: string) =>
       ipcRenderer.invoke('project:git-remotes', projectPath),
     gitDiffSummary: (projectPath: string, staged?: boolean) =>
-      ipcRenderer.invoke('project:git-diff-summary', projectPath, staged)
+      ipcRenderer.invoke('project:git-diff-summary', projectPath, staged),
+    generateCommitMessage: (projectPath: string, includeUnstaged: boolean) =>
+      ipcRenderer.invoke('project:generate-commit-message', projectPath, includeUnstaged)
   },
   terminal: {
     create: (projectPath: string) =>

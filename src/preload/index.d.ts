@@ -53,6 +53,7 @@ export interface ElectronAPI {
     gitLog: (projectPath: string, maxCount?: number) => Promise<{ success: boolean; log?: unknown; error?: string }>
     gitRemotes: (projectPath: string) => Promise<{ success: boolean; remotes?: Array<{ name: string; refs: { fetch: string; push: string } }>; error?: string }>
     gitDiffSummary: (projectPath: string, staged?: boolean) => Promise<{ success: boolean; summary?: { changed: number; insertions: number; deletions: number; files: Array<{ file: string; changes: number; insertions: number; deletions: number }> }; error?: string }>
+    generateCommitMessage: (projectPath: string, includeUnstaged: boolean) => Promise<{ success: boolean; message?: string; error?: string }>
   }
   terminal: {
     create: (projectPath: string) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; error?: string }>

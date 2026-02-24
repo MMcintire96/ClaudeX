@@ -5291,10 +5291,50 @@ body {
   gap: 6px;
 }
 
+.commit-modal-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .commit-modal-section-label {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.commit-generate-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.commit-generate-btn:hover:not(:disabled) {
+  background: var(--bg-hover, var(--bg-secondary));
+  color: var(--text-primary);
+  border-color: var(--accent, #6366f1);
+}
+
+.commit-generate-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.commit-generate-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .commit-modal-textarea {

@@ -18,6 +18,7 @@ export default function CommitModal({ projectPath, onClose, onCommitted }: Commi
   const [nextStep, setNextStep] = useState<NextStep>('commit')
   const [hasRemotes, setHasRemotes] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -119,6 +120,22 @@ export default function CommitModal({ projectPath, onClose, onCommitted }: Commi
     setLoading(false)
   }, [projectPath, includeUnstaged, message, nextStep, onClose, onCommitted])
 
+  const handleGenerate = useCallback(async () => {
+    setGenerating(true)
+    setError(null)
+    try {
+      const result = await window.api.project.generateCommitMessage(projectPath, includeUnstaged)
+      if (result.success && result.message) {
+        setMessage(result.message)
+      } else {
+        setError(result.error || 'Failed to generate message')
+      }
+    } catch (err) {
+      setError((err as Error).message)
+    }
+    setGenerating(false)
+  }, [projectPath, includeUnstaged])
+
   return (
     <div className="hotkeys-overlay" onClick={onClose}>
       <div className="commit-modal" onClick={e => e.stopPropagation()}>
@@ -180,10 +197,33 @@ export default function CommitModal({ projectPath, onClose, onCommitted }: Commi
 
           {/* Commit message */}
           <div className="commit-modal-section">
-            <span className="commit-modal-section-label">Commit message</span>
+            <div className="commit-modal-section-header">
+              <span className="commit-modal-section-label">Commit message</span>
+              <button
+                className="commit-generate-btn"
+                onClick={handleGenerate}
+                disabled={generating || fileCount === 0}
+                title="Generate commit message with AI"
+              >
+                {generating ? (
+                  <svg className="commit-generate-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v5m4-1L12 3 8 7"/>
+                    <path d="M17.5 6.5l-2 5.5 5.5-2-3.5-3.5z"/>
+                    <path d="M6.5 17.5l2-5.5-5.5 2 3.5 3.5z"/>
+                    <path d="M17.5 17.5l-5.5-2 2 5.5 3.5-3.5z"/>
+                    <path d="M6.5 6.5l5.5 2-2-5.5L6.5 6.5z"/>
+                  </svg>
+                )}
+                <span>{generating ? 'Generating...' : 'Generate'}</span>
+              </button>
+            </div>
             <textarea
               className="commit-modal-textarea"
-              placeholder="Leave blank to autogenerate a commit message"
+              placeholder="Write a message or generate one with AI"
               value={message}
               onChange={e => setMessage(e.target.value)}
               rows={3}

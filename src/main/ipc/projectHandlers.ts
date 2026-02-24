@@ -1,9 +1,10 @@
-import { ipcMain } from 'electron'
-import { resolve } from 'path'
+import { ipcMain, app } from 'electron'
+import { resolve, join } from 'path'
 import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import { ProjectManager } from '../project/ProjectManager'
 import { GitService } from '../project/GitService'
+import { query } from '@anthropic-ai/claude-agent-sdk'
 
 const execFileAsync = promisify(execFile)
 import { ProjectConfigManager, ProjectStartConfig } from '../project/ProjectConfigManager'
@@ -271,6 +272,68 @@ export function registerProjectHandlers(
       return { success: true, files }
     } catch {
       return { success: false, files: [], error: 'Failed to list files' }
+    }
+  })
+
+  ipcMain.handle('project:generate-commit-message', async (_event, projectPath: string, includeUnstaged: boolean) => {
+    try {
+      const git = new GitService(projectPath)
+
+      // Gather the diff
+      let diff: string
+      if (includeUnstaged) {
+        const [staged, unstaged] = await Promise.all([git.diff(true), git.diff(false)])
+        diff = [staged, unstaged].filter(Boolean).join('\n')
+      } else {
+        diff = await git.diff(true)
+      }
+
+      if (!diff.trim()) {
+        return { success: false, error: 'No changes to summarize' }
+      }
+
+      // Truncate to avoid blowing up context — 8k chars is plenty for Haiku
+      const truncated = diff.length > 8000 ? diff.slice(0, 8000) + '\n... (diff truncated)' : diff
+
+      const prompt = `Write a concise git commit message for the following diff. Use conventional commit style (e.g. "feat:", "fix:", "refactor:"). One line only, no quotes, max 72 characters.\n\n${truncated}`
+
+      const sdkOptions: Record<string, any> = {
+        model: 'claude-haiku-4-5-20251001',
+        maxTurns: 1,
+        tools: [],
+        systemPrompt: 'You are a commit message generator. Respond with only a single-line commit message, nothing else.',
+        persistSession: false,
+        thinking: { type: 'disabled' },
+      }
+
+      if (app.isPackaged) {
+        sdkOptions.pathToClaudeCodeExecutable = join(
+          process.resourcesPath,
+          'app.asar.unpacked',
+          'node_modules',
+          '@anthropic-ai',
+          'claude-agent-sdk',
+          'cli.js'
+        )
+      }
+
+      let resultText: string | null = null
+      for await (const message of query({ prompt, options: sdkOptions })) {
+        if (message.type === 'result' && message.subtype === 'success') {
+          resultText = (message as any).result ?? null
+        }
+      }
+
+      if (!resultText) {
+        return { success: false, error: 'No result from model' }
+      }
+
+      // Clean up: remove quotes, trim
+      const cleaned = resultText.replace(/^["']|["']$/g, '').trim()
+      return { success: true, message: cleaned }
+    } catch (err) {
+      console.warn('[CommitMessageGenerator] Failed:', err)
+      return { success: false, error: (err as Error).message }
     }
   })
 }
