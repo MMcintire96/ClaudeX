@@ -36,7 +36,14 @@ const api = {
       const handler = (_: unknown, data: { sessionId: string; data: string }) => callback(data)
       ipcRenderer.on('agent:stderr', handler)
       return () => ipcRenderer.removeListener('agent:stderr', handler)
-    }
+    },
+    onTitle: (callback: (data: { sessionId: string; title: string }) => void) => {
+      const handler = (_: unknown, data: { sessionId: string; title: string }) => callback(data)
+      ipcRenderer.on('agent:title', handler)
+      return () => ipcRenderer.removeListener('agent:title', handler)
+    },
+    resume: (sessionId: string, projectPath: string, message: string, model?: string | null) =>
+      ipcRenderer.invoke('agent:resume', sessionId, projectPath, message, model),
   },
   project: {
     open: () =>
@@ -115,6 +122,8 @@ const api = {
       ipcRenderer.invoke('session:history', projectPath),
     clearHistory: (projectPath?: string) =>
       ipcRenderer.invoke('session:clear-history', projectPath),
+    addHistory: (entry: { id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }) =>
+      ipcRenderer.invoke('session:add-history', entry),
     onRestore: (callback: (state: unknown) => void) => {
       const handler = (_: unknown, state: unknown) => callback(state)
       ipcRenderer.on('session:restore', handler)
@@ -152,7 +161,7 @@ const api = {
       ipcRenderer.on('app:before-close', handler)
       return () => ipcRenderer.removeListener('app:before-close', handler)
     },
-    sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[] }) =>
+    sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; sessions?: unknown[] }) =>
       ipcRenderer.send('app:ui-snapshot', snapshot)
   },
   popout: {

@@ -71,6 +71,7 @@ interface ProjectTreeProps {
   onCloseSession: (sessionId: string) => void
   onNewThread: () => void
   onRemoveProject: () => void
+  onClearOldSessions: () => void
   historyEntries: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>
   onResumeHistory: (entry: { claudeSessionId?: string; projectPath: string; name: string; worktreePath?: string | null; isWorktree?: boolean }) => void
 }
@@ -95,6 +96,7 @@ export default function ProjectTree({
   onCloseSession,
   onNewThread,
   onRemoveProject,
+  onClearOldSessions,
   historyEntries,
   onResumeHistory,
 }: ProjectTreeProps) {
@@ -280,6 +282,17 @@ export default function ProjectTree({
               >
                 New thread
               </button>
+              {historyEntries.length > 0 && (
+                <button
+                  className="thread-context-menu-item"
+                  onClick={() => {
+                    onClearOldSessions()
+                    setContextMenu(null)
+                  }}
+                >
+                  Clear old sessions
+                </button>
+              )}
               <button
                 className="thread-context-menu-item thread-context-menu-danger"
                 onClick={() => {

@@ -4,6 +4,7 @@ import { existsSync } from 'fs'
 import { AgentProcess, AgentProcessOptions } from './AgentProcess'
 import type { AgentEvent, StreamEvent } from './types'
 import { broadcastSend } from '../broadcast'
+import { generateSessionTitle } from './TitleGenerator'
 
 const SYSTEM_PROMPT_APPEND =
   'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
@@ -23,6 +24,8 @@ export class AgentManager {
   private deltaBuffer: Map<string, AgentEvent[]> = new Map()
   private deltaFlushPending: Set<string> = new Set()
   private static readonly MAX_DELTA_BUFFER = 500
+  private initialPrompts: Map<string, string> = new Map()
+  private titleGenerated: Set<string> = new Set()
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
@@ -104,6 +107,18 @@ export class AgentManager {
     agent.on('close', (code: number | null) => {
       this.flushDeltas(sessionId)
       broadcastSend(this.mainWindow,'agent:closed', { sessionId, code })
+
+      // Generate title after first successful turn
+      const prompt = this.initialPrompts.get(sessionId)
+      if (prompt && !this.titleGenerated.has(sessionId)) {
+        this.titleGenerated.add(sessionId)
+        this.initialPrompts.delete(sessionId)
+        generateSessionTitle(prompt).then(title => {
+          if (title) {
+            broadcastSend(this.mainWindow, 'agent:title', { sessionId, title })
+          }
+        })
+      }
     })
 
     agent.on('error', (err: Error) => {
@@ -124,7 +139,27 @@ export class AgentManager {
     const sessionId = agent.sessionId
     this.wireEvents(sessionId, agent)
 
+    this.initialPrompts.set(sessionId, initialPrompt)
     agent.start(initialPrompt)
+    this.agents.set(sessionId, agent)
+    return sessionId
+  }
+
+  /**
+   * Resume a session that was restored from disk.
+   * Creates a new AgentProcess with the saved sessionId and calls resume().
+   */
+  resumeAgent(sessionId: string, projectPath: string, model: string | null, message: string): string {
+    const mcpServers = this.buildMcpServers(projectPath)
+    const agent = new AgentProcess({
+      projectPath,
+      sessionId,
+      model,
+      mcpServers,
+      systemPromptAppend: mcpServers ? SYSTEM_PROMPT_APPEND : null
+    })
+    this.wireEvents(sessionId, agent)
+    agent.resume(message)
     this.agents.set(sessionId, agent)
     return sessionId
   }

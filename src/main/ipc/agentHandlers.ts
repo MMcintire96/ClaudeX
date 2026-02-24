@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { AgentManager } from '../agent/AgentManager'
 import { WorktreeManager } from '../worktree/WorktreeManager'
+import { SessionPersistence, HistoryEntry } from '../session/SessionPersistence'
 import { randomUUID } from 'crypto'
 
 export interface WorktreeOptions {
@@ -9,7 +10,7 @@ export interface WorktreeOptions {
   includeChanges?: boolean
 }
 
-export function registerAgentHandlers(agentManager: AgentManager, worktreeManager?: WorktreeManager): void {
+export function registerAgentHandlers(agentManager: AgentManager, worktreeManager?: WorktreeManager, sessionPersistence?: SessionPersistence): void {
   ipcMain.handle('agent:start', async (_event, projectPath: string, prompt: string, model?: string | null, worktreeOptions?: WorktreeOptions) => {
     try {
       let effectivePath = projectPath
@@ -57,6 +58,21 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
 
   ipcMain.handle('agent:set-model', (_event, sessionId: string, model: string | null) => {
     agentManager.setModel(sessionId, model)
+    return { success: true }
+  })
+
+  ipcMain.handle('agent:resume', (_event, sessionId: string, projectPath: string, message: string, model?: string | null) => {
+    try {
+      agentManager.resumeAgent(sessionId, projectPath, model ?? null, message)
+      return { success: true, sessionId }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('session:add-history', (_event, entry: HistoryEntry) => {
+    if (!sessionPersistence) return { success: false }
+    sessionPersistence.addToHistory(entry)
     return { success: true }
   })
 }

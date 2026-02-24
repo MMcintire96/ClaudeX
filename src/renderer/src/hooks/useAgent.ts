@@ -43,12 +43,27 @@ export function useAgent(sessionId: string | null) {
 
   const sendMessage = useCallback(async (content: string) => {
     if (!sessionId) return
+    const currentSession = useSessionStore.getState().sessions[sessionId]
     addUserMessage(sessionId, content)
     setProcessing(sessionId, true)
-    const result = await window.api.agent.send(sessionId, content)
-    if (!result.success) {
-      setProcessing(sessionId, false)
-      setError(sessionId, result.error ?? 'Failed to send message')
+
+    if (currentSession?.isRestored) {
+      // First message to a restored session — reconnect via SDK resume
+      const result = await window.api.agent.resume(
+        sessionId, currentSession.projectPath, content, currentSession.selectedModel
+      )
+      if (result.success) {
+        useSessionStore.getState().clearRestored(sessionId)
+      } else {
+        setProcessing(sessionId, false)
+        setError(sessionId, result.error ?? 'Failed to resume session')
+      }
+    } else {
+      const result = await window.api.agent.send(sessionId, content)
+      if (!result.success) {
+        setProcessing(sessionId, false)
+        setError(sessionId, result.error ?? 'Failed to send message')
+      }
     }
   }, [sessionId, addUserMessage, setProcessing, setError])
 

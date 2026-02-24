@@ -105,9 +105,7 @@ function createWindow(): void {
   mainWindow.webContents.on('did-finish-load', () => {
     if (mainWindow) markWindowReady(mainWindow)
     const savedState = sessionPersistence.loadState()
-    if (savedState.sessions.length > 0) {
-      mainWindow?.webContents.send('session:restore', savedState)
-    }
+    mainWindow?.webContents.send('session:restore', savedState)
   })
 
   // Load the renderer
@@ -119,14 +117,14 @@ function createWindow(): void {
 
   // Deferred close: request UI snapshot from renderer before saving
   let isClosing = false
-  ipcMain.on('app:ui-snapshot', (_event, snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[] }) => {
+  ipcMain.on('app:ui-snapshot', (_event, snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; sessions?: unknown[] }) => {
     if (!isClosing) return
     try {
       sessionPersistence.saveState({
         version: 1,
         activeProjectPath: snapshot.activeProjectPath,
         expandedProjects: snapshot.expandedProjects,
-        sessions: [],
+        sessions: (snapshot.sessions ?? []) as any[],
         theme: snapshot.theme || 'dark',
         sidebarWidth: snapshot.sidebarWidth || 240
       })

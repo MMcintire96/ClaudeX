@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import AppLayout from './components/layout/AppLayout'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import HotkeysModal from './components/common/HotkeysModal'
+import CommandPalette from './components/common/CommandPalette'
 import { useSessionStore } from './stores/sessionStore'
 import { useUIStore } from './stores/uiStore'
 import { useTerminalStore } from './stores/terminalStore'
@@ -13,6 +14,7 @@ export default function App() {
   const processEvent = useSessionStore(s => s.processEvent)
   const setProcessing = useSessionStore(s => s.setProcessing)
   const setError = useSessionStore(s => s.setError)
+  const renameSession = useSessionStore(s => s.renameSession)
   const theme = useUIStore(s => s.theme)
   const removeTerminal = useTerminalStore(s => s.removeTerminal)
   const currentPath = useProjectStore(s => s.currentPath)
@@ -22,6 +24,7 @@ export default function App() {
   const modKey = useSettingsStore(s => s.modKey)
 
   const [hotkeysOpen, setHotkeysOpen] = useState(false)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const heldKeysRef = useRef<Set<string>>(new Set())
 
   // Wire up agent event listeners (SDK path)
@@ -48,13 +51,18 @@ export default function App() {
       setError(sessionId, error)
     })
 
+    const unsubTitle = window.api.agent.onTitle(({ sessionId, title }) => {
+      renameSession(sessionId, title)
+    })
+
     return () => {
       unsubEvent()
       unsubEvents()
       unsubClosed()
       unsubError()
+      unsubTitle()
     }
-  }, [processEvent, setProcessing, setError])
+  }, [processEvent, setProcessing, setError, renameSession])
 
   // Prevent Electron from opening dropped files in the browser window
   useEffect(() => {
@@ -83,7 +91,7 @@ export default function App() {
     return unsub
   }, [removeTerminal])
 
-  // Session restore listener — restore UI state only
+  // Session restore listener — restore UI state and sessions
   useEffect(() => {
     const unsub = window.api.session.onRestore((state: unknown) => {
       const s = state as {
@@ -91,6 +99,7 @@ export default function App() {
         sidebarWidth?: number
         activeProjectPath?: string | null
         expandedProjects?: string[]
+        sessions?: Array<{ id: string; projectPath: string; name: string; messages?: unknown[]; model?: string | null; totalCostUsd?: number; numTurns?: number; selectedModel?: string | null; createdAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null }>
       }
 
       if (s.theme) {
@@ -107,6 +116,20 @@ export default function App() {
       if (s.activeProjectPath) {
         useProjectStore.getState().setProject(s.activeProjectPath, false)
       }
+      // Restore persisted sessions
+      if (s.sessions && s.sessions.length > 0) {
+        const sessionStore = useSessionStore.getState()
+        for (const session of s.sessions) {
+          sessionStore.restoreSession(session)
+        }
+        // Set active session to the last one for the active project
+        if (s.activeProjectPath) {
+          const lastSession = sessionStore.getLastSessionForProject(s.activeProjectPath)
+          if (lastSession) {
+            sessionStore.setActiveSession(lastSession)
+          }
+        }
+      }
     })
     return unsub
   }, [])
@@ -116,11 +139,13 @@ export default function App() {
     const unsub = window.api.app.onBeforeClose(() => {
       const uiState = useUIStore.getState()
       const projectState = useProjectStore.getState()
+      const sessions = useSessionStore.getState().getSerializableSessions()
       window.api.app.sendUiSnapshot({
         theme: uiState.theme,
         sidebarWidth: uiState.sidebarWidth,
         activeProjectPath: projectState.currentPath,
-        expandedProjects: projectState.expandedProjects
+        expandedProjects: projectState.expandedProjects,
+        sessions
       })
     })
     return unsub
@@ -166,6 +191,14 @@ export default function App() {
       if (e.key === '?' || (e.shiftKey && key === '/')) {
         e.preventDefault()
         setHotkeysOpen(prev => !prev)
+        return
+      }
+
+      // Mod+K — Command palette
+      if (key === 'k') {
+        e.preventDefault()
+        setHotkeysOpen(false)
+        setCommandPaletteOpen(prev => !prev)
         return
       }
 
@@ -264,6 +297,19 @@ export default function App() {
         const sessionStore = useSessionStore.getState()
         const activeId = sessionStore.activeSessionId
         if (activeId) {
+          const session = sessionStore.sessions[activeId]
+          if (session && session.messages.length > 0) {
+            window.api.session.addHistory({
+              id: activeId,
+              claudeSessionId: activeId,
+              projectPath: session.projectPath,
+              name: session.name,
+              createdAt: session.createdAt,
+              endedAt: Date.now(),
+              worktreePath: session.worktreePath,
+              isWorktree: session.isWorktree
+            }).catch(() => {})
+          }
           window.api.agent.stop(activeId).catch(() => {})
           sessionStore.removeSession(activeId)
         }
@@ -308,6 +354,9 @@ export default function App() {
       <AppLayout />
       {hotkeysOpen && (
         <HotkeysModal modKey={modKey} onClose={() => setHotkeysOpen(false)} />
+      )}
+      {commandPaletteOpen && (
+        <CommandPalette onClose={() => setCommandPaletteOpen(false)} />
       )}
     </ErrorBoundary>
   )

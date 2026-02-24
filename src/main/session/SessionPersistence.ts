@@ -9,6 +9,11 @@ export interface PersistedSession {
   name: string
   createdAt: number
   lastActiveAt: number
+  messages?: unknown[]
+  model?: string | null
+  totalCostUsd?: number
+  numTurns?: number
+  selectedModel?: string | null
   worktreePath?: string | null
   isWorktree?: boolean
   worktreeSessionId?: string | null

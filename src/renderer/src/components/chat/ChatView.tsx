@@ -8,6 +8,7 @@ import AskUserQuestionBlock from './AskUserQuestionBlock'
 import FileEditBlock, { isFileEditTool } from './FileEditBlock'
 import ToolCallGroup from './ToolCallGroup'
 import PlanModeBlock from './PlanModeBlock'
+import TodoBlock from './TodoBlock'
 import ThinkingBlock from './ThinkingBlock'
 import VoiceButton from '../common/VoiceButton'
 import WorktreeBar from './WorktreeBar'
@@ -119,6 +120,7 @@ function renderHighlightedInput(text: string): React.ReactNode[] {
 export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const [inputText, setInputText] = useState('')
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
+  const [planMode, setPlanMode] = useState(false)
   const [filePickerOpen, setFilePickerOpen] = useState(false)
   const [filePickerFilter, setFilePickerFilter] = useState('')
   const [filePickerFiles, setFilePickerFiles] = useState<string[]>([])
@@ -345,6 +347,16 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     return map
   }, [messages])
 
+  // Find the latest TodoWrite message for highlighting + pinned display
+  const latestTodoMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.type === 'tool_use' && (m as UIToolUseMessage).toolName === 'TodoWrite') return m as UIToolUseMessage
+    }
+    return null
+  }, [messages])
+  const latestTodoId = latestTodoMessage?.id ?? null
+
   // Pre-process messages into render items: groups of completed tool calls + standalone items
   type RenderItem =
     | { kind: 'single'; index: number; msg: UIMessage }
@@ -357,7 +369,8 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       const msg = messages[i]
       if (msg.type === 'tool_use') {
         const toolMsg = msg as UIToolUseMessage
-        const isGroupable = toolMsg.toolName !== 'AskUserQuestion' && toolMsg.toolName !== 'ExitPlanMode'
+        const NON_GROUPABLE = ['AskUserQuestion', 'ExitPlanMode', 'TodoWrite']
+        const isGroupable = !NON_GROUPABLE.includes(toolMsg.toolName)
         const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
         if (isGroupable && hasResult) {
           const groupIndices: number[] = []
@@ -368,7 +381,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
             const m = messages[j]
             if (m.type === 'tool_use') {
               const tm = m as UIToolUseMessage
-              const gr = tm.toolName !== 'AskUserQuestion' && tm.toolName !== 'ExitPlanMode'
+              const gr = !NON_GROUPABLE.includes(tm.toolName)
               const hr = toolResultByToolUseId.has(tm.toolId)
               if (gr && hr) {
                 groupIndices.push(j)
@@ -516,8 +529,14 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   }, [messages, messageQueue, searchOpen, searchQuery])
 
   const handleSend = useCallback(async () => {
-    const text = inputText.trim()
+    let text = inputText.trim()
     if (!text) return
+
+    // Prepend plan mode instruction if toggled
+    if (planMode) {
+      text = `Plan first before implementing. Use EnterPlanMode to explore the codebase and design an approach, then present your plan for my approval before writing any code.\n\n${text}`
+      setPlanMode(false)
+    }
 
     // On first real message: if worktree mode selected, use worktree
     if (!worktreeLocked && worktreeMode === 'worktree') {
@@ -845,6 +864,9 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
         const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
         return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><PlanModeBlock message={toolMsg} sessionId={sessionId} answered={hasResult} /></div>
       }
+      if (toolMsg.toolName === 'TodoWrite') {
+        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><TodoBlock message={toolMsg} isLatest={msg.id === latestTodoId} /></div>
+      }
       if (isFileEditTool(toolMsg.toolName)) {
         const pairedResult = toolResultByToolUseId.get(toolMsg.toolId)
         const hasResult = !!pairedResult
@@ -861,6 +883,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       const parentTool = toolUseById.get(resultMsg.toolUseId)
       if (parentTool?.toolName === 'AskUserQuestion') return null
       if (parentTool?.toolName === 'ExitPlanMode') return null
+      if (parentTool?.toolName === 'TodoWrite') return null
       if (parentTool && isFileEditTool(parentTool.toolName)) return null
       return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolResultBlock message={resultMsg} /></div>
     } else if (msg.type === 'thinking') {
@@ -1005,6 +1028,19 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
 
         </div>
       </div>
+
+      {/* Pinned todo block — sticks above input area */}
+      {latestTodoMessage && (() => {
+        const todos = (latestTodoMessage.input?.todos as { status: string }[]) || []
+        const allDone = todos.length > 0 && todos.every(t => t.status === 'completed')
+        if (allDone) return null
+        return (
+          <div className="pinned-todo-wrapper">
+            <TodoBlock message={latestTodoMessage} isLatest={true} />
+          </div>
+        )
+      })()}
+
       <div className="chat-view-input-wrapper">
         {/* Processing indicator — only shown before thinking starts */}
         {isThinking && streamingThinkingText === null && (
@@ -1109,6 +1145,19 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
                   </div>
                 )}
               </div>
+              <button
+                className={`btn-plan-mode${planMode ? ' active' : ''}`}
+                onClick={() => setPlanMode(p => !p)}
+                title={planMode ? 'Plan mode ON — Claude will plan before coding' : 'Plan mode OFF — click to enable'}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                </svg>
+                Plan
+              </button>
             </div>
             <div className="input-actions">
               {vimChatEnabled && (
@@ -1128,17 +1177,29 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
                 </svg>
               </button>
               <VoiceButton onTranscript={handleVoiceTranscript} inline />
-              <button
-                className="btn-send"
-                onClick={handleSend}
-                disabled={!inputText.trim()}
-                title="Send"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13"/>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                </svg>
-              </button>
+              {isProcessing ? (
+                <button
+                  className="btn-send btn-stop"
+                  onClick={stopAgent}
+                  title="Stop (Esc x3)"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  className="btn-send"
+                  onClick={handleSend}
+                  disabled={!inputText.trim()}
+                  title="Send"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"/>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -20,6 +20,8 @@ export interface ElectronAPI {
     onClosed: (callback: (data: { sessionId: string; code: number | null }) => void) => () => void
     onError: (callback: (data: { sessionId: string; error: string }) => void) => () => void
     onStderr: (callback: (data: { sessionId: string; data: string }) => void) => () => void
+    onTitle: (callback: (data: { sessionId: string; title: string }) => void) => () => void
+    resume: (sessionId: string, projectPath: string, message: string, model?: string | null) => Promise<{ success: boolean; sessionId?: string; error?: string }>
   }
   project: {
     open: () => Promise<{ success: boolean; path?: string; isGitRepo?: boolean; canceled?: boolean }>
@@ -59,6 +61,7 @@ export interface ElectronAPI {
   session: {
     history: (projectPath: string) => Promise<Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>>
     clearHistory: (projectPath?: string) => Promise<{ success: boolean }>
+    addHistory: (entry: { id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }) => Promise<{ success: boolean }>
     onRestore: (callback: (state: unknown) => void) => () => void
   }
   settings: {
@@ -80,7 +83,7 @@ export interface ElectronAPI {
   }
   app: {
     onBeforeClose: (callback: () => void) => () => void
-    sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[] }) => void
+    sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; sessions?: unknown[] }) => void
   }
   popout: {
     create: (terminalId: string, projectPath: string, theme?: string) => Promise<{ success: boolean }>

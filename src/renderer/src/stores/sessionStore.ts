@@ -230,6 +230,7 @@ export interface SessionState {
   isWorktree: boolean
   worktreeBranch: string | null
   worktreeSessionId: string | null
+  isRestored: boolean
 }
 
 function createSessionState(sessionId: string, projectPath: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }): SessionState {
@@ -252,7 +253,8 @@ function createSessionState(sessionId: string, projectPath: string, worktreeOpts
     worktreePath: worktreeOpts?.worktreePath ?? null,
     isWorktree: !!worktreeOpts?.worktreePath,
     worktreeBranch: null,
-    worktreeSessionId: worktreeOpts?.worktreeSessionId ?? null
+    worktreeSessionId: worktreeOpts?.worktreeSessionId ?? null,
+    isRestored: false
   }
 }
 
@@ -284,6 +286,9 @@ interface SessionStore {
   loadEntries: (sessionId: string, projectPath: string, entries: SessionFileEntry[]) => void
   appendEntries: (sessionId: string, entries: SessionFileEntry[]) => void
   addSystemMessage: (sessionId: string, content: string) => void
+  restoreSession: (data: { id: string; projectPath: string; name: string; messages?: unknown[]; model?: string | null; totalCostUsd?: number; numTurns?: number; selectedModel?: string | null; createdAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null }) => void
+  clearRestored: (sessionId: string) => void
+  getSerializableSessions: () => Array<{ id: string; projectPath: string; name: string; messages: UIMessage[]; model: string | null; totalCostUsd: number; numTurns: number; selectedModel: string | null; createdAt: number; lastActiveAt: number; worktreePath: string | null; isWorktree: boolean; worktreeSessionId: string | null }>
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -723,5 +728,67 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         }
       }
     })
+  },
+
+  restoreSession: (data): void => {
+    const session: SessionState = {
+      sessionId: data.id,
+      projectPath: data.projectPath,
+      name: data.name || 'Session',
+      messages: (data.messages ?? []) as UIMessage[],
+      streamingText: '',
+      isStreaming: false,
+      isProcessing: false,
+      costUsd: 0,
+      totalCostUsd: data.totalCostUsd ?? 0,
+      numTurns: data.numTurns ?? 0,
+      model: data.model ?? null,
+      claudeVersion: null,
+      error: null,
+      selectedModel: data.selectedModel ?? 'claude-opus-4-6',
+      createdAt: data.createdAt,
+      worktreePath: data.worktreePath ?? null,
+      isWorktree: data.isWorktree ?? false,
+      worktreeBranch: null,
+      worktreeSessionId: data.worktreeSessionId ?? null,
+      isRestored: true
+    }
+    set(s => ({
+      sessions: { ...s.sessions, [data.id]: session },
+      projectSessionMemory: { ...s.projectSessionMemory, [data.projectPath]: data.id }
+    }))
+  },
+
+  clearRestored: (sessionId: string): void => {
+    set(s => {
+      if (!s.sessions[sessionId]) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: { ...s.sessions[sessionId], isRestored: false }
+        }
+      }
+    })
+  },
+
+  getSerializableSessions: (): Array<{ id: string; projectPath: string; name: string; messages: UIMessage[]; model: string | null; totalCostUsd: number; numTurns: number; selectedModel: string | null; createdAt: number; lastActiveAt: number; worktreePath: string | null; isWorktree: boolean; worktreeSessionId: string | null }> => {
+    const state = get()
+    return Object.values(state.sessions)
+      .filter(s => s.messages.length > 0)
+      .map(s => ({
+        id: s.sessionId,
+        projectPath: s.projectPath,
+        name: s.name,
+        messages: s.messages,
+        model: s.model,
+        totalCostUsd: s.totalCostUsd,
+        numTurns: s.numTurns,
+        selectedModel: s.selectedModel,
+        createdAt: s.createdAt,
+        lastActiveAt: Date.now(),
+        worktreePath: s.worktreePath,
+        isWorktree: s.isWorktree,
+        worktreeSessionId: s.worktreeSessionId
+      }))
   }
 }))

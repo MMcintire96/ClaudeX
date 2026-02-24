@@ -7,6 +7,7 @@ interface HotkeysModalProps {
 
 const HOTKEYS = [
   { key: '?', label: 'Show hotkeys' },
+  { key: 'K', label: 'Command palette' },
   { key: 'N', label: 'New Claude terminal' },
   { key: 'T', label: 'New shell terminal' },
   { key: 'O', label: 'Open project' },

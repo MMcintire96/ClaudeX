@@ -73,12 +73,17 @@ export default function Sidebar() {
     setCreatingThread(true)
     try {
       const cleanName = entry.name.replace(/^[^\w\s]+\s*/, '') || entry.name
+      const store = useSessionStore.getState()
 
-      // Create a session in the store and set it active
-      createSession(entry.projectPath, entry.claudeSessionId, {
-        worktreePath: entry.worktreePath || undefined,
+      // Create a restored session so the lazy reconnect works on first message
+      store.restoreSession({
+        id: entry.claudeSessionId,
+        projectPath: entry.projectPath,
+        name: cleanName,
+        createdAt: Date.now(),
+        worktreePath: entry.worktreePath,
+        isWorktree: entry.isWorktree
       })
-      useSessionStore.getState().renameSession(entry.claudeSessionId, cleanName)
 
       setHistoryByProject(prev => ({
         ...prev,
@@ -91,7 +96,7 @@ export default function Sidebar() {
       setCreatingThread(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [createSession, currentPath])
+  }, [currentPath])
 
   const getSessionsForProject = (projectPath: string) => {
     return Object.values(sessions)
@@ -159,9 +164,28 @@ export default function Sidebar() {
   }, [currentPath, setProject, projectSidePanelMemory, setSidePanelView, switchToProjectTerminals, ensureSession, setActiveSession])
 
   const handleCloseSession = useCallback((sessionId: string) => {
+    const session = useSessionStore.getState().sessions[sessionId]
+    if (session && session.messages.length > 0) {
+      window.api.session.addHistory({
+        id: sessionId,
+        claudeSessionId: sessionId,
+        projectPath: session.projectPath,
+        name: session.name,
+        createdAt: session.createdAt,
+        endedAt: Date.now(),
+        worktreePath: session.worktreePath,
+        isWorktree: session.isWorktree
+      }).catch(() => {})
+    }
     window.api.agent.stop(sessionId).catch(() => {})
     removeSession(sessionId)
-  }, [removeSession])
+    fetchHistory()
+  }, [removeSession, fetchHistory])
+
+  const handleClearOldSessions = useCallback(async (projectPath: string) => {
+    await window.api.session.clearHistory(projectPath)
+    setHistoryByProject(prev => ({ ...prev, [projectPath]: [] }))
+  }, [])
 
   const handleRemoveProject = useCallback((projectPath: string) => {
     // Close shell terminals
@@ -280,6 +304,7 @@ export default function Sidebar() {
               onCloseSession={handleCloseSession}
               onNewThread={() => handleNewThread(proj.path)}
               onRemoveProject={() => handleRemoveProject(proj.path)}
+              onClearOldSessions={() => handleClearOldSessions(proj.path)}
               historyEntries={historyByProject[proj.path] || []}
               onResumeHistory={handleResumeHistory}
             />

@@ -29,7 +29,7 @@ export function registerAllHandlers(
   _sessionFileWatcher?: unknown,
   worktreeManager?: WorktreeManager
 ): void {
-  registerAgentHandlers(agentManager, worktreeManager)
+  registerAgentHandlers(agentManager, worktreeManager, sessionPersistence)
   registerProjectHandlers(projectManager, projectConfigManager, terminalManager)
   registerBrowserHandlers(browserManager)
   registerTerminalHandlers(terminalManager, settingsManager, bridgeInfo, sessionPersistence)
