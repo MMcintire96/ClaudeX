@@ -37,7 +37,7 @@ export interface ElectronAPI {
     reorderRecent: (paths: string[]) => Promise<{ success: boolean }>
     diff: (projectPath: string, staged?: boolean) => Promise<{ success: boolean; diff?: string; error?: string }>
     gitStatus: (projectPath: string) => Promise<{ success: boolean; status?: unknown; error?: string }>
-    diffFile: (projectPath: string, filePath: string) => Promise<{ success: boolean; diff?: string; error?: string }>
+    diffFile: (projectPath: string, filePath: string, untracked?: boolean) => Promise<{ success: boolean; diff?: string; error?: string }>
     gitBranch: (projectPath: string) => Promise<{ success: boolean; branch?: string | null; error?: string }>
     getStartConfig: (projectPath: string) => Promise<{ commands: Array<{ name: string; command: string; cwd?: string }>; browserUrl?: string; buildCommand?: string } | null>
     saveStartConfig: (projectPath: string, config: { commands: Array<{ name: string; command: string; cwd?: string }>; browserUrl?: string; buildCommand?: string }) => Promise<{ success: boolean }>
@@ -74,6 +74,9 @@ export interface ElectronAPI {
   settings: {
     get: () => Promise<{ claude: { dangerouslySkipPermissions: boolean }; modKey: string; vimMode: boolean }>
     update: (settings: Partial<{ claude: Partial<{ dangerouslySkipPermissions: boolean }>; modKey: string; vimMode: boolean }>) => Promise<{ claude: { dangerouslySkipPermissions: boolean }; modKey: string; vimMode: boolean }>
+  }
+  notification: {
+    playSound: () => Promise<boolean>
   }
   voice: {
     transcribe: (pcmData: number[]) => Promise<{ success: boolean; text?: string; error?: string }>
@@ -135,6 +138,7 @@ export interface ElectronAPI {
     resize: (projectPath: string, cols: number, rows: number) => Promise<{ success: boolean }>
     openFile: (projectPath: string, filePath: string) => Promise<{ success: boolean }>
     close: (projectPath: string) => Promise<{ success: boolean }>
+    refreshBuffers: (projectPath: string) => Promise<{ success: boolean }>
     isRunning: (projectPath: string) => Promise<boolean>
     onData: (callback: (projectPath: string, data: string) => void) => () => void
     onExit: (callback: (projectPath: string, exitCode: number) => void) => () => void

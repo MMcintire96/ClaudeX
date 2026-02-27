@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useSessionStore, type UIToolUseMessage } from '../../stores/sessionStore'
+import { playNotificationSound } from '../../lib/notificationSound'
 
 interface Option {
   label: string
@@ -150,6 +151,7 @@ export default function AskUserQuestionBlock({ message, sessionId, answered: alr
       } else if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission()
       }
+      playNotificationSound()
     }
   }, [needsInput])
 

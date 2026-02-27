@@ -8,6 +8,25 @@ interface CommitModalProps {
 
 type NextStep = 'commit' | 'commit-push' | 'commit-pr'
 
+/** Parse a unified diff string to count files, insertions, and deletions */
+function parseDiffStats(diff: string): { files: number; insertions: number; deletions: number } {
+  if (!diff) return { files: 0, insertions: 0, deletions: 0 }
+  const files = new Set<string>()
+  let insertions = 0
+  let deletions = 0
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      const match = line.match(/^diff --git a\/(.*?) b\//)
+      if (match) files.add(match[1])
+    } else if (line.startsWith('+') && !line.startsWith('+++')) {
+      insertions++
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      deletions++
+    }
+  }
+  return { files: files.size, insertions, deletions }
+}
+
 export default function CommitModal({ projectPath, onClose, onCommitted }: CommitModalProps) {
   const [branch, setBranch] = useState<string | null>(null)
   const [fileCount, setFileCount] = useState(0)
@@ -30,42 +49,29 @@ export default function CommitModal({ projectPath, onClose, onCommitted }: Commi
     })
   }, [projectPath])
 
-  // Load diff summary (combined staged + unstaged when includeUnstaged, else staged only)
+  // Load diff stats from the same diff endpoint the DiffPanel uses
   useEffect(() => {
     const loadSummary = async () => {
       if (includeUnstaged) {
-        // Get both staged and unstaged
-        const [staged, unstaged] = await Promise.all([
-          window.api.project.gitDiffSummary(projectPath, true),
-          window.api.project.gitDiffSummary(projectPath, false)
+        // Fetch both staged and unstaged diffs (same as DiffPanel, includes untracked files)
+        const [stagedResult, unstagedResult] = await Promise.all([
+          window.api.project.diff(projectPath, true),
+          window.api.project.diff(projectPath, false)
         ])
-        const sFiles = staged.success && staged.summary ? staged.summary.files.map(f => f.file) : []
-        const uFiles = unstaged.success && unstaged.summary ? unstaged.summary.files.map(f => f.file) : []
-        const allFiles = new Set([...sFiles, ...uFiles])
-        // Also count untracked files
-        const status = await window.api.project.gitStatus(projectPath)
-        if (status.success && status.status) {
-          const st = status.status as { not_added?: string[] }
-          if (st.not_added) st.not_added.forEach(f => allFiles.add(f))
-        }
-        setFileCount(allFiles.size)
-        setInsertions(
-          (staged.summary?.insertions || 0) + (unstaged.summary?.insertions || 0)
-        )
-        setDeletions(
-          (staged.summary?.deletions || 0) + (unstaged.summary?.deletions || 0)
-        )
+        const stagedDiff = stagedResult.success ? stagedResult.diff || '' : ''
+        const unstagedDiff = unstagedResult.success ? unstagedResult.diff || '' : ''
+        const combined = [stagedDiff, unstagedDiff].filter(Boolean).join('\n')
+        const stats = parseDiffStats(combined)
+        setFileCount(stats.files)
+        setInsertions(stats.insertions)
+        setDeletions(stats.deletions)
       } else {
-        const result = await window.api.project.gitDiffSummary(projectPath, true)
-        if (result.success && result.summary) {
-          setFileCount(result.summary.changed)
-          setInsertions(result.summary.insertions)
-          setDeletions(result.summary.deletions)
-        } else {
-          setFileCount(0)
-          setInsertions(0)
-          setDeletions(0)
-        }
+        const result = await window.api.project.diff(projectPath, true)
+        const diff = result.success ? result.diff || '' : ''
+        const stats = parseDiffStats(diff)
+        setFileCount(stats.files)
+        setInsertions(stats.insertions)
+        setDeletions(stats.deletions)
       }
     }
     loadSummary()

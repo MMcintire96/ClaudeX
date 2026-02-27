@@ -62,8 +62,8 @@ const api = {
       ipcRenderer.invoke('project:diff', projectPath, staged),
     gitStatus: (projectPath: string) =>
       ipcRenderer.invoke('project:git-status', projectPath),
-    diffFile: (projectPath: string, filePath: string) =>
-      ipcRenderer.invoke('project:diff-file', projectPath, filePath),
+    diffFile: (projectPath: string, filePath: string, untracked?: boolean) =>
+      ipcRenderer.invoke('project:diff-file', projectPath, filePath, untracked),
     gitBranch: (projectPath: string) =>
       ipcRenderer.invoke('project:git-branch', projectPath),
     getStartConfig: (projectPath: string) =>
@@ -139,6 +139,10 @@ const api = {
       ipcRenderer.invoke('settings:get'),
     update: (settings: Record<string, unknown>) =>
       ipcRenderer.invoke('settings:update', settings)
+  },
+  notification: {
+    playSound: () =>
+      ipcRenderer.invoke('notification:play-sound') as Promise<boolean>
   },
   voice: {
     transcribe: (pcmData: number[]) =>
@@ -266,6 +270,8 @@ const api = {
       ipcRenderer.invoke('neovim:open-file', projectPath, filePath),
     close: (projectPath: string) =>
       ipcRenderer.invoke('neovim:close', projectPath),
+    refreshBuffers: (projectPath: string) =>
+      ipcRenderer.invoke('neovim:refresh-buffers', projectPath),
     isRunning: (projectPath: string) =>
       ipcRenderer.invoke('neovim:is-running', projectPath) as Promise<boolean>,
     onData: (callback: (projectPath: string, data: string) => void) => {

@@ -9,7 +9,6 @@ export interface BridgeInfo {
 
 export function registerTerminalHandlers(
   terminalManager: TerminalManager,
-  _settingsManager: unknown,
   _bridgeInfo?: BridgeInfo,
   sessionPersistence?: SessionPersistence
 ): void {

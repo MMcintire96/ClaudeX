@@ -157,16 +157,6 @@ export class TerminalManager {
     }))
   }
 
-  listAll(): TerminalInfo[] {
-    const result: TerminalInfo[] = []
-    for (const pt of this.terminals.values()) {
-      for (const t of pt.values()) {
-        result.push({ id: t.id, projectPath: t.projectPath, pid: t.pty.pid })
-      }
-    }
-    return result
-  }
-
   destroy(): void {
     this.mainWindow = null
     for (const [, projectTerminals] of this.terminals) {

@@ -14,10 +14,13 @@ interface InputBarProps {
   sessionId: string | null
 }
 
+const PASTE_LINE_THRESHOLD = 5
+
 export default function InputBar({ sessionId }: InputBarProps) {
   const [input, setInput] = useState('')
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showSlashMenu, setShowSlashMenu] = useState(false)
+  const [pastedChunks, setPastedChunks] = useState<{ text: string; lineCount: number }[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { startNewSession, sendMessage, stopAgent, isRunning, isProcessing } = useAgent(sessionId)
   const currentPath = useProjectStore(s => s.currentPath)
@@ -77,10 +80,11 @@ export default function InputBar({ sessionId }: InputBarProps) {
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim()
-    if (!trimmed || !currentPath || isProcessing) return
+    const hasPasted = pastedChunks.length > 0
+    if ((!trimmed && !hasPasted) || !currentPath || isProcessing) return
 
-    // Check for slash commands
-    if (trimmed.startsWith('/')) {
+    // Check for slash commands (only if no pasted content)
+    if (!hasPasted && trimmed.startsWith('/')) {
       if (handleSlashCommand(trimmed)) {
         setInput('')
         if (textareaRef.current) {
@@ -90,22 +94,33 @@ export default function InputBar({ sessionId }: InputBarProps) {
       }
     }
 
+    // Build full message: pasted chunks + typed text
+    const parts: string[] = []
+    for (const chunk of pastedChunks) {
+      parts.push(chunk.text)
+    }
+    if (trimmed) {
+      parts.push(trimmed)
+    }
+    const fullMessage = parts.join('\n\n')
+
     if (isRunning && sessionId) {
-      sendMessage(trimmed)
+      sendMessage(fullMessage)
     } else {
       // Start a new session
-      const newSessionId = await startNewSession(trimmed)
+      const newSessionId = await startNewSession(fullMessage)
       if (newSessionId) {
         setActiveSession(newSessionId)
       }
     }
 
     setInput('')
+    setPastedChunks([])
     setShowSlashMenu(false)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }, [input, currentPath, isRunning, isProcessing, sessionId, sendMessage, startNewSession, handleSlashCommand, setActiveSession])
+  }, [input, pastedChunks, currentPath, isRunning, isProcessing, sessionId, sendMessage, startNewSession, handleSlashCommand, setActiveSession])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -117,6 +132,20 @@ export default function InputBar({ sessionId }: InputBarProps) {
       setShowSlashMenu(false)
     }
   }, [handleSend])
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedText = e.clipboardData.getData('text')
+    const lineCount = pastedText.split('\n').length
+
+    if (lineCount >= PASTE_LINE_THRESHOLD) {
+      e.preventDefault()
+      setPastedChunks(prev => [...prev, { text: pastedText, lineCount }])
+    }
+  }, [])
+
+  const removePastedChunk = useCallback((index: number) => {
+    setPastedChunks(prev => prev.filter((_, i) => i !== index))
+  }, [])
 
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
@@ -175,12 +204,33 @@ export default function InputBar({ sessionId }: InputBarProps) {
             {selectedModel.split('-').slice(1, 3).join(' ')}
           </div>
         )}
+        {pastedChunks.length > 0 && (
+          <div className="pasted-chunks">
+            {pastedChunks.map((chunk, i) => (
+              <div key={i} className="pasted-chip">
+                <span className="pasted-chip-text">
+                  {chunk.text.split('\n')[0].slice(0, 40)}
+                  {chunk.text.split('\n')[0].length > 40 ? '...' : ''}
+                  {' '}({chunk.lineCount} lines)
+                </span>
+                <button
+                  className="pasted-chip-remove"
+                  onClick={() => removePastedChunk(i)}
+                  title="Remove"
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           className="input-textarea"
           value={input}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={
             !currentPath
               ? 'Open a project first...'
@@ -189,22 +239,28 @@ export default function InputBar({ sessionId }: InputBarProps) {
                 : 'Ask anything (/ for commands)'
           }
           disabled={!currentPath || isProcessing}
+          spellCheck={true}
           rows={1}
         />
         <div className="input-actions">
-          {isProcessing && (
-            <button className="btn-stop" onClick={stopAgent}>
-              Stop
+          {isProcessing ? (
+            <button
+              className="btn-stop"
+              onClick={stopAgent}
+              title="Stop"
+            >
+              <span style={{ display: 'block', width: 14, height: 14, minWidth: 14, minHeight: 14, backgroundColor: '#fff', borderRadius: 3 }} />
+            </button>
+          ) : (
+            <button
+              className="btn-send"
+              onClick={handleSend}
+              disabled={(!input.trim() && pastedChunks.length === 0) || !currentPath}
+              title="Send"
+            >
+              &#8593;
             </button>
           )}
-          <button
-            className="btn-send"
-            onClick={handleSend}
-            disabled={!input.trim() || !currentPath || isProcessing}
-            title="Send"
-          >
-            &#8593;
-          </button>
         </div>
       </div>
     </div>

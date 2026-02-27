@@ -145,8 +145,3 @@ export type AgentEvent =
   | ToolResultEvent
   | ResultEvent
 
-// Input message format
-export interface UserInputMessage {
-  type: 'user_input'
-  content: string
-}

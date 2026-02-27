@@ -3,6 +3,9 @@ import { DEFAULT_MODEL } from '../constants/models'
 
 /** Check if a session's last pending tool_use needs user input (question, plan, or permission). */
 export function sessionNeedsInput(session: SessionState): boolean {
+  // If the session is already processing (user answered and agent is running), no input needed
+  if (session.isProcessing) return false
+
   const msgs = session.messages
   if (msgs.length === 0) return false
 
@@ -71,167 +74,9 @@ export interface UIThinkingMessage {
 
 export type UIMessage = UITextMessage | UIToolUseMessage | UIToolResultMessage | UISystemMessage | UIThinkingMessage
 
-export interface SessionFileEntry {
-  type: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  message?: any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any
-}
-
-interface ThinkingInfo {
-  text: string
-  isLatest: boolean
-}
-
-interface ParseResult {
-  messages: UIMessage[]
-  thinkingBlocks: ThinkingInfo[]
-  lastEntryType: string | null
-  detectedModel: string | null
-}
-
 let nextId = 0
 function uid(): string {
   return `ss-${Date.now()}-${nextId++}`
-}
-
-export function parseEntries(entries: SessionFileEntry[]): ParseResult {
-  const messages: UIMessage[] = []
-  const thinkingBlocks: ThinkingInfo[] = []
-  const now = Date.now()
-  let lastEntryType: string | null = null
-  let detectedModel: string | null = null
-
-  for (let entryIdx = 0; entryIdx < entries.length; entryIdx++) {
-    const entry = entries[entryIdx]
-    lastEntryType = entry.type
-
-    if (entry.type === 'user') {
-      const msg = entry.message
-      if (!msg) continue
-
-      // Skip slash commands (e.g. /model, /clear, /cost, /compact, /init)
-      // and local command output (ANSI-encoded responses like "Set model to ...")
-      if (typeof msg.content === 'string') {
-        const trimmed = msg.content.trim()
-        if (trimmed.startsWith('/')) continue
-        // Skip ANSI escape sequences (local command stdout)
-        // eslint-disable-next-line no-control-regex
-        if (/\x1b\[/.test(trimmed)) continue
-      }
-
-      if (typeof msg.content === 'string') {
-        messages.push({
-          id: uid(),
-          role: 'user',
-          type: 'text',
-          content: msg.content,
-          timestamp: now
-        } as UITextMessage)
-      } else if (Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === 'tool_result') {
-            let text = ''
-            if (typeof block.content === 'string') {
-              text = block.content
-            } else if (Array.isArray(block.content)) {
-              text = block.content
-                .filter((c: { type: string }) => c.type === 'text')
-                .map((c: { text: string }) => c.text)
-                .join('\n')
-            }
-            messages.push({
-              id: uid(),
-              role: 'tool',
-              type: 'tool_result',
-              toolUseId: block.tool_use_id || '',
-              content: text,
-              isError: block.is_error || false,
-              timestamp: now
-            } as UIToolResultMessage)
-          } else if (block.type === 'text') {
-            messages.push({
-              id: uid(),
-              role: 'user',
-              type: 'text',
-              content: block.text,
-              timestamp: now
-            } as UITextMessage)
-          }
-        }
-      }
-    } else if (entry.type === 'assistant') {
-      const msg = entry.message
-      if (!msg || !Array.isArray(msg.content)) continue
-
-      if (msg.model) {
-        detectedModel = msg.model
-      }
-
-      let textAccum = ''
-      const isLastAssistant = !entries.slice(entryIdx + 1).some(e => e.type === 'assistant')
-
-      for (const block of msg.content) {
-        if (block.type === 'thinking' && block.thinking) {
-          thinkingBlocks.push({
-            text: block.thinking,
-            isLatest: isLastAssistant
-          })
-          if (textAccum) {
-            messages.push({
-              id: uid(),
-              role: 'assistant',
-              type: 'text',
-              content: textAccum,
-              timestamp: now
-            } as UITextMessage)
-            textAccum = ''
-          }
-          messages.push({
-            id: uid(),
-            role: 'assistant',
-            type: 'thinking',
-            content: block.thinking,
-            timestamp: now
-          } as UIThinkingMessage)
-        } else if (block.type === 'text') {
-          textAccum += (typeof block.text === 'string' ? block.text : '')
-        } else if (block.type === 'tool_use') {
-          if (textAccum) {
-            messages.push({
-              id: uid(),
-              role: 'assistant',
-              type: 'text',
-              content: textAccum,
-              timestamp: now
-            } as UITextMessage)
-            textAccum = ''
-          }
-          messages.push({
-            id: uid(),
-            role: 'assistant',
-            type: 'tool_use',
-            toolName: block.name || 'unknown',
-            toolId: block.id || uid(),
-            input: block.input || {},
-            timestamp: now
-          } as UIToolUseMessage)
-        }
-      }
-      if (textAccum) {
-        messages.push({
-          id: uid(),
-          role: 'assistant',
-          type: 'text',
-          content: textAccum,
-          timestamp: now
-        } as UITextMessage)
-      }
-    }
-  }
-
-  return { messages, thinkingBlocks, lastEntryType, detectedModel }
 }
 
 export interface SessionState {
@@ -305,6 +150,7 @@ interface SessionStore {
   projectSessionMemory: Record<string, string>
 
   createSession: (projectPath: string, sessionId: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }) => void
+  replaceSessionId: (oldId: string, newId: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }) => void
   setWorktreeBranch: (sessionId: string, branchName: string) => void
   removeSession: (sessionId: string) => void
   setActiveSession: (sessionId: string | null) => void
@@ -316,8 +162,6 @@ interface SessionStore {
   setSelectedModel: (sessionId: string, model: string | null) => void
   renameSession: (sessionId: string, name: string) => void
   getSessionsForProject: (projectPath: string) => SessionState[]
-  loadEntries: (sessionId: string, projectPath: string, entries: SessionFileEntry[]) => void
-  appendEntries: (sessionId: string, entries: SessionFileEntry[]) => void
   addSystemMessage: (sessionId: string, content: string) => void
   restoreSession: (data: { id: string; projectPath: string; name: string; messages?: unknown[]; model?: string | null; totalCostUsd?: number; numTurns?: number; selectedModel?: string | null; createdAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null; forkedFrom?: string | null; forkLabel?: string | null; forkChildren?: string[] | null; isForkParent?: boolean }) => void
   clearRestored: (sessionId: string) => void
@@ -343,6 +187,29 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       activeSessionId: sessionId,
       projectSessionMemory: { ...state.projectSessionMemory, [projectPath]: sessionId }
     }))
+  },
+
+  replaceSessionId: (oldId: string, newId: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }): void => {
+    set(state => {
+      const existing = state.sessions[oldId]
+      if (!existing) return state
+      const { [oldId]: _, ...rest } = state.sessions
+      const updated: SessionState = {
+        ...existing,
+        sessionId: newId,
+        worktreePath: worktreeOpts?.worktreePath ?? existing.worktreePath,
+        isWorktree: worktreeOpts?.worktreePath ? true : existing.isWorktree,
+        worktreeSessionId: worktreeOpts?.worktreeSessionId ?? existing.worktreeSessionId
+      }
+      return {
+        sessions: { ...rest, [newId]: updated },
+        activeSessionId: state.activeSessionId === oldId ? newId : state.activeSessionId,
+        projectSessionMemory: {
+          ...state.projectSessionMemory,
+          [existing.projectPath]: newId
+        }
+      }
+    })
   },
 
   setWorktreeBranch: (sessionId: string, branchName: string): void => {
@@ -695,53 +562,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     return Object.values(state.sessions)
       .filter(s => s.projectPath === projectPath)
       .sort((a, b) => a.createdAt - b.createdAt)
-  },
-
-  loadEntries: (sessionId: string, projectPath: string, entries: SessionFileEntry[]): void => {
-    const parsed = parseEntries(entries)
-    const latestThinking = parsed.thinkingBlocks.filter(t => t.isLatest)
-    const thinking = latestThinking.length > 0
-      ? latestThinking[latestThinking.length - 1].text
-      : null
-
-    set(s => {
-      const existing = s.sessions[sessionId]
-      const session: SessionState = existing
-        ? { ...existing, messages: parsed.messages, model: parsed.detectedModel ?? existing.model }
-        : { ...createSessionState(sessionId, projectPath), messages: parsed.messages, model: parsed.detectedModel }
-      return {
-        sessions: { ...s.sessions, [sessionId]: session },
-        thinkingText: { ...s.thinkingText, [sessionId]: thinking },
-        lastEntryType: { ...s.lastEntryType, [sessionId]: parsed.lastEntryType }
-      }
-    })
-  },
-
-  appendEntries: (sessionId: string, entries: SessionFileEntry[]): void => {
-    const parsed = parseEntries(entries)
-    if (parsed.messages.length === 0 && !parsed.lastEntryType) return
-
-    const latestThinking = parsed.thinkingBlocks.filter(t => t.isLatest)
-    const thinking = latestThinking.length > 0
-      ? latestThinking[latestThinking.length - 1].text
-      : null
-
-    set(s => {
-      const existing = s.sessions[sessionId]
-      if (!existing) return s
-      return {
-        sessions: {
-          ...s.sessions,
-          [sessionId]: {
-            ...existing,
-            messages: [...existing.messages, ...parsed.messages],
-            model: parsed.detectedModel ?? existing.model
-          }
-        },
-        thinkingText: { ...s.thinkingText, [sessionId]: thinking ?? s.thinkingText[sessionId] },
-        lastEntryType: { ...s.lastEntryType, [sessionId]: parsed.lastEntryType ?? s.lastEntryType[sessionId] }
-      }
-    })
   },
 
   addSystemMessage: (sessionId: string, content: string): void => {

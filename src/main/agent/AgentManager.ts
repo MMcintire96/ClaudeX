@@ -6,6 +6,7 @@ import type { AgentEvent, StreamEvent } from './types'
 import { broadcastSend } from '../broadcast'
 import { generateSessionTitle } from './TitleGenerator'
 import type { SettingsManager } from '../settings/SettingsManager'
+import type { NeovimManager } from '../neovim/NeovimManager'
 
 const SYSTEM_PROMPT_APPEND =
   'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
@@ -28,6 +29,7 @@ export class AgentManager {
   private initialPrompts: Map<string, string> = new Map()
   private titleGenerated: Set<string> = new Set()
   private settingsManager: SettingsManager | null = null
+  private neovimManager: NeovimManager | null = null
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
@@ -40,6 +42,10 @@ export class AgentManager {
 
   setSettingsManager(manager: SettingsManager): void {
     this.settingsManager = manager
+  }
+
+  setNeovimManager(manager: NeovimManager): void {
+    this.neovimManager = manager
   }
 
   private getMcpServerPath(): string {
@@ -107,6 +113,14 @@ export class AgentManager {
           broadcastSend(this.mainWindow,'agent:events', { sessionId, events: pending })
         }
         broadcastSend(this.mainWindow,'agent:event', { sessionId, event })
+
+        // Refresh Neovim buffers when a tool finishes (files may have changed)
+        if (event.type === 'tool_result' && this.neovimManager) {
+          const agent = this.agents.get(sessionId)
+          if (agent?.projectPath) {
+            this.neovimManager.refreshBuffers(agent.projectPath)
+          }
+        }
       }
     })
 

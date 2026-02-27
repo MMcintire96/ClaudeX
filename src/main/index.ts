@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, globalShortcut, session, Menu, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, globalShortcut, session, Menu, MenuItem, ipcMain } from 'electron'
 import { join } from 'path'
 import { AgentManager } from './agent/AgentManager'
 import { ProjectManager } from './project/ProjectManager'
@@ -21,6 +21,7 @@ app.commandLine.appendSwitch('use-fake-ui-for-media-stream')
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-features', 'PulseAudioInput,WebRTCPipeWireCapturer')
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+  app.commandLine.appendSwitch('disable-gpu-sandbox')
 }
 
 // In dev mode, use a separate config directory
@@ -60,11 +61,49 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      spellcheck: true
     },
     ...(isMac
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 15, y: 15 } }
       : { frame: false })
+  })
+
+  // Right-click context menu with spell check suggestions
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const menu = new Menu()
+
+    // Spell check suggestions
+    if (params.misspelledWord) {
+      for (const suggestion of params.dictionarySuggestions) {
+        menu.append(new MenuItem({
+          label: suggestion,
+          click: () => mainWindow?.webContents.replaceMisspelling(suggestion)
+        }))
+      }
+      if (params.dictionarySuggestions.length > 0) {
+        menu.append(new MenuItem({ type: 'separator' }))
+      }
+      menu.append(new MenuItem({
+        label: 'Add to Dictionary',
+        click: () => mainWindow?.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord)
+      }))
+      menu.append(new MenuItem({ type: 'separator' }))
+    }
+
+    // Standard editing actions for editable fields
+    if (params.isEditable) {
+      menu.append(new MenuItem({ role: 'cut' }))
+      menu.append(new MenuItem({ role: 'copy' }))
+      menu.append(new MenuItem({ role: 'paste' }))
+      menu.append(new MenuItem({ role: 'selectAll' }))
+    } else if (params.selectionText) {
+      menu.append(new MenuItem({ role: 'copy' }))
+    }
+
+    if (menu.items.length > 0) {
+      menu.popup()
+    }
   })
 
   // Window control IPC handlers
@@ -82,10 +121,14 @@ function createWindow(): void {
   ipcMain.handle('window:devtools', () => mainWindow?.webContents.toggleDevTools())
 
   mainWindow.on('maximize', () => {
-    mainWindow?.webContents.send('window:maximized-changed', true)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:maximized-changed', true)
+    }
   })
   mainWindow.on('unmaximize', () => {
-    mainWindow?.webContents.send('window:maximized-changed', false)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:maximized-changed', false)
+    }
   })
 
   agentManager.setMainWindow(mainWindow)
@@ -106,9 +149,11 @@ function createWindow(): void {
 
   // Send restore data after renderer loads
   mainWindow.webContents.on('did-finish-load', () => {
-    if (mainWindow) markWindowReady(mainWindow)
-    const savedState = sessionPersistence.loadState()
-    mainWindow?.webContents.send('session:restore', savedState)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      markWindowReady(mainWindow)
+      const savedState = sessionPersistence.loadState()
+      mainWindow.webContents.send('session:restore', savedState)
+    }
   })
 
   // Load the renderer
@@ -199,10 +244,46 @@ function createPopoutWindow(terminalId: string, projectPath: string, theme?: str
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      spellcheck: true
     },
     frame: true,
     alwaysOnTop: false,
+  })
+
+  // Right-click context menu with spell check suggestions for popout
+  popout.webContents.on('context-menu', (_event, params) => {
+    const menu = new Menu()
+
+    if (params.misspelledWord) {
+      for (const suggestion of params.dictionarySuggestions) {
+        menu.append(new MenuItem({
+          label: suggestion,
+          click: () => popout.webContents.replaceMisspelling(suggestion)
+        }))
+      }
+      if (params.dictionarySuggestions.length > 0) {
+        menu.append(new MenuItem({ type: 'separator' }))
+      }
+      menu.append(new MenuItem({
+        label: 'Add to Dictionary',
+        click: () => popout.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord)
+      }))
+      menu.append(new MenuItem({ type: 'separator' }))
+    }
+
+    if (params.isEditable) {
+      menu.append(new MenuItem({ role: 'cut' }))
+      menu.append(new MenuItem({ role: 'copy' }))
+      menu.append(new MenuItem({ role: 'paste' }))
+      menu.append(new MenuItem({ role: 'selectAll' }))
+    } else if (params.selectionText) {
+      menu.append(new MenuItem({ role: 'copy' }))
+    }
+
+    if (menu.items.length > 0) {
+      menu.popup()
+    }
   })
 
   popout.webContents.on('will-navigate', (e) => e.preventDefault())
@@ -215,7 +296,7 @@ function createPopoutWindow(terminalId: string, projectPath: string, theme?: str
 
   // Send session snapshot to popout once it finishes loading
   popout.webContents.on('did-finish-load', () => {
-    if (sessionSnapshot) {
+    if (sessionSnapshot && !popout.isDestroyed()) {
       popout.webContents.send('popout:init', { session: sessionSnapshot })
     }
   })
@@ -223,7 +304,9 @@ function createPopoutWindow(terminalId: string, projectPath: string, theme?: str
   popout.on('closed', () => {
     removeBroadcastWindow(popout)
     if (popoutWindow === popout) popoutWindow = null
-    mainWindow?.webContents.send('popout:closed')
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('popout:closed')
+    }
   })
 
   const params = `?popout=true&terminalId=${encodeURIComponent(terminalId)}&projectPath=${encodeURIComponent(projectPath)}${theme ? `&theme=${encodeURIComponent(theme)}` : ''}`
@@ -266,10 +349,11 @@ app.whenReady().then(async () => {
   await bridgeServer.start()
   agentManager.setBridgeInfo(bridgeServer.port, bridgeServer.token)
   agentManager.setSettingsManager(settingsManager)
+  agentManager.setNeovimManager(neovimManager)
   registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, {
     bridgePort: bridgeServer.port,
     bridgeToken: bridgeServer.token
-  }, sessionPersistence, projectConfigManager, undefined, worktreeManager, neovimManager)
+  }, sessionPersistence, projectConfigManager, worktreeManager, neovimManager)
 
   createWindow()
 

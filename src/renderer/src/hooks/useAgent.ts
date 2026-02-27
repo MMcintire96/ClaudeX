@@ -12,6 +12,7 @@ export interface WorktreeOptions {
 export function useAgent(sessionId: string | null) {
   const session = useSessionStore(s => sessionId ? s.sessions[sessionId] ?? null : null)
   const createSession = useSessionStore(s => s.createSession)
+  const replaceSessionId = useSessionStore(s => s.replaceSessionId)
   const addUserMessage = useSessionStore(s => s.addUserMessage)
   const setProcessing = useSessionStore(s => s.setProcessing)
   const setError = useSessionStore(s => s.setError)
@@ -35,14 +36,22 @@ export function useAgent(sessionId: string | null) {
     }
 
     const newSessionId = result.sessionId
-    createSession(currentPath, newSessionId, {
+    const worktreeOpts = {
       worktreePath: result.worktreePath,
       worktreeSessionId: result.worktreeSessionId
-    })
+    }
+
+    // If we already have an active empty session, re-key it to the agent's session ID
+    // instead of creating a duplicate
+    if (sessionId && useSessionStore.getState().sessions[sessionId]?.messages.length === 0) {
+      replaceSessionId(sessionId, newSessionId, worktreeOpts)
+    } else {
+      createSession(currentPath, newSessionId, worktreeOpts)
+    }
     addUserMessage(newSessionId, prompt)
     setProcessing(newSessionId, true)
     return newSessionId
-  }, [currentPath, createSession, addUserMessage, setProcessing])
+  }, [currentPath, sessionId, createSession, replaceSessionId, addUserMessage, setProcessing])
 
   const sendMessage = useCallback(async (content: string) => {
     if (!sessionId) return

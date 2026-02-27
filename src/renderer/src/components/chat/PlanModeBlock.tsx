@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useSessionStore, type UIToolUseMessage } from '../../stores/sessionStore'
+import { playNotificationSound } from '../../lib/notificationSound'
 
 interface Props {
   message: UIToolUseMessage
@@ -55,6 +56,7 @@ export default function PlanModeBlock({ message, sessionId, answered: alreadyAns
       } else if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission()
       }
+      playNotificationSound()
     }
   }, [needsInput])
 

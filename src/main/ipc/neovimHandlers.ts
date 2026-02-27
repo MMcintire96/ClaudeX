@@ -31,6 +31,11 @@ export function registerNeovimHandlers(neovimManager: NeovimManager): void {
     return { success: true }
   })
 
+  ipcMain.handle('neovim:refresh-buffers', (_event, projectPath: string) => {
+    neovimManager.refreshBuffers(projectPath)
+    return { success: true }
+  })
+
   ipcMain.handle('neovim:is-running', (_event, projectPath: string) => {
     return neovimManager.isRunning(projectPath)
   })

@@ -52,11 +52,14 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   const [diff, setDiff] = useState('')
   const [files, setFiles] = useState<FileStatus[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [selectedFileUntracked, setSelectedFileUntracked] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'unstaged' | 'staged'>('unstaged')
   const [searchFilter, setSearchFilter] = useState('')
   const selectedFileRef = useRef<string | null>(null)
   selectedFileRef.current = selectedFile
+  const selectedFileUntrackedRef = useRef(false)
+  selectedFileUntrackedRef.current = selectedFileUntracked
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -145,7 +148,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
       const file = selectedFileRef.current
       const staged = activeTab === 'staged'
       const diffResult = file
-        ? await window.api.project.diffFile(diffPath, file)
+        ? await window.api.project.diffFile(diffPath, file, selectedFileUntrackedRef.current)
         : await window.api.project.diff(diffPath, staged)
       if (diffResult.success) {
         const newDiff = diffResult.diff || ''
@@ -167,13 +170,13 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     setLoading(false)
   }, [diffPath])
 
-  const loadDiff = useCallback(async (filePath?: string) => {
+  const loadDiff = useCallback(async (filePath?: string, untracked?: boolean) => {
     if (!diffPath) return
     setLoading(true)
     try {
       let result
       if (filePath) {
-        result = await window.api.project.diffFile(diffPath, filePath)
+        result = await window.api.project.diffFile(diffPath, filePath, untracked)
       } else {
         const staged = activeTab === 'staged'
         result = await window.api.project.diff(diffPath, staged)
@@ -201,19 +204,22 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     }
   }, [projectPath, quietRefresh])
 
-  const handleFileClick = useCallback((path: string) => {
+  const handleFileClick = useCallback((path: string, isUntracked?: boolean) => {
     if (selectedFile === path) {
       setSelectedFile(null)
+      setSelectedFileUntracked(false)
       loadDiff()
     } else {
       setSelectedFile(path)
-      loadDiff(path)
+      setSelectedFileUntracked(!!isUntracked)
+      loadDiff(path, isUntracked)
     }
   }, [loadDiff, selectedFile])
 
   const handleTabChange = useCallback((tab: 'unstaged' | 'staged') => {
     setActiveTab(tab)
     setSelectedFile(null)
+    setSelectedFileUntracked(false)
     setSearchFilter('')
   }, [])
 
@@ -286,7 +292,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
         key={f.path}
         className={`diff-tree-file-row ${selectedFile === f.path ? 'active' : ''}`}
         style={{ paddingLeft: 8 + depth * 16 }}
-        onClick={() => handleFileClick(f.path)}
+        onClick={() => handleFileClick(f.path, f.index === '?')}
         onContextMenu={(e) => {
           e.preventDefault()
           setContextMenu({ x: e.clientX, y: e.clientY, filePath: f.path })
@@ -319,8 +325,12 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
         />
         <button
           className="btn btn-sm btn-icon"
-          onClick={() => window.api.project.openInEditor(diffPath)}
-          title="Open in $EDITOR"
+          onClick={async () => {
+            const running = await window.api.neovim.isRunning(diffPath)
+            if (!running) await window.api.neovim.create(diffPath)
+            else await window.api.neovim.openFile(diffPath, '.')
+          }}
+          title="Open in editor"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -370,7 +380,11 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
           {loading ? (
             <div className="diff-loading">Loading...</div>
           ) : (
-            <DiffView diff={displayDiff} onAddToClaude={handleAddToClaude} onOpenInEditor={(filePath) => window.api.project.openInEditor(diffPath, filePath)} />
+            <DiffView diff={displayDiff} onAddToClaude={handleAddToClaude} onOpenInEditor={async (filePath) => {
+              const running = await window.api.neovim.isRunning(diffPath)
+              if (!running) await window.api.neovim.create(diffPath, filePath)
+              else await window.api.neovim.openFile(diffPath, filePath)
+            }} />
           )}
         </div>
 
@@ -405,8 +419,10 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
         >
           <button
             className="context-menu-item"
-            onClick={() => {
-              window.api.project.openInEditor(diffPath, contextMenu.filePath)
+            onClick={async () => {
+              const running = await window.api.neovim.isRunning(diffPath)
+              if (!running) await window.api.neovim.create(diffPath, contextMenu.filePath)
+              else await window.api.neovim.openFile(diffPath, contextMenu.filePath)
               setContextMenu(null)
             }}
           >

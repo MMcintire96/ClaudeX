@@ -9,6 +9,7 @@ import { useTerminalStore } from './stores/terminalStore'
 import { useProjectStore } from './stores/projectStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { validateTheme } from './lib/themes'
+import { playNotificationSound } from './lib/notificationSound'
 
 export default function App() {
   const processEvent = useSessionStore(s => s.processEvent)
@@ -90,6 +91,7 @@ export default function App() {
         } else if ('Notification' in window && Notification.permission === 'default') {
           Notification.requestPermission()
         }
+        playNotificationSound()
       } else if (!needs && notifiedSessionsRef.current.has(sid)) {
         // Clear notification tracking when input is no longer needed
         notifiedSessionsRef.current.delete(sid)

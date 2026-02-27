@@ -36,7 +36,10 @@ export class NeovimManager {
       return { projectPath, pid: existing.pty.pid }
     }
 
-    const args: string[] = []
+    const args: string[] = [
+      // Auto-reload buffers changed externally (by Claude, git, etc.)
+      '-c', 'set autoread',
+    ]
     if (filePath) {
       args.push(filePath)
     }
@@ -101,6 +104,17 @@ export class NeovimManager {
     if (!instance) return
     // Send Escape first to ensure we're in normal mode, then :e <file>
     instance.pty.write(`\x1b:e ${filePath}\r`)
+  }
+
+  /**
+   * Tell Neovim to re-check all open buffers for external changes.
+   * With autoread set, changed buffers are silently reloaded.
+   */
+  refreshBuffers(projectPath: string): void {
+    const instance = this.instances.get(projectPath)
+    if (!instance) return
+    // Escape to normal mode, then :checktime reloads any externally-modified buffers
+    instance.pty.write('\x1b:checktime\r')
   }
 
   isRunning(projectPath: string): boolean {

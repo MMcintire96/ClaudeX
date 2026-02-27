@@ -28,14 +28,13 @@ export function registerAllHandlers(
   bridgeInfo?: BridgeInfo,
   sessionPersistence?: SessionPersistence,
   projectConfigManager?: ProjectConfigManager,
-  _sessionFileWatcher?: unknown,
   worktreeManager?: WorktreeManager,
   neovimManager?: NeovimManager
 ): void {
   registerAgentHandlers(agentManager, worktreeManager, sessionPersistence)
   registerProjectHandlers(projectManager, projectConfigManager, terminalManager)
   registerBrowserHandlers(browserManager)
-  registerTerminalHandlers(terminalManager, settingsManager, bridgeInfo, sessionPersistence)
+  registerTerminalHandlers(terminalManager, bridgeInfo, sessionPersistence)
   registerSettingsHandlers(settingsManager)
   registerVoiceHandlers(voiceManager)
   if (worktreeManager) {

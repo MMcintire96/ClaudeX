@@ -25,7 +25,6 @@ interface UIState {
   toggleSidebar: () => void
   setSidePanelView: (view: SidePanelView | null) => void
   setPendingBrowserUrl: (url: string | null) => void
-  toggleTheme: () => void
   cycleTheme: () => void
   setTheme: (theme: ThemeName) => void
   setSidebarWidth: (w: number) => void
@@ -71,15 +70,6 @@ export const useUIStore = create<UIState>((set) => ({
   },
 
   cycleTheme: (): void => {
-    set(state => {
-      const idx = THEME_LIST.indexOf(state.theme)
-      const next = THEME_LIST[(idx + 1) % THEME_LIST.length]
-      return { theme: next }
-    })
-  },
-
-  toggleTheme: (): void => {
-    // Kept for compatibility — now cycles through all themes
     set(state => {
       const idx = THEME_LIST.indexOf(state.theme)
       const next = THEME_LIST[(idx + 1) % THEME_LIST.length]

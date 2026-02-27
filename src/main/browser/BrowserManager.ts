@@ -46,6 +46,13 @@ export class BrowserManager {
     this.mainWindow = win
   }
 
+  /** Send IPC to mainWindow only if it exists and hasn't been destroyed. */
+  private safeSend(channel: string, ...args: unknown[]): void {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send(channel, ...args)
+    }
+  }
+
   private getProjectBrowser(projectPath: string): ProjectBrowser {
     let pb = this.browsers.get(projectPath)
     if (!pb) {
@@ -79,7 +86,7 @@ export class BrowserManager {
     view.webContents.on('did-navigate', (_event, navUrl) => {
       tab.url = navUrl
       if (this.activeProject === projectPath && pb.activeTabId === id) {
-        this.mainWindow?.webContents.send('browser:url-changed', navUrl)
+        this.safeSend('browser:url-changed', navUrl)
       }
       this.sendTabsUpdate(projectPath)
     })
@@ -87,7 +94,7 @@ export class BrowserManager {
     view.webContents.on('did-navigate-in-page', (_event, navUrl) => {
       tab.url = navUrl
       if (this.activeProject === projectPath && pb.activeTabId === id) {
-        this.mainWindow?.webContents.send('browser:url-changed', navUrl)
+        this.safeSend('browser:url-changed', navUrl)
       }
       this.sendTabsUpdate(projectPath)
     })
@@ -96,7 +103,7 @@ export class BrowserManager {
       tab.title = title
       if (this.activeProject === projectPath) {
         if (pb.activeTabId === id) {
-          this.mainWindow?.webContents.send('browser:title-changed', title)
+          this.safeSend('browser:title-changed', title)
         }
         this.sendTabsUpdate(projectPath)
       }
@@ -203,7 +210,7 @@ export class BrowserManager {
     const pb = this.browsers.get(projectPath)
     if (!pb) return
     const tabs: TabInfo[] = pb.tabs.map(t => ({ id: t.id, url: t.url, title: t.title }))
-    this.mainWindow.webContents.send('browser:tabs-updated', tabs, pb.activeTabId)
+    this.safeSend('browser:tabs-updated', tabs, pb.activeTabId)
   }
 
   private normalizeUrl(url: string): string {
@@ -321,8 +328,8 @@ export class BrowserManager {
       if (this.pendingBounds) tab.view.setBounds(this.pendingBounds)
     }
 
-    this.mainWindow.webContents.send('browser:url-changed', tab.url)
-    this.mainWindow.webContents.send('browser:title-changed', tab.title)
+    this.safeSend('browser:url-changed', tab.url)
+    this.safeSend('browser:title-changed', tab.title)
     this.sendTabsUpdate(this.activeProject)
   }
 
@@ -358,12 +365,12 @@ export class BrowserManager {
           this.mainWindow.contentView.addChildView(nextTab.view)
           if (this.pendingBounds) nextTab.view.setBounds(this.pendingBounds)
         }
-        this.mainWindow.webContents.send('browser:url-changed', nextTab.url)
-        this.mainWindow.webContents.send('browser:title-changed', nextTab.title)
+        this.safeSend('browser:url-changed', nextTab.url)
+        this.safeSend('browser:title-changed', nextTab.title)
       } else {
         pb.activeTabId = null
-        this.mainWindow.webContents.send('browser:url-changed', '')
-        this.mainWindow.webContents.send('browser:title-changed', '')
+        this.safeSend('browser:url-changed', '')
+        this.safeSend('browser:title-changed', '')
       }
     }
 
@@ -403,10 +410,6 @@ export class BrowserManager {
 
   getCurrentUrl(): string {
     return this.getActiveTab()?.url ?? ''
-  }
-
-  isActive(): boolean {
-    return this.getActiveTab() !== null && this.visible
   }
 
   async captureScreenshot(projectPath?: string): Promise<string> {

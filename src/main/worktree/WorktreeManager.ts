@@ -281,14 +281,6 @@ export class WorktreeManager {
     shell.openPath(info.worktreePath)
   }
 
-  /**
-   * Look up worktree info by worktree path (as opposed to sessionId).
-   * Used to find worktree metadata for a terminal running in a worktree directory.
-   */
-  getByWorktreePath(worktreePath: string): WorktreeInfo | null {
-    return this.registry.worktrees.find(w => w.worktreePath === worktreePath) ?? null
-  }
-
   async cleanupAll(): Promise<void> {
     // Prune git worktree references
     const projectPaths = new Set(this.registry.worktrees.map(w => w.projectPath))

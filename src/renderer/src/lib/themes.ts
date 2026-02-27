@@ -48,7 +48,3 @@ export function validateTheme(value: unknown): ThemeName {
   return DEFAULT_THEME
 }
 
-export function isThemeDark(theme: ThemeName): boolean {
-  const meta = THEME_META.find(m => m.id === theme)
-  return meta ? meta.isDark : true
-}

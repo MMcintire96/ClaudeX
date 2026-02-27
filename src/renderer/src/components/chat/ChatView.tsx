@@ -293,6 +293,8 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       setWorktreeLocked(false)
     }
     setWorktreeDropdownOpen(false)
+    // Auto-focus the input when switching sessions
+    setTimeout(() => textareaRef.current?.focus(), 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
@@ -556,6 +558,12 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       setInputText('')
       if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
+      // Scroll to bottom when user sends a message
+      userScrolledUpRef.current = false
+      if (listRef.current) {
+        listRef.current.scrollTop = listRef.current.scrollHeight
+      }
+
       // Start a new session with worktree
       const newId = await startNewSession(text, { useWorktree: true })
       if (!newId) {
@@ -577,6 +585,12 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     setInputText('')
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
+    }
+
+    // Scroll to bottom when user sends a message
+    userScrolledUpRef.current = false
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight
     }
 
     if (isProcessing) {

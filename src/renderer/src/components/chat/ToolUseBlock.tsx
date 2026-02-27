@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import type { UIToolUseMessage } from '../../stores/sessionStore'
+import { playNotificationSound } from '../../lib/notificationSound'
 
 interface Props {
   message: UIToolUseMessage
@@ -9,7 +10,7 @@ interface Props {
 
 function formatInput(input: Record<string, unknown>): string {
   // Show key fields for common tools
-  const { command, file_path, pattern, content, ...rest } = input
+  const { command, file_path, pattern } = input
   const parts: string[] = []
   if (file_path) parts.push(`File: ${file_path}`)
   if (command) parts.push(`$ ${command}`)
@@ -59,6 +60,7 @@ export default function ToolUseBlock({ message, awaitingPermission, terminalId }
       } else if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission()
       }
+      playNotificationSound()
     }
   }, [needsInput])
 

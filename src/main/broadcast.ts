@@ -20,10 +20,6 @@ export function removeBroadcastWindow(win: BrowserWindow): void {
   extraWindows.delete(win)
 }
 
-export function getBroadcastWindows(): BrowserWindow[] {
-  return Array.from(extraWindows).filter(w => !w.isDestroyed())
-}
-
 /**
  * Mark a window as ready to receive IPC events (call after did-finish-load).
  * Flushes any queued events that were sent before the renderer was ready.

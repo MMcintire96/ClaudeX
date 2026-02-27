@@ -65,10 +65,6 @@ export class ProjectManager {
     return this.recentProjects
   }
 
-  getRecentPaths(): string[] {
-    return this.recentProjects.map(p => p.path)
-  }
-
   async reorderRecent(paths: string[]): Promise<void> {
     const byPath = new Map(this.recentProjects.map(p => [p.path, p]))
     const reordered: RecentProject[] = []

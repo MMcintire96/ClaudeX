@@ -2057,6 +2057,56 @@ body {
   cursor: not-allowed;
 }
 
+/* Pasted text chips */
+.pasted-chunks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+
+.pasted-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 100%;
+}
+
+.pasted-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+.pasted-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.pasted-chip-remove:hover {
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary);
+}
+
 .input-bar-toolbar {
   display: flex;
   align-items: center;
@@ -2246,26 +2296,30 @@ body {
 }
 
 .btn-stop {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.15s;
-}
-.btn-stop:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-.btn-send.btn-stop {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
   background: var(--error, #e53935);
   color: #fff;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
 }
-.btn-send.btn-stop:hover {
+.btn-stop:hover {
   background: var(--error-hover, #c62828);
+}
+.stop-icon {
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 2px;
 }
 
 /* Input footer */

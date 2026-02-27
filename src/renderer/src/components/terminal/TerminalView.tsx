@@ -124,6 +124,11 @@ export default function TerminalView({ terminalId, visible, active, background }
       return true
     })
 
+    // Prevent xterm's built-in paste handler so Ctrl+Shift+V doesn't paste twice
+    const xtermEl = xtermContainerRef.current!.querySelector('.xterm') as HTMLElement | null
+    const preventDoublePaste = (e: ClipboardEvent) => e.preventDefault()
+    xtermEl?.addEventListener('paste', preventDoublePaste)
+
     // User keystrokes → PTY
     const onDataDisposable = term.onData((data: string) => {
       window.api.terminal.write(terminalId, data)
@@ -157,6 +162,7 @@ export default function TerminalView({ terminalId, visible, active, background }
     observer.observe(xtermContainerRef.current)
 
     return () => {
+      xtermEl?.removeEventListener('paste', preventDoublePaste)
       observer.disconnect()
       onDataDisposable.dispose()
       unsubData()

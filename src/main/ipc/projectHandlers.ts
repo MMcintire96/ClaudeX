@@ -1,7 +1,8 @@
 import { ipcMain, app } from 'electron'
-import { resolve, join } from 'path'
+import { resolve, join, relative } from 'path'
 import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
+import { readdir } from 'fs/promises'
 import { ProjectManager } from '../project/ProjectManager'
 import { GitService } from '../project/GitService'
 import { query } from '@anthropic-ai/claude-agent-sdk'
@@ -52,6 +53,12 @@ export function registerProjectHandlers(
     try {
       const git = new GitService(projectPath)
       const diff = await git.diff(staged)
+      // For unstaged tab, also include untracked files
+      if (!staged) {
+        const untrackedDiff = await git.diffAllUntracked()
+        const combined = [diff, untrackedDiff].filter(Boolean).join('\n')
+        return { success: true, diff: combined }
+      }
       return { success: true, diff }
     } catch (err) {
       return { success: false, error: (err as Error).message }
@@ -85,9 +92,13 @@ export function registerProjectHandlers(
     }
   })
 
-  ipcMain.handle('project:diff-file', async (_event, projectPath: string, filePath: string) => {
+  ipcMain.handle('project:diff-file', async (_event, projectPath: string, filePath: string, untracked?: boolean) => {
     try {
       const git = new GitService(projectPath)
+      if (untracked) {
+        const diff = await git.diffUntrackedFile(filePath)
+        return { success: true, diff }
+      }
       const diff = await git.diffFile(filePath)
       return { success: true, diff }
     } catch (err) {
@@ -262,13 +273,45 @@ export function registerProjectHandlers(
   })
 
   ipcMain.handle('project:list-files', async (_event, projectPath: string) => {
+    // Try git ls-files first (respects .gitignore)
     try {
-      // Use git ls-files for .gitignore-aware listing, include untracked non-ignored files
       const { stdout } = await execFileAsync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], {
         cwd: projectPath,
         maxBuffer: 10 * 1024 * 1024
       })
       const files = stdout.split('\n').filter(f => f.length > 0)
+      if (files.length > 0) return { success: true, files }
+    } catch {
+      // Not a git repo or git not available — fall through to fs walk
+    }
+
+    // Fallback: recursive directory walk with common ignores
+    try {
+      const IGNORED = new Set([
+        'node_modules', '.git', '.hg', '.svn', 'dist', 'build', '.next',
+        '__pycache__', '.cache', '.vscode', '.idea', 'coverage', '.DS_Store',
+        'target', 'out', '.output', '.nuxt', '.turbo', 'vendor', '.venv', 'venv',
+      ])
+      const MAX_FILES = 10000
+      const files: string[] = []
+
+      async function walk(dir: string): Promise<void> {
+        if (files.length >= MAX_FILES) return
+        const entries = await readdir(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          if (files.length >= MAX_FILES) return
+          if (entry.name.startsWith('.') && IGNORED.has(entry.name)) continue
+          if (IGNORED.has(entry.name)) continue
+          const full = join(dir, entry.name)
+          if (entry.isDirectory()) {
+            await walk(full)
+          } else if (entry.isFile()) {
+            files.push(relative(projectPath, full))
+          }
+        }
+      }
+
+      await walk(projectPath)
       return { success: true, files }
     } catch {
       return { success: false, files: [], error: 'Failed to list files' }
