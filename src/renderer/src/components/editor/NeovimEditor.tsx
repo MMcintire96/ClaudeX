@@ -22,6 +22,7 @@ export default function NeovimEditor({ projectPath, visible }: Props) {
 
   // Track whether we've ever been visible — gate creation on this
   const [initialized, setInitialized] = useState(false)
+  const [exited, setExited] = useState(false)
   useEffect(() => {
     if (visible && projectPath && !initialized) {
       setInitialized(true)
@@ -90,7 +91,7 @@ export default function NeovimEditor({ projectPath, visible }: Props) {
     // Neovim exit
     const unsubExit = window.api.neovim.onExit((path: string) => {
       if (path === projectPathRef.current) {
-        term.write('\r\n\x1b[90m[Neovim exited]\x1b[0m\r\n')
+        setExited(true)
         removeEditor(path)
       }
     })
@@ -151,6 +152,25 @@ export default function NeovimEditor({ projectPath, visible }: Props) {
     const timer = setTimeout(refit, 150)
     return () => clearTimeout(timer)
   }, [visible])
+
+  // Respawn Neovim when switching to editor tab after it exited
+  useEffect(() => {
+    if (!visible || !exited || !projectPath || !termRef.current) return
+    const term = termRef.current
+    term.clear()
+    setExited(false)
+    spawnNeovim(projectPath).then(() => {
+      // Re-fit after spawn so neovim gets the correct dimensions
+      try {
+        fitAddonRef.current?.fit()
+        if (termRef.current && projectPathRef.current) {
+          window.api.neovim.resize(projectPathRef.current, termRef.current.cols, termRef.current.rows)
+        }
+      } catch {
+        // Ignore
+      }
+    })
+  }, [visible, exited, projectPath, spawnNeovim])
 
   if (!projectPath) {
     return (

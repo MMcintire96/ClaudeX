@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import type { UIToolUseMessage } from '../../stores/sessionStore'
-import { playNotificationSound } from '../../lib/notificationSound'
+import { sendNotification } from '../../lib/notificationSound'
 
 interface Props {
   message: UIToolUseMessage
@@ -52,15 +52,7 @@ export default function ToolUseBlock({ message, awaitingPermission, terminalId }
   useEffect(() => {
     if (needsInput && !notifiedRef.current) {
       notifiedRef.current = true
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Claude needs your approval', {
-          body: `${message.toolName} requires permission`,
-          silent: false
-        })
-      } else if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission()
-      }
-      playNotificationSound()
+      sendNotification('Claude needs your approval', `${message.toolName} requires permission`)
     }
   }, [needsInput])
 

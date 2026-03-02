@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useSessionStore, type UIToolUseMessage } from '../../stores/sessionStore'
-import { playNotificationSound } from '../../lib/notificationSound'
+import { sendNotification } from '../../lib/notificationSound'
 
 interface Option {
   label: string
@@ -143,15 +143,7 @@ export default function AskUserQuestionBlock({ message, sessionId, answered: alr
   useEffect(() => {
     if (needsInput && !notifiedRef.current) {
       notifiedRef.current = true
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Claude needs your input', {
-          body: questions[0]?.question || 'A question requires your response',
-          silent: false
-        })
-      } else if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission()
-      }
-      playNotificationSound()
+      sendNotification('Claude needs your input', questions[0]?.question || 'A question requires your response')
     }
   }, [needsInput])
 

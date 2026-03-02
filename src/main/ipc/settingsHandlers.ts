@@ -34,6 +34,21 @@ export function registerSettingsHandlers(settingsManager: SettingsManager): void
     })
   })
 
+  ipcMain.handle('notification:send', (_event, title: string, body: string) => {
+    const soundFile = '/usr/share/sounds/freedesktop/stereo/complete.oga'
+    // Send Linux desktop notification via notify-send
+    execFile('notify-send', [
+      '--app-name=ClaudeX',
+      '--icon=dialog-information',
+      title,
+      body
+    ], () => {})
+    // Always play sound alongside notification
+    execFile('pw-play', [soundFile], (err) => {
+      if (err) execFile('paplay', [soundFile], () => {})
+    })
+  })
+
   ipcMain.handle('settings:update', async (_event, partial: Partial<AppSettings>) => {
     const updated = await settingsManager.update(partial)
     if (partial.preventSleep !== undefined) {

@@ -13,11 +13,20 @@ export interface WorktreeOptions {
   includeChanges?: boolean
 }
 
+const SCRATCH_PROJECT_PATH = '__scratch__'
+
 export function registerAgentHandlers(agentManager: AgentManager, worktreeManager?: WorktreeManager, sessionPersistence?: SessionPersistence): void {
   ipcMain.handle('agent:start', async (_event, projectPath: string, prompt: string, model?: string | null, worktreeOptions?: WorktreeOptions) => {
     try {
       let effectivePath = projectPath
       let worktreePath: string | undefined
+
+      // Quick chats: resolve sentinel to home directory, skip worktrees
+      if (projectPath === SCRATCH_PROJECT_PATH) {
+        effectivePath = homedir()
+        const sessionId = agentManager.startAgent({ projectPath: effectivePath, model: model ?? 'claude-opus-4-6' }, prompt)
+        return { success: true, sessionId }
+      }
 
       if (worktreeOptions?.useWorktree && worktreeManager) {
         const sessionId = randomUUID()
@@ -66,7 +75,8 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
 
   ipcMain.handle('agent:resume', (_event, sessionId: string, projectPath: string, message: string, model?: string | null) => {
     try {
-      agentManager.resumeAgent(sessionId, projectPath, model ?? null, message)
+      const effectivePath = projectPath === SCRATCH_PROJECT_PATH ? homedir() : projectPath
+      agentManager.resumeAgent(sessionId, effectivePath, model ?? null, message)
       return { success: true, sessionId }
     } catch (err) {
       return { success: false, error: (err as Error).message }
@@ -86,6 +96,10 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
     sourceSdkSessionId: string | null
   ) => {
     try {
+      if (projectPath === SCRATCH_PROJECT_PATH) {
+        return { success: false, error: 'Quick chats cannot be forked' }
+      }
+
       console.log(`[agent:fork] sourceSessionId=${sourceSessionId}, projectPath=${projectPath}, sourceSdkSessionId=${sourceSdkSessionId}`)
 
       // 1. Stop agent if running

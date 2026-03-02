@@ -142,7 +142,9 @@ const api = {
   },
   notification: {
     playSound: () =>
-      ipcRenderer.invoke('notification:play-sound') as Promise<boolean>
+      ipcRenderer.invoke('notification:play-sound') as Promise<boolean>,
+    send: (title: string, body: string) =>
+      ipcRenderer.invoke('notification:send', title, body)
   },
   voice: {
     transcribe: (pcmData: number[]) =>

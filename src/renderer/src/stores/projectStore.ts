@@ -34,14 +34,11 @@ export const useProjectStore = create<ProjectState>((set) => ({
 
   setProject: (path: string, isGitRepo: boolean): void => {
     const name = path.split('/').pop() || path
-    set(state => ({
+    set({
       currentPath: path,
       currentName: name,
       isGitRepo,
-      expandedProjects: state.expandedProjects.includes(path)
-        ? state.expandedProjects
-        : [...state.expandedProjects, path]
-    }))
+    })
   },
 
   setRecent: (projects: RecentProject[]): void => {

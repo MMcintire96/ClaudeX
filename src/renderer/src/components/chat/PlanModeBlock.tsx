@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useSessionStore, type UIToolUseMessage } from '../../stores/sessionStore'
-import { playNotificationSound } from '../../lib/notificationSound'
+import { sendNotification } from '../../lib/notificationSound'
 
 interface Props {
   message: UIToolUseMessage
@@ -48,15 +48,7 @@ export default function PlanModeBlock({ message, sessionId, answered: alreadyAns
   useEffect(() => {
     if (needsInput && !notifiedRef.current) {
       notifiedRef.current = true
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Claude needs your input', {
-          body: 'A plan is ready for your review',
-          silent: false
-        })
-      } else if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission()
-      }
-      playNotificationSound()
+      sendNotification('Claude needs your input', 'A plan is ready for your review')
     }
   }, [needsInput])
 

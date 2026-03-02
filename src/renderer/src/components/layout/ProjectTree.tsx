@@ -65,6 +65,8 @@ interface ProjectTreeProps {
   isGitRepo: boolean
   sdkSessions: SessionState[]
   activeSessionId: string | null
+  collapsed: boolean
+  onToggleCollapse: () => void
   onSwitchToProject: () => void
   onSelectSession: (sessionId: string) => void
   onRenameSession: (sessionId: string, name: string) => void
@@ -100,6 +102,8 @@ export default function ProjectTree({
   onClearOldSessions,
   onForkSession,
   historyEntries,
+  collapsed,
+  onToggleCollapse,
   onResumeHistory,
 }: ProjectTreeProps) {
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
@@ -148,8 +152,10 @@ export default function ProjectTree({
   const handleHeaderClick = useCallback(() => {
     if (!isCurrentProject) {
       onSwitchToProject()
+    } else {
+      onToggleCollapse()
     }
-  }, [isCurrentProject, onSwitchToProject])
+  }, [isCurrentProject, onSwitchToProject, onToggleCollapse])
 
   // Sorted history: most recent first
   const sortedHistory = historyEntries.filter(e => !!e.claudeSessionId).slice().reverse()
@@ -169,6 +175,11 @@ export default function ProjectTree({
           setContextMenu({ type: 'project', x: e.clientX, y: e.clientY })
         }}
       >
+        <span className={`project-tree-chevron ${collapsed ? '' : 'expanded'}`}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+            <path d="M3 2 L7 5 L3 8 Z" />
+          </svg>
+        </span>
         <span className="project-tree-folder-icon">{'\uD83D\uDCC2'}</span>
         <span className="project-group-name">{projectName}</span>
         {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) && (
@@ -183,7 +194,7 @@ export default function ProjectTree({
         )}
       </button>
 
-      <div className="project-tree-children">
+      <div className={`project-tree-children ${collapsed ? 'collapsed' : ''}`}>
         {/* Active SDK sessions */}
         {sdkSessions.map((s, i) => {
           const isActive = isCurrentProject && activeSessionId === s.sessionId

@@ -4,6 +4,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import ProjectTree from './ProjectTree'
 
 export default function Sidebar() {
@@ -11,7 +12,8 @@ export default function Sidebar() {
   const {
     currentPath, isGitRepo, recentProjects,
     setProject, setRecent, removeProject, reorderProjects,
-    gitBranches, setGitBranch
+    gitBranches, setGitBranch,
+    expandedProjects, toggleProjectExpanded
   } = useProjectStore()
   const {
     setSidePanelView, projectSidePanelMemory
@@ -57,6 +59,8 @@ export default function Sidebar() {
   const fetchHistory = useCallback(() => {
     const paths = recentProjects.map(p => p.path)
     if (currentPath && !paths.includes(currentPath)) paths.unshift(currentPath)
+    // Also fetch scratch/quick chat history
+    if (!paths.includes(SCRATCH_PROJECT_PATH)) paths.push(SCRATCH_PROJECT_PATH)
     for (const path of paths) {
       window.api.session.history(path).then(entries => {
         setHistoryByProject(prev => ({ ...prev, [path]: entries }))
@@ -89,7 +93,7 @@ export default function Sidebar() {
         ...prev,
         [entry.projectPath]: (prev[entry.projectPath] || []).filter(e => e.claudeSessionId !== entry.claudeSessionId)
       }))
-      if (entry.projectPath !== currentPath) {
+      if (entry.projectPath !== SCRATCH_PROJECT_PATH && entry.projectPath !== currentPath) {
         await switchToProject(entry.projectPath)
       }
     } finally {
@@ -126,9 +130,23 @@ export default function Sidebar() {
     }
   }, [createSession])
 
+  const handleNewQuickChat = useCallback(() => {
+    setCreatingThread(true)
+    try {
+      const scratchSessions = Object.values(useSessionStore.getState().sessions)
+        .filter(s => s.projectPath === SCRATCH_PROJECT_PATH)
+      const count = scratchSessions.length
+      const sessionId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      createSession(SCRATCH_PROJECT_PATH, sessionId)
+      useSessionStore.getState().renameSession(sessionId, `Quick Chat${count > 0 ? ` ${count + 1}` : ''}`)
+    } finally {
+      setCreatingThread(false)
+    }
+  }, [createSession])
+
   const handleSelectSession = useCallback(async (sessionId: string) => {
     const session = useSessionStore.getState().sessions[sessionId]
-    if (session && session.projectPath !== currentPath) {
+    if (session && session.projectPath !== SCRATCH_PROJECT_PATH && session.projectPath !== currentPath) {
       await switchToProject(session.projectPath)
     }
     setActiveSession(sessionId)
@@ -322,14 +340,32 @@ export default function Sidebar() {
         <div className="sidebar-header-drag" />
       </div>
 
-      {/* New Thread button */}
+      {/* Open project button */}
       <div className="sidebar-new-thread">
+        <button className="btn" onClick={handleOpenProject} style={{ width: '100%' }}>
+          Open project
+        </button>
+      </div>
+
+      {/* New Thread + Quick Chat buttons */}
+      <div className="sidebar-new-thread" style={{ display: 'flex', gap: '4px' }}>
         <button
           className="btn btn-primary btn-new-thread"
           onClick={() => currentPath && handleNewThread(currentPath)}
           disabled={!currentPath || creatingThread}
+          style={{ flex: 1 }}
         >
           {creatingThread ? 'Starting...' : '+ New thread'}
+        </button>
+        <button
+          className="btn btn-quick-chat"
+          onClick={handleNewQuickChat}
+          disabled={creatingThread}
+          title="Start a chat without a project"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
         </button>
       </div>
 
@@ -355,6 +391,8 @@ export default function Sidebar() {
               isGitRepo={proj.isGitRepo}
               sdkSessions={getSessionsForProject(proj.path)}
               activeSessionId={activeSessionId}
+              collapsed={!expandedProjects.includes(proj.path)}
+              onToggleCollapse={() => toggleProjectExpanded(proj.path)}
               onSwitchToProject={() => switchToProject(proj.path)}
               onSelectSession={handleSelectSession}
               onRenameSession={(id, name) => useSessionStore.getState().renameSession(id, name)}
@@ -374,16 +412,62 @@ export default function Sidebar() {
             No projects yet
           </div>
         )}
+
+        {/* Quick Chat sessions */}
+        {(() => {
+          const scratchSessions = Object.values(sessions)
+            .filter(s => s.projectPath === SCRATCH_PROJECT_PATH)
+            .sort((a, b) => b.createdAt - a.createdAt)
+          const scratchHistory = historyByProject[SCRATCH_PROJECT_PATH] || []
+          if (scratchSessions.length === 0 && scratchHistory.length === 0) return null
+          return (
+            <div className="sidebar-scratch-section">
+              <div className="sidebar-section-label">Quick Chats</div>
+              {scratchSessions.map(s => {
+                const isActive = activeSessionId === s.sessionId
+                const displayName = s.name || 'Quick Chat'
+                return (
+                  <div key={s.sessionId} className={`tree-item tree-item-thread${isActive ? ' active' : ''}`}>
+                    <button
+                      className="tree-item-btn"
+                      onClick={() => handleSelectSession(s.sessionId)}
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: '2px 0', textAlign: 'left', fontSize: 'inherit', fontFamily: 'inherit' }}
+                    >
+                      <span className="tree-item-status-indicator" style={{ color: s.isProcessing ? 'var(--accent)' : 'var(--text-muted)', fontSize: '8px' }}>
+                        {s.isProcessing ? '\u25CF' : '\u25CB'}
+                      </span>
+                      <span className="tree-item-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
+                    </button>
+                    <button
+                      className="tree-item-close"
+                      onClick={(e) => { e.stopPropagation(); handleCloseSession(s.sessionId) }}
+                      title="Close"
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 4px', fontSize: '12px', lineHeight: 1, opacity: 0.6 }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                )
+              })}
+              {scratchHistory.map(entry => (
+                <div key={entry.id} className="tree-item tree-item-thread tree-item-history">
+                  <button
+                    className="tree-item-btn"
+                    onClick={() => handleResumeHistory(entry)}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 0', textAlign: 'left', fontSize: 'inherit', fontFamily: 'inherit' }}
+                  >
+                    <span style={{ fontSize: '8px' }}>{'\u25CB'}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {entry.name.replace(/^[^\w\s]+\s*/, '') || entry.name}
+                    </span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
-      {/* Footer */}
-      <div className="sidebar-footer">
-        <div className="sidebar-footer-row">
-          <button className="btn" onClick={handleOpenProject} style={{ flex: 1 }}>
-            Open project
-          </button>
-        </div>
-      </div>
     </aside>
   )
 }

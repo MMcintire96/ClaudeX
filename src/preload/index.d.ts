@@ -77,6 +77,7 @@ export interface ElectronAPI {
   }
   notification: {
     playSound: () => Promise<boolean>
+    send: (title: string, body: string) => Promise<void>
   }
   voice: {
     transcribe: (pcmData: number[]) => Promise<{ success: boolean; text?: string; error?: string }>

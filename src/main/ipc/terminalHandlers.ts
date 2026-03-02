@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { homedir } from 'os'
 import { TerminalManager } from '../terminal/TerminalManager'
 import { SessionPersistence } from '../session/SessionPersistence'
 
@@ -14,7 +15,8 @@ export function registerTerminalHandlers(
 ): void {
   ipcMain.handle('terminal:create', (_event, projectPath: string) => {
     try {
-      const info = terminalManager.create(projectPath)
+      const cwd = projectPath === '~' ? homedir() : projectPath
+      const info = terminalManager.create(cwd)
       return { success: true, ...info }
     } catch (err) {
       return { success: false, error: (err as Error).message }

@@ -3,6 +3,7 @@ import { useProjectStore } from '../../stores/projectStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useSessionStore } from '../../stores/sessionStore'
+import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import SettingsPanel from '../settings/SettingsPanel'
 import StartConfigModal from './StartConfigModal'
 import iconUrl from '../../assets/icon.png'
@@ -32,8 +33,16 @@ export default function AppHeader() {
   // Use worktree path if the active session is in a worktree, otherwise project path
   const effectiveCwd = activeSession?.worktreePath || currentPath
 
+  const isScratchSession = activeSession?.projectPath === SCRATCH_PROJECT_PATH
   const isBrowserActive = sidePanelView?.type === 'browser' && sidePanelView?.projectPath === currentPath
   const isDiffActive = sidePanelView?.type === 'diff' && sidePanelView?.projectPath === currentPath
+
+  // Close diff panel when switching to a scratch session
+  useEffect(() => {
+    if (isScratchSession && sidePanelView?.type === 'diff') {
+      setSidePanelView(null)
+    }
+  }, [isScratchSession]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const settingsAnchorRef = useRef<HTMLDivElement>(null)
@@ -131,19 +140,20 @@ const handleRunStart = useCallback(async () => {
   }, [currentPath, setSidePanelView])
 
   const handleOpenTerminal = useCallback(async () => {
-    if (!currentPath) return
-    const cwd = effectiveCwd || currentPath
+    const terminalPath = isScratchSession ? '~' : (effectiveCwd || currentPath)
+    if (!terminalPath) return
     const store = useTerminalStore.getState()
-    const shellTerminals = store.terminals.filter(t => t.projectPath === currentPath)
+    const ownerPath = isScratchSession ? SCRATCH_PROJECT_PATH : currentPath!
+    const shellTerminals = store.terminals.filter(t => t.projectPath === ownerPath)
     if (shellTerminals.length === 0) {
-      const result = await window.api.terminal.create(cwd)
+      const result = await window.api.terminal.create(terminalPath)
       if (result.success && result.id) {
-        store.addTerminal({ id: result.id, projectPath: currentPath, pid: result.pid || 0 })
+        store.addTerminal({ id: result.id, projectPath: ownerPath, pid: result.pid || 0 })
       }
     } else {
       store.togglePanel()
     }
-  }, [currentPath, effectiveCwd])
+  }, [currentPath, effectiveCwd, isScratchSession])
 
   const handleToggleDiff = useCallback(() => {
     if (!currentPath) return
@@ -172,7 +182,7 @@ const handleRunStart = useCallback(async () => {
           className="btn-header-icon"
           onClick={handleOpenTerminal}
           title="Terminal"
-          disabled={!currentPath}
+          disabled={!currentPath && !isScratchSession}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="4 17 10 11 4 5"/>
@@ -197,7 +207,7 @@ const handleRunStart = useCallback(async () => {
               if (currentPath) setRunMenuOpen(o => !o)
             }}
             title={hasStartConfig ? 'Run' : 'Run (right-click for options)'}
-            disabled={!currentPath}
+            disabled={!currentPath || isScratchSession}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="5 3 19 12 5 21 5 3"/>
@@ -206,7 +216,7 @@ const handleRunStart = useCallback(async () => {
           <button
             className="btn-header-caret"
             onClick={() => currentPath && setRunMenuOpen(o => !o)}
-            disabled={!currentPath}
+            disabled={!currentPath || isScratchSession}
             title="Run options"
           >
             <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -286,7 +296,7 @@ const handleRunStart = useCallback(async () => {
           className={`btn-header-icon ${isDiffActive ? 'active' : ''}`}
           onClick={handleToggleDiff}
           title="Diff"
-          disabled={!currentPath}
+          disabled={!currentPath || isScratchSession}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 3v18"/>

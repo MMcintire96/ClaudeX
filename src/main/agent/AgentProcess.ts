@@ -21,6 +21,7 @@ export interface AgentProcessOptions {
 export class AgentProcess extends EventEmitter {
   private _query: Query | null = null
   private abortController: AbortController | null = null
+  private _queryGeneration = 0
   private _sessionId: string
   private _projectPath: string
   private _model: string | null
@@ -133,27 +134,37 @@ export class AgentProcess extends EventEmitter {
     console.log(`[AgentProcess] Prompt length: ${prompt.length} chars`)
 
     this._isRunning = true
+    const generation = ++this._queryGeneration
 
     const iter = query({ prompt, options })
     this._query = iter
 
-    this._consumeIterator(iter)
+    this._consumeIterator(iter, generation)
   }
 
-  private async _consumeIterator(iter: Query): Promise<void> {
+  private async _consumeIterator(iter: Query, generation: number): Promise<void> {
     try {
       for await (const message of iter) {
         // The SDK yields typed messages — forward ones the renderer understands
         this._mapAndEmit(message)
       }
 
-      // Iterator completed normally
+      // Iterator completed normally — but only update state if a newer query
+      // hasn't already started (e.g. user stopped and sent a new message)
+      if (this._queryGeneration !== generation) return
+
       this._isRunning = false
       this._hasCompletedFirstTurn = true
       this._query = null
       console.log('[AgentProcess] Query completed')
       this.emit('close', 0)
     } catch (err: any) {
+      // If a newer query has started, this is a stale abort — discard silently
+      if (this._queryGeneration !== generation) {
+        console.log('[AgentProcess] Stale query abort (generation mismatch), ignoring')
+        return
+      }
+
       this._isRunning = false
       this._query = null
 

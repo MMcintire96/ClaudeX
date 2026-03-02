@@ -223,6 +223,66 @@ body {
   border-color: var(--border) !important;
 }
 
+/* Quick Chat button */
+.btn-quick-chat {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 8px;
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+  border: 1px dashed var(--border) !important;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.btn-quick-chat:hover {
+  border-color: var(--text-muted) !important;
+  color: var(--text-primary) !important;
+  background: var(--bg-secondary) !important;
+}
+
+/* Quick Chats sidebar section */
+.sidebar-scratch-section {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+.sidebar-scratch-section .tree-item-thread {
+  display: flex;
+  align-items: center;
+  padding: 2px 10px;
+  gap: 2px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sidebar-scratch-section .tree-item-thread:hover {
+  background: var(--bg-secondary);
+}
+.sidebar-scratch-section .tree-item-thread.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.sidebar-scratch-section .tree-item-history {
+  opacity: 0.6;
+}
+.sidebar-scratch-section .tree-item-history:hover {
+  opacity: 1;
+}
+.sidebar-scratch-section .tree-item-close {
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.sidebar-scratch-section .tree-item-thread:hover .tree-item-close {
+  opacity: 0.6;
+}
+.sidebar-scratch-section .tree-item-close:hover {
+  opacity: 1 !important;
+  color: var(--text-primary) !important;
+}
+
 /* Projects section */
 .sidebar-projects {
   flex: 1;
@@ -3582,7 +3642,7 @@ body {
 .project-tree-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   padding: 6px 10px;
   background: none;
@@ -3598,6 +3658,24 @@ body {
 }
 .project-tree-header.current {
   color: var(--text-primary);
+}
+
+.project-tree-chevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+  transform: rotate(0deg);
+}
+.project-tree-chevron.expanded {
+  transform: rotate(90deg);
+}
+.project-tree-header:hover .project-tree-chevron {
+  color: var(--text-secondary);
 }
 
 .project-tree-folder-icon {
@@ -3950,6 +4028,10 @@ body {
 
 .project-tree-children {
   padding: 2px 0 4px;
+  overflow: hidden;
+}
+.project-tree-children.collapsed {
+  display: none;
 }
 
 .tree-item {
@@ -4488,7 +4570,7 @@ body {
 .terminal-view {
   width: 100%;
   height: 100%;
-  padding: 4px;
+  padding: 4px 4px 12px 4px;
 }
 
 /* xterm.js container overrides */

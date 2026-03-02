@@ -18,6 +18,7 @@ import { AVAILABLE_MODELS, DEFAULT_MODEL, getModelLabel } from '../../constants/
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useVimMode } from '../../hooks/useVimMode'
 import { useAgent } from '../../hooks/useAgent'
+import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 
 interface ChatViewProps {
   sessionId: string
@@ -114,7 +115,9 @@ function renderHighlightedInput(text: string): React.ReactNode[] {
 }
 
 export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
+  const isScratchSession = projectPath === SCRATCH_PROJECT_PATH
   const [inputText, setInputText] = useState('')
+  const [pastedChunks, setPastedChunks] = useState<{ text: string; lineCount: number; charCount: number }[]>([])
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [planMode, setPlanMode] = useState(false)
   const [filePickerOpen, setFilePickerOpen] = useState(false)
@@ -227,7 +230,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
 
   // Load project files for @ picker (once per project)
   useEffect(() => {
-    if (!filePickerOpen) return
+    if (!filePickerOpen || isScratchSession) return
     if (filePickerLoadedRef.current === projectPath) return
     filePickerLoadedRef.current = projectPath
     window.api.project.listFiles(projectPath).then(result => {
@@ -278,6 +281,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   // Reset transient input state when sessionId changes
   useEffect(() => {
     setInputText('')
+    setPastedChunks([])
     setMessageQueue([])
     sendingQueueRef.current = false
     historyIndexRef.current = -1
@@ -285,7 +289,10 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     filePickerLoadedRef.current = null
     setVisibleCount(MESSAGES_PER_PAGE)
     vim.resetToInsert()
-    if (isWorktreeThread) {
+    if (isScratchSession) {
+      setWorktreeMode('local')
+      setWorktreeLocked(false)
+    } else if (isWorktreeThread) {
       setWorktreeMode('worktree')
       setWorktreeLocked(true)
     } else {
@@ -537,7 +544,19 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   }, [messages, messageQueue, searchOpen, searchQuery])
 
   const handleSend = useCallback(async () => {
-    let text = inputText.trim()
+    const trimmed = inputText.trim()
+    const hasPasted = pastedChunks.length > 0
+    if (!trimmed && !hasPasted) return
+
+    // Build full message: pasted chunks + typed text
+    const parts: string[] = []
+    for (const chunk of pastedChunks) {
+      parts.push(chunk.text)
+    }
+    if (trimmed) {
+      parts.push(trimmed)
+    }
+    let text = parts.join('\n\n')
     if (!text) return
 
     // Prepend plan mode instruction if toggled
@@ -556,6 +575,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       savedInputRef.current = ''
 
       setInputText('')
+      setPastedChunks([])
       if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
       // Scroll to bottom when user sends a message
@@ -583,6 +603,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     savedInputRef.current = ''
 
     setInputText('')
+    setPastedChunks([])
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
@@ -603,12 +624,12 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     const sessionState = useSessionStore.getState().sessions[sessionId]
     if (!sessionState || sessionState.messages.length === 0) {
       // First message — start the agent
-      await startNewSession(text)
+      await startNewSession(text, undefined, isScratchSession ? SCRATCH_PROJECT_PATH : undefined)
     } else {
       // Follow-up message
       await sendMessage(text)
     }
-  }, [inputText, sessionId, isProcessing, worktreeMode, worktreeLocked, startNewSession, sendMessage])
+  }, [inputText, pastedChunks, sessionId, isProcessing, worktreeMode, worktreeLocked, startNewSession, sendMessage])
 
   const handleModelChange = useCallback((modelId: string) => {
     setModelPickerOpen(false)
@@ -797,6 +818,21 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     const el = e.target
     el.style.height = 'auto'
     el.style.height = el.scrollHeight + 'px'
+  }, [])
+
+  const PASTE_LINE_THRESHOLD = 5
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedText = e.clipboardData.getData('text')
+    const lineCount = pastedText.split('\n').length
+    if (lineCount >= PASTE_LINE_THRESHOLD) {
+      e.preventDefault()
+      setPastedChunks(prev => [...prev, { text: pastedText, lineCount, charCount: pastedText.length }])
+    }
+  }, [])
+
+  const removePastedChunk = useCallback((index: number) => {
+    setPastedChunks(prev => prev.filter((_, i) => i !== index))
   }, [])
 
   // Drag-and-drop file handling
@@ -1131,6 +1167,24 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
           </div>
         )}
         <div className={`input-bar${isForkParent ? ' input-bar-disabled' : ''}`}>
+          {pastedChunks.length > 0 && (
+            <div className="pasted-chunks">
+              {pastedChunks.map((chunk, i) => (
+                <div key={i} className="pasted-chip">
+                  <span className="pasted-chip-text">
+                    [PASTED TEXT: {chunk.lineCount}:{chunk.charCount}]
+                  </span>
+                  <button
+                    className="pasted-chip-remove"
+                    onClick={() => removePastedChunk(i)}
+                    title="Remove"
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="textarea-wrapper">
             <div className="input-highlight-overlay" aria-hidden="true">
               {inputText ? renderHighlightedInput(inputText) : <span className="input-highlight-placeholder">{isForkParent ? 'Session forked — switch to a fork to continue' : 'Message Claude... (Enter to send)'}</span>}
@@ -1142,6 +1196,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
               value={inputText}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               rows={2}
               disabled={isForkParent}
             />
@@ -1189,7 +1244,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
                 </svg>
                 Plan
               </button>
-              {messages.length > 0 && !isForkParent && (
+              {messages.length > 0 && !isForkParent && !isScratchSession && (
                 <button
                   className={`btn-fork`}
                   onClick={() => forkSession()}
@@ -1239,7 +1294,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
                 <button
                   className="btn-send"
                   onClick={handleSend}
-                  disabled={!inputText.trim()}
+                  disabled={!inputText.trim() && pastedChunks.length === 0}
                   title="Send"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1255,52 +1310,63 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
         {/* Context footer */}
         <div className="input-footer">
           <div className="input-footer-left">
-            {/* Worktree / Local dropdown */}
-            {gitBranch ? (
-              <div className="worktree-mode-picker">
-                <button
-                  className={`worktree-mode-btn ${worktreeLocked ? 'locked' : ''} ${worktreeMode === 'worktree' ? 'mode-worktree' : ''}`}
-                  onClick={() => { if (!worktreeLocked) setWorktreeDropdownOpen(!worktreeDropdownOpen) }}
-                  disabled={worktreeLocked}
-                  title={worktreeLocked
-                    ? (isWorktreeThread ? 'Running in worktree' : 'Running locally')
-                    : 'Choose where Claude works'}
-                >
-                  {worktreeMode === 'local' ? 'Local' : 'New Worktree'}
-                  {!worktreeLocked && (
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  )}
-                </button>
-                {worktreeDropdownOpen && !worktreeLocked && (
-                  <div className="worktree-mode-dropdown">
-                    <button
-                      className={`worktree-mode-option ${worktreeMode === 'local' ? 'active' : ''}`}
-                      onClick={() => { setWorktreeMode('local'); setWorktreeDropdownOpen(false) }}
-                    >
-                      <strong>Local</strong>
-                      <span>Edit files in your checkout directly</span>
-                    </button>
-                    <button
-                      className={`worktree-mode-option ${worktreeMode === 'worktree' ? 'active' : ''}`}
-                      onClick={() => { setWorktreeMode('worktree'); setWorktreeDropdownOpen(false) }}
-                    >
-                      <strong>New Worktree</strong>
-                      <span>Isolated copy — your checkout stays untouched</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <span className="input-footer-project" title={projectPath}>
+            {isScratchSession ? (
+              <span className="input-footer-project" title="Quick Chat — no project">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
-                {projectPath.split('/').pop()}
+                Quick Chat
               </span>
+            ) : (
+              <>
+                {/* Worktree / Local dropdown */}
+                {gitBranch ? (
+                  <div className="worktree-mode-picker">
+                    <button
+                      className={`worktree-mode-btn ${worktreeLocked ? 'locked' : ''} ${worktreeMode === 'worktree' ? 'mode-worktree' : ''}`}
+                      onClick={() => { if (!worktreeLocked) setWorktreeDropdownOpen(!worktreeDropdownOpen) }}
+                      disabled={worktreeLocked}
+                      title={worktreeLocked
+                        ? (isWorktreeThread ? 'Running in worktree' : 'Running locally')
+                        : 'Choose where Claude works'}
+                    >
+                      {worktreeMode === 'local' ? 'Local' : 'New Worktree'}
+                      {!worktreeLocked && (
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      )}
+                    </button>
+                    {worktreeDropdownOpen && !worktreeLocked && (
+                      <div className="worktree-mode-dropdown">
+                        <button
+                          className={`worktree-mode-option ${worktreeMode === 'local' ? 'active' : ''}`}
+                          onClick={() => { setWorktreeMode('local'); setWorktreeDropdownOpen(false) }}
+                        >
+                          <strong>Local</strong>
+                          <span>Edit files in your checkout directly</span>
+                        </button>
+                        <button
+                          className={`worktree-mode-option ${worktreeMode === 'worktree' ? 'active' : ''}`}
+                          onClick={() => { setWorktreeMode('worktree'); setWorktreeDropdownOpen(false) }}
+                        >
+                          <strong>New Worktree</strong>
+                          <span>Isolated copy — your checkout stays untouched</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="input-footer-project" title={projectPath}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    {projectPath.split('/').pop()}
+                  </span>
+                )}
+              </>
             )}
-            {gitBranch && (
+            {gitBranch && !isScratchSession && (
               <div className="branch-picker">
                 <button
                   className="branch-picker-btn"

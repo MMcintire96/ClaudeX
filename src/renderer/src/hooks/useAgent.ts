@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useProjectStore } from '../stores/projectStore'
 import { DEFAULT_MODEL } from '../constants/models'
+import { SCRATCH_PROJECT_PATH } from '../constants/scratch'
 
 export interface WorktreeOptions {
   useWorktree: boolean
@@ -25,12 +26,13 @@ export function useAgent(sessionId: string | null) {
   const isStreaming = session?.isStreaming ?? false
   const isRunning = !!session
 
-  const startNewSession = useCallback(async (prompt: string, worktreeOptions?: WorktreeOptions): Promise<string | null> => {
-    if (!currentPath) {
+  const startNewSession = useCallback(async (prompt: string, worktreeOptions?: WorktreeOptions, overrideProjectPath?: string): Promise<string | null> => {
+    const effectivePath = overrideProjectPath || currentPath
+    if (!effectivePath) {
       return null
     }
 
-    const result = await window.api.agent.start(currentPath, prompt, DEFAULT_MODEL, worktreeOptions)
+    const result = await window.api.agent.start(effectivePath, prompt, DEFAULT_MODEL, worktreeOptions)
     if (!result.success || !result.sessionId) {
       return null
     }
@@ -46,7 +48,7 @@ export function useAgent(sessionId: string | null) {
     if (sessionId && useSessionStore.getState().sessions[sessionId]?.messages.length === 0) {
       replaceSessionId(sessionId, newSessionId, worktreeOpts)
     } else {
-      createSession(currentPath, newSessionId, worktreeOpts)
+      createSession(effectivePath, newSessionId, worktreeOpts)
     }
     addUserMessage(newSessionId, prompt)
     setProcessing(newSessionId, true)
@@ -92,6 +94,7 @@ export function useAgent(sessionId: string | null) {
     if (!sessionId || !currentPath) return null
 
     const currentSession = useSessionStore.getState().sessions[sessionId]
+    if (currentSession?.projectPath === SCRATCH_PROJECT_PATH) return null
     console.log('[forkSession] currentSession messages:', currentSession?.messages.length)
     if (!currentSession || currentSession.messages.length === 0) return null
 

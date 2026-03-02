@@ -20,7 +20,7 @@ export default function InputBar({ sessionId }: InputBarProps) {
   const [input, setInput] = useState('')
   const [showModelPicker, setShowModelPicker] = useState(false)
   const [showSlashMenu, setShowSlashMenu] = useState(false)
-  const [pastedChunks, setPastedChunks] = useState<{ text: string; lineCount: number }[]>([])
+  const [pastedChunks, setPastedChunks] = useState<{ text: string; lineCount: number; charCount: number }[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { startNewSession, sendMessage, stopAgent, isRunning, isProcessing } = useAgent(sessionId)
   const currentPath = useProjectStore(s => s.currentPath)
@@ -139,7 +139,7 @@ export default function InputBar({ sessionId }: InputBarProps) {
 
     if (lineCount >= PASTE_LINE_THRESHOLD) {
       e.preventDefault()
-      setPastedChunks(prev => [...prev, { text: pastedText, lineCount }])
+      setPastedChunks(prev => [...prev, { text: pastedText, lineCount, charCount: pastedText.length }])
     }
   }, [])
 
@@ -209,9 +209,7 @@ export default function InputBar({ sessionId }: InputBarProps) {
             {pastedChunks.map((chunk, i) => (
               <div key={i} className="pasted-chip">
                 <span className="pasted-chip-text">
-                  {chunk.text.split('\n')[0].slice(0, 40)}
-                  {chunk.text.split('\n')[0].length > 40 ? '...' : ''}
-                  {' '}({chunk.lineCount} lines)
+                  [PASTED TEXT: {chunk.lineCount}:{chunk.charCount}]
                 </span>
                 <button
                   className="pasted-chip-remove"

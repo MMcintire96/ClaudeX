@@ -3,18 +3,24 @@ import { useProjectStore } from '../../stores/projectStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useEditorStore } from '../../stores/editorStore'
+import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import ChatView from '../chat/ChatView'
 import NeovimEditor from '../editor/NeovimEditor'
 
 export default function MainPanel() {
   const currentPath = useProjectStore(s => s.currentPath)
   const activeSessionId = useSessionStore(s => s.activeSessionId)
+  const activeSession = useSessionStore(s => activeSessionId ? s.sessions[activeSessionId] ?? null : null)
   const createSession = useSessionStore(s => s.createSession)
   const setActiveSession = useSessionStore(s => s.setActiveSession)
   const chatDetached = useUIStore(s => s.chatDetached)
   const toggleChatDetached = useUIStore(s => s.toggleChatDetached)
   const mainPanelTab = useEditorStore(s => s.mainPanelTab)
   const setMainPanelTab = useEditorStore(s => s.setMainPanelTab)
+
+  const isScratchSession = activeSession?.projectPath === SCRATCH_PROJECT_PATH
+  const showTabs = !!(currentPath || isScratchSession)
+  const chatProjectPath = activeSession?.projectPath ?? currentPath
 
   const [launching, setLaunching] = useState(false)
 
@@ -31,7 +37,7 @@ export default function MainPanel() {
 
   // When detach state changes, create or close the popout window
   useEffect(() => {
-    if (chatDetached && activeSessionId && currentPath) {
+    if (chatDetached && activeSessionId && chatProjectPath) {
       const theme = useUIStore.getState().theme
       // Serialize current session state so the popout window gets existing messages
       const session = useSessionStore.getState().sessions[activeSessionId]
@@ -53,11 +59,11 @@ export default function MainPanel() {
         forkLabel: session.forkLabel,
         isForkParent: session.isForkParent
       } : null
-      window.api.popout.create(activeSessionId, currentPath, theme, sessionSnapshot)
+      window.api.popout.create(activeSessionId, chatProjectPath, theme, sessionSnapshot)
     } else if (!chatDetached) {
       window.api.popout.close()
     }
-  }, [chatDetached, activeSessionId, currentPath])
+  }, [chatDetached, activeSessionId, chatProjectPath])
 
   const handleLaunchClaude = useCallback(async () => {
     if (!currentPath) return
@@ -75,7 +81,7 @@ export default function MainPanel() {
 
   return (
     <main className="main-panel">
-      {currentPath && (
+      {showTabs && (
         <div className="main-panel-tabs">
           <button
             className={`main-panel-tab${mainPanelTab === 'chat' ? ' active' : ''}`}
@@ -86,22 +92,24 @@ export default function MainPanel() {
             </svg>
             Chat
           </button>
-          <button
-            className={`main-panel-tab${mainPanelTab === 'editor' ? ' active' : ''}`}
-            onClick={() => setMainPanelTab('editor')}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-            Editor
-          </button>
+          {!isScratchSession && (
+            <button
+              className={`main-panel-tab${mainPanelTab === 'editor' ? ' active' : ''}`}
+              onClick={() => setMainPanelTab('editor')}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              Editor
+            </button>
+          )}
         </div>
       )}
 
       {/* Chat tab content — stays mounted, toggled via display */}
       <div style={{ display: mainPanelTab === 'chat' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
-        {activeSessionId ? (
+        {activeSessionId && chatProjectPath ? (
           chatDetached ? (
             <div className="empty-state">
               <div className="empty-state-icon">
@@ -123,7 +131,7 @@ export default function MainPanel() {
               <ChatView
                 key={activeSessionId}
                 sessionId={activeSessionId}
-                projectPath={currentPath!}
+                projectPath={chatProjectPath}
               />
             </div>
           )

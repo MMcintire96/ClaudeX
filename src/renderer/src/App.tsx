@@ -9,7 +9,7 @@ import { useTerminalStore } from './stores/terminalStore'
 import { useProjectStore } from './stores/projectStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { validateTheme } from './lib/themes'
-import { playNotificationSound } from './lib/notificationSound'
+import { sendNotification } from './lib/notificationSound'
 
 export default function App() {
   const processEvent = useSessionStore(s => s.processEvent)
@@ -75,23 +75,14 @@ export default function App() {
       const needs = sessionNeedsInput(session)
       if (needs && sid !== activeSessionId && !notifiedSessionsRef.current.has(sid)) {
         notifiedSessionsRef.current.add(sid)
-        // Fire browser notification
-        if ('Notification' in window && Notification.permission === 'granted') {
-          const lastMsg = [...session.messages].reverse().find(m => m.type === 'tool_use')
-          const toolName = lastMsg && 'toolName' in lastMsg ? (lastMsg as { toolName: string }).toolName : ''
-          let body = 'A session needs your attention'
-          if (toolName === 'AskUserQuestion') body = 'Claude has a question for you'
-          else if (toolName === 'ExitPlanMode') body = 'A plan is ready for your review'
-          else body = `${toolName || 'A tool'} requires permission`
+        const lastMsg = [...session.messages].reverse().find(m => m.type === 'tool_use')
+        const toolName = lastMsg && 'toolName' in lastMsg ? (lastMsg as { toolName: string }).toolName : ''
+        let body = 'A session needs your attention'
+        if (toolName === 'AskUserQuestion') body = 'Claude has a question for you'
+        else if (toolName === 'ExitPlanMode') body = 'A plan is ready for your review'
+        else body = `${toolName || 'A tool'} requires permission`
 
-          new Notification(`${session.name || 'Claude Code'}`, {
-            body,
-            silent: false
-          })
-        } else if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission()
-        }
-        playNotificationSound()
+        sendNotification(session.name || 'Claude Code', body)
       } else if (!needs && notifiedSessionsRef.current.has(sid)) {
         // Clear notification tracking when input is no longer needed
         notifiedSessionsRef.current.delete(sid)
@@ -251,6 +242,18 @@ export default function App() {
         e.preventDefault()
         setHotkeysOpen(false)
         setCommandPaletteOpen(prev => !prev)
+        return
+      }
+
+      // Mod+Shift+N — New Quick Chat (no project)
+      if (key === 'n' && e.shiftKey) {
+        e.preventDefault()
+        const store = useSessionStore.getState()
+        const SCRATCH = '__scratch__'
+        const count = Object.values(store.sessions).filter(s => s.projectPath === SCRATCH).length
+        const sessionId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        store.createSession(SCRATCH, sessionId)
+        store.renameSession(sessionId, `Quick Chat${count > 0 ? ` ${count + 1}` : ''}`)
         return
       }
 

@@ -8,7 +8,7 @@ import json from 'highlight.js/lib/languages/json'
 import bash from 'highlight.js/lib/languages/bash'
 import xml from 'highlight.js/lib/languages/xml'
 import markdown from 'highlight.js/lib/languages/markdown'
-import { playNotificationSound } from '../../lib/notificationSound'
+import { sendNotification } from '../../lib/notificationSound'
 import rust from 'highlight.js/lib/languages/rust'
 import go from 'highlight.js/lib/languages/go'
 import java from 'highlight.js/lib/languages/java'
@@ -247,15 +247,7 @@ export default function FileEditBlock({ message, result, awaitingPermission, ter
   useEffect(() => {
     if (needsInput && !notifiedRef.current) {
       notifiedRef.current = true
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Claude needs your approval', {
-          body: `${message.toolName} ${filePath ? shortPath(filePath) : ''} requires permission`,
-          silent: false
-        })
-      } else if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission()
-      }
-      playNotificationSound()
+      sendNotification('Claude needs your approval', `${message.toolName} ${filePath ? shortPath(filePath) : ''} requires permission`)
     }
   }, [needsInput])
 

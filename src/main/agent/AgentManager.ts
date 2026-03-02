@@ -1,6 +1,7 @@
-import { app, BrowserWindow, Notification } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
+import { execFile } from 'child_process'
 import { AgentProcess, AgentProcessOptions } from './AgentProcess'
 import type { AgentEvent, StreamEvent } from './types'
 import { broadcastSend } from '../broadcast'
@@ -128,18 +129,13 @@ export class AgentManager {
       this.flushDeltas(sessionId)
       broadcastSend(this.mainWindow,'agent:closed', { sessionId, code })
 
-      // Show native notification when agent finishes and window is not focused
-      if (this.settingsManager?.get().notificationSounds !== false) {
-        const isFocused = this.mainWindow?.isFocused() ?? false
-        if (!isFocused && Notification.isSupported()) {
-          const n = new Notification({
-            title: 'Claude finished',
-            body: code === 0 || code === null ? 'Task completed' : `Agent exited with code ${code}`,
-            silent: false
-          })
-          n.show()
-        }
-      }
+      // Always send Linux notification + sound when agent finishes
+      const body = code === 0 || code === null ? 'Task completed' : `Agent exited with code ${code}`
+      const soundFile = '/usr/share/sounds/freedesktop/stereo/complete.oga'
+      execFile('notify-send', ['--app-name=ClaudeX', '--icon=dialog-information', 'Claude finished', body], () => {})
+      execFile('pw-play', [soundFile], (err) => {
+        if (err) execFile('paplay', [soundFile], () => {})
+      })
 
       // Generate title after first successful turn
       const prompt = this.initialPrompts.get(sessionId)

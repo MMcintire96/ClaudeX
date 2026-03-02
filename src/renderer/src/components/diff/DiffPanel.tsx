@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import DiffView from './DiffView'
 import CommitModal from '../git/CommitModal'
 import { useSessionStore } from '../../stores/sessionStore'
+import { useEditorStore } from '../../stores/editorStore'
 
 
 interface FileStatus {
@@ -61,8 +62,8 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   const selectedFileUntrackedRef = useRef(false)
   selectedFileUntrackedRef.current = selectedFileUntracked
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [showCommitModal, setShowCommitModal] = useState(false)
 
   const toggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
@@ -116,6 +117,24 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
 
   // File tree
   const fileTree = useMemo(() => buildFileTree(filteredFiles), [filteredFiles])
+
+  // Auto-expand all directories in the tree
+  useEffect(() => {
+    const collectDirs = (nodes: TreeNode[]): string[] => {
+      const dirs: string[] = []
+      for (const n of nodes) {
+        if (n.type === 'dir') {
+          dirs.push(n.path)
+          if (n.children) dirs.push(...collectDirs(n.children))
+        }
+      }
+      return dirs
+    }
+    const allDirs = collectDirs(fileTree)
+    if (allDirs.length > 0) {
+      setExpandedDirs(new Set(allDirs))
+    }
+  }, [fileTree])
 
   // Filter the diff content to match the file filter (when no specific file is selected)
   const displayDiff = useMemo(() => {
@@ -233,7 +252,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   }, [loadStatus, loadDiff, selectedFile])
 
   const toggleDir = useCallback((dirPath: string) => {
-    setCollapsedDirs(prev => {
+    setExpandedDirs(prev => {
       const next = new Set(prev)
       if (next.has(dirPath)) next.delete(dirPath)
       else next.add(dirPath)
@@ -264,7 +283,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
 
   const renderTreeNode = (node: TreeNode, depth: number = 0): React.ReactNode => {
     if (node.type === 'dir') {
-      const isCollapsed = collapsedDirs.has(node.path)
+      const isCollapsed = !expandedDirs.has(node.path)
       return (
         <div key={node.path} className="diff-tree-dir-group">
           <button
@@ -329,6 +348,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
             const running = await window.api.neovim.isRunning(diffPath)
             if (!running) await window.api.neovim.create(diffPath)
             else await window.api.neovim.openFile(diffPath, '.')
+            useEditorStore.getState().setMainPanelTab('editor')
           }}
           title="Open in editor"
         >
@@ -384,6 +404,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
               const running = await window.api.neovim.isRunning(diffPath)
               if (!running) await window.api.neovim.create(diffPath, filePath)
               else await window.api.neovim.openFile(diffPath, filePath)
+              useEditorStore.getState().setMainPanelTab('editor')
             }} />
           )}
         </div>
@@ -423,6 +444,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
               const running = await window.api.neovim.isRunning(diffPath)
               if (!running) await window.api.neovim.create(diffPath, contextMenu.filePath)
               else await window.api.neovim.openFile(diffPath, contextMenu.filePath)
+              useEditorStore.getState().setMainPanelTab('editor')
               setContextMenu(null)
             }}
           >

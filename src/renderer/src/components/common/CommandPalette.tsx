@@ -132,6 +132,20 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         }
       },
       {
+        id: 'cmd:new-quick-chat',
+        category: 'command',
+        label: 'New Quick Chat',
+        shortcut: `${modLabel}+Shift+N`,
+        action: () => {
+          const SCRATCH = '__scratch__'
+          const store = useSessionStore.getState()
+          const count = Object.values(store.sessions).filter(s => s.projectPath === SCRATCH).length
+          const sessionId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+          store.createSession(SCRATCH, sessionId)
+          store.renameSession(sessionId, `Quick Chat${count > 0 ? ` ${count + 1}` : ''}`)
+        }
+      },
+      {
         id: 'cmd:new-terminal',
         category: 'command',
         label: 'New Shell Terminal',
@@ -259,13 +273,19 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         action: () => {
           if (!currentPath) return
           const editorState = useEditorStore.getState()
+          // Switch to editor tab (spawns neovim if first time)
+          editorState.setMainPanelTab('editor')
           if (editorState.activeEditors[currentPath]) {
-            // Open in embedded neovim
+            // Neovim already running — open file immediately
             window.api.neovim.openFile(currentPath, f)
-            editorState.setMainPanelTab('editor')
           } else {
-            // Fallback to external editor
-            window.api.project.openInEditor(currentPath, f)
+            // Neovim not yet spawned — wait for it to become ready, then open
+            const unsub = useEditorStore.subscribe((state) => {
+              if (state.activeEditors[currentPath]?.ready) {
+                unsub()
+                window.api.neovim.openFile(currentPath, f)
+              }
+            })
           }
         }
       })
@@ -283,6 +303,19 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
           action: () => useSessionStore.getState().setActiveSession(s.sessionId)
         })
       }
+    }
+
+    // Quick Chat sessions
+    const scratchSessions = Object.values(useSessionStore.getState().sessions)
+      .filter(s => s.projectPath === '__scratch__')
+    for (const s of scratchSessions) {
+      items.push({
+        id: `session:${s.sessionId}`,
+        category: 'session',
+        label: s.name,
+        description: 'Quick Chat',
+        action: () => useSessionStore.getState().setActiveSession(s.sessionId)
+      })
     }
 
     // === Session History ===
