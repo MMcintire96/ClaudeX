@@ -1,6 +1,8 @@
 import React, { useCallback, useRef } from 'react'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useProjectStore } from '../../stores/projectStore'
+import { useSessionStore } from '../../stores/sessionStore'
+import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import TerminalTabs from './TerminalTabs'
 import TerminalView from './TerminalView'
 
@@ -10,6 +12,9 @@ export default function TerminalPanel() {
   const panelHeight = useTerminalStore(s => s.panelHeight)
   const setPanelHeight = useTerminalStore(s => s.setPanelHeight)
   const currentPath = useProjectStore(s => s.currentPath)
+  const activeSessionId = useSessionStore(s => s.activeSessionId)
+  const activeSession = useSessionStore(s => activeSessionId ? s.sessions[activeSessionId] : null)
+  const terminalFilterPath = activeSession?.projectPath === SCRATCH_PROJECT_PATH ? SCRATCH_PROJECT_PATH : currentPath
   const shellSplitIds = useTerminalStore(s => s.shellSplitIds)
   const splitRatio = useTerminalStore(s => s.splitRatio)
   const setSplitRatio = useTerminalStore(s => s.setSplitRatio)
@@ -109,7 +114,7 @@ export default function TerminalPanel() {
             <TerminalView
               key={t.id}
               terminalId={t.id}
-              visible={t.id === activeTerminalId && t.projectPath === currentPath}
+              visible={t.id === activeTerminalId && t.projectPath === terminalFilterPath}
             />
           ))
         )}

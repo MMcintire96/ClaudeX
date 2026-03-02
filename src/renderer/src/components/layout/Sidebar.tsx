@@ -2,7 +2,7 @@ import React, { useEffect, useCallback, useState, useRef } from 'react'
 import { useProjectStore } from '../../stores/projectStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore, sessionNeedsInput } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import ProjectTree from './ProjectTree'
@@ -426,6 +426,8 @@ export default function Sidebar() {
               {scratchSessions.map(s => {
                 const isActive = activeSessionId === s.sessionId
                 const displayName = s.name || 'Quick Chat'
+                const isRunning = s.isProcessing
+                const needsInput = sessionNeedsInput(s)
                 return (
                   <div key={s.sessionId} className={`tree-item tree-item-thread${isActive ? ' active' : ''}`}>
                     <button
@@ -433,8 +435,11 @@ export default function Sidebar() {
                       onClick={() => handleSelectSession(s.sessionId)}
                       style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: '2px 0', textAlign: 'left', fontSize: 'inherit', fontFamily: 'inherit' }}
                     >
-                      <span className="tree-item-status-indicator" style={{ color: s.isProcessing ? 'var(--accent)' : 'var(--text-muted)', fontSize: '8px' }}>
-                        {s.isProcessing ? '\u25CF' : '\u25CB'}
+                      <span
+                        className={`tree-item-status-indicator ${needsInput ? 'needs-input' : isRunning ? 'spinner' : ''}`}
+                        style={!isRunning && !needsInput ? { color: '#888' } : undefined}
+                      >
+                        {needsInput ? '\u25CF' : isRunning ? '' : '\u25CB'}
                       </span>
                       <span className="tree-item-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
                     </button>

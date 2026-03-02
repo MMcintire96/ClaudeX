@@ -2,6 +2,8 @@ import React, { useCallback, useRef } from 'react'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useProjectStore } from '../../stores/projectStore'
+import { useSessionStore } from '../../stores/sessionStore'
+import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import Sidebar from './Sidebar'
 import MainPanel from './MainPanel'
 import SidePanel from './SidePanel'
@@ -80,7 +82,11 @@ export default function AppLayout() {
   if (sidePanelView) colParts.push(`${sidePanelWidth}px`)
   const cols = colParts.join(' ')
 
-  const hasShellTerminals = terminals.some(t => t.projectPath === currentPath)
+  const activeSessionId = useSessionStore(s => s.activeSessionId)
+  const activeSession = useSessionStore(s => activeSessionId ? s.sessions[activeSessionId] : null)
+  const isScratchSession = activeSession?.projectPath === SCRATCH_PROJECT_PATH
+  const terminalOwner = isScratchSession ? SCRATCH_PROJECT_PATH : currentPath
+  const hasShellTerminals = terminals.some(t => t.projectPath === terminalOwner)
   const showTerminal = terminalPanelVisible && hasShellTerminals
 
   return (

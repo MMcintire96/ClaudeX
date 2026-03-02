@@ -1,6 +1,8 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useProjectStore } from '../../stores/projectStore'
+import { useSessionStore } from '../../stores/sessionStore'
+import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 
 function InlineRename({ value, onCommit, onCancel }: {
   value: string
@@ -53,34 +55,40 @@ export default function TerminalTabs() {
   const splitShell = useTerminalStore(s => s.splitShell)
   const unsplitShell = useTerminalStore(s => s.unsplitShell)
   const currentPath = useProjectStore(s => s.currentPath)
+  const activeSessionId = useSessionStore(s => s.activeSessionId)
+  const activeSession = useSessionStore(s => activeSessionId ? s.sessions[activeSessionId] : null)
+  const isScratchSession = activeSession?.projectPath === SCRATCH_PROJECT_PATH
+  const terminalFilterPath = isScratchSession ? SCRATCH_PROJECT_PATH : currentPath
 
   const [renamingId, setRenamingId] = useState<string | null>(null)
 
-  const projectTerminals = terminals.filter(t => t.projectPath === currentPath)
+  const projectTerminals = terminals.filter(t => t.projectPath === terminalFilterPath)
   const isShellSplit = shellSplitIds.length === 2
 
   const handleNew = useCallback(async () => {
-    if (!currentPath) return
-    const result = await window.api.terminal.create(currentPath)
+    const createPath = isScratchSession ? '~' : currentPath
+    if (!createPath) return
+    const result = await window.api.terminal.create(createPath)
     if (result.success) {
-      addTerminal({ id: result.id, projectPath: result.projectPath, pid: result.pid })
+      addTerminal({ id: result.id, projectPath: isScratchSession ? SCRATCH_PROJECT_PATH : result.projectPath, pid: result.pid })
     }
-  }, [currentPath, addTerminal])
+  }, [currentPath, isScratchSession, addTerminal])
 
   const handleSplitShell = useCallback(async () => {
     if (isShellSplit) {
       unsplitShell()
       return
     }
-    if (!currentPath || !activeTerminalId) return
+    const createPath = isScratchSession ? '~' : currentPath
+    if (!createPath || !activeTerminalId) return
     const leftId = activeTerminalId
-    const result = await window.api.terminal.create(currentPath)
+    const result = await window.api.terminal.create(createPath)
     if (result.success) {
-      addTerminal({ id: result.id, projectPath: result.projectPath, pid: result.pid })
+      addTerminal({ id: result.id, projectPath: isScratchSession ? SCRATCH_PROJECT_PATH : result.projectPath, pid: result.pid })
       // Manually set split IDs since addTerminal changes activeTerminalId
       useTerminalStore.setState({ shellSplitIds: [leftId, result.id] })
     }
-  }, [currentPath, isShellSplit, activeTerminalId, addTerminal, unsplitShell])
+  }, [currentPath, isScratchSession, isShellSplit, activeTerminalId, addTerminal, unsplitShell])
 
   const handleClose = useCallback(
     (e: React.MouseEvent, id: string) => {
