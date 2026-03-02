@@ -33,9 +33,18 @@ export default function AskUserQuestionBlock({ message, sessionId, answered: alr
   const questions: Question[] = message.input?.questions as Question[] || []
 
   const resumeAgent = useCallback(async (response: string) => {
-    useSessionStore.getState().setProcessing(sessionId, true)
+    const store = useSessionStore.getState()
+    // Add a synthetic tool_result so sessionNeedsInput() clears immediately,
+    // even if the backend never echoes one back before the session ends.
+    store.processEvent(sessionId, {
+      type: 'tool_result',
+      tool_use_id: message.toolId,
+      content: response,
+      is_error: false
+    })
+    store.setProcessing(sessionId, true)
     await window.api.agent.send(sessionId, response)
-  }, [sessionId])
+  }, [sessionId, message.toolId])
 
   const handleSelect = useCallback((qi: number, optionIdx: number, question: Question) => {
     if (submitted) return

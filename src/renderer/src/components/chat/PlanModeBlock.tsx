@@ -18,9 +18,18 @@ export default function PlanModeBlock({ message, sessionId, answered: alreadyAns
   const [feedbackText, setFeedbackText] = useState('')
 
   const resumeAgent = useCallback(async (response: string) => {
-    useSessionStore.getState().setProcessing(sessionId, true)
+    const store = useSessionStore.getState()
+    // Add a synthetic tool_result so sessionNeedsInput() clears immediately,
+    // even if the backend never echoes one back before the session ends.
+    store.processEvent(sessionId, {
+      type: 'tool_result',
+      tool_use_id: message.toolId,
+      content: response,
+      is_error: false
+    })
+    store.setProcessing(sessionId, true)
     await window.api.agent.send(sessionId, response)
-  }, [sessionId])
+  }, [sessionId, message.toolId])
 
   const handleApprove = useCallback(async () => {
     if (answered) return
