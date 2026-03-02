@@ -4,6 +4,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { THEME_META } from '../../lib/themes'
 import type { ThemeName } from '../../lib/themes'
+import MCPConfigPanel from './MCPConfigPanel'
 
 const MOD_KEY_LABELS: Record<string, string> = {
   Ctrl: 'Ctrl',
@@ -11,6 +12,8 @@ const MOD_KEY_LABELS: Record<string, string> = {
   Meta: '⌘ Meta',
   Shift: 'Shift'
 }
+
+type SettingsTab = 'general' | 'mcp'
 
 export default function SettingsPanel() {
   const { claude, modKey, vimMode, autoExpandEdits, notificationSounds, vimChatMode, preventSleep, updateSettings } = useSettingsStore()
@@ -20,6 +23,7 @@ export default function SettingsPanel() {
   const [clearingAll, setClearingAll] = useState(false)
   const [clearingProject, setClearingProject] = useState(false)
   const [cleared, setCleared] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general')
 
   const currentMeta = THEME_META.find(m => m.id === theme)
 
@@ -42,6 +46,26 @@ export default function SettingsPanel() {
 
   return (
     <div className="settings-panel">
+      {/* Tab navigation */}
+      <div className="settings-tabs">
+        <button
+          className={`settings-tab${activeTab === 'general' ? ' active' : ''}`}
+          onClick={() => setActiveTab('general')}
+        >
+          General
+        </button>
+        <button
+          className={`settings-tab${activeTab === 'mcp' ? ' active' : ''}`}
+          onClick={() => setActiveTab('mcp')}
+        >
+          MCP Servers
+        </button>
+      </div>
+
+      {activeTab === 'mcp' ? (
+        <MCPConfigPanel />
+      ) : (
+      <>
       {/* Appearance */}
       <div className="settings-section">
         <div className="settings-section-title">Appearance</div>
@@ -238,6 +262,8 @@ export default function SettingsPanel() {
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   )
 }

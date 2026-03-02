@@ -17,6 +17,8 @@ import { registerWorktreeHandlers } from './worktreeHandlers'
 import { registerScreenshotHandlers } from './screenshotHandlers'
 import { NeovimManager } from '../neovim/NeovimManager'
 import { registerNeovimHandlers } from './neovimHandlers'
+import { McpManager } from '../mcp/McpManager'
+import { registerMcpHandlers } from './mcpHandlers'
 
 export function registerAllHandlers(
   agentManager: AgentManager,
@@ -29,7 +31,8 @@ export function registerAllHandlers(
   sessionPersistence?: SessionPersistence,
   projectConfigManager?: ProjectConfigManager,
   worktreeManager?: WorktreeManager,
-  neovimManager?: NeovimManager
+  neovimManager?: NeovimManager,
+  mcpManager?: McpManager
 ): void {
   registerAgentHandlers(agentManager, worktreeManager, sessionPersistence)
   registerProjectHandlers(projectManager, projectConfigManager, terminalManager)
@@ -43,5 +46,8 @@ export function registerAllHandlers(
   registerScreenshotHandlers()
   if (neovimManager) {
     registerNeovimHandlers(neovimManager)
+  }
+  if (mcpManager) {
+    registerMcpHandlers(mcpManager, settingsManager)
   }
 }

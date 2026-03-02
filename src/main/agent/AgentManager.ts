@@ -8,6 +8,7 @@ import { broadcastSend } from '../broadcast'
 import { generateSessionTitle } from './TitleGenerator'
 import type { SettingsManager } from '../settings/SettingsManager'
 import type { NeovimManager } from '../neovim/NeovimManager'
+import type { McpManager } from '../mcp/McpManager'
 
 const SYSTEM_PROMPT_APPEND =
   'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
@@ -31,6 +32,7 @@ export class AgentManager {
   private titleGenerated: Set<string> = new Set()
   private settingsManager: SettingsManager | null = null
   private neovimManager: NeovimManager | null = null
+  private mcpManager: McpManager | null = null
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
@@ -49,6 +51,10 @@ export class AgentManager {
     this.neovimManager = manager
   }
 
+  setMcpManager(manager: McpManager): void {
+    this.mcpManager = manager
+  }
+
   private getMcpServerPath(): string {
     // In development: resources/ at project root
     // In packaged app: process.resourcesPath
@@ -59,25 +65,41 @@ export class AgentManager {
   }
 
   private buildMcpServers(projectPath: string): Record<string, any> | null {
-    if (!this.bridgePort || !this.bridgeToken) return null
+    const servers: Record<string, any> = {}
+    let hasServers = false
 
-    const mcpServerPath = this.getMcpServerPath()
-    if (!existsSync(mcpServerPath)) {
-      console.warn('[AgentManager] MCP server script not found:', mcpServerPath)
-      return null
+    // Add built-in claudex-bridge if bridge is configured and enabled
+    const bridgeEnabled = this.mcpManager?.isBridgeEnabled() ?? true
+    if (this.bridgePort && this.bridgeToken && bridgeEnabled) {
+      const mcpServerPath = this.getMcpServerPath()
+      if (existsSync(mcpServerPath)) {
+        servers['claudex-bridge'] = {
+          command: 'node',
+          args: [mcpServerPath],
+          env: {
+            CLAUDEX_BRIDGE_PORT: String(this.bridgePort),
+            CLAUDEX_BRIDGE_TOKEN: this.bridgeToken,
+            CLAUDEX_PROJECT_PATH: projectPath
+          }
+        }
+        hasServers = true
+      } else {
+        console.warn('[AgentManager] MCP server script not found:', mcpServerPath)
+      }
     }
 
-    return {
-      'claudex-bridge': {
-        command: 'node',
-        args: [mcpServerPath],
-        env: {
-          CLAUDEX_BRIDGE_PORT: String(this.bridgePort),
-          CLAUDEX_BRIDGE_TOKEN: this.bridgeToken,
-          CLAUDEX_PROJECT_PATH: projectPath
+    // Add user-configured MCP servers that are enabled
+    if (this.mcpManager) {
+      const userServers = this.mcpManager.getEnabledServersForAgent()
+      if (userServers) {
+        for (const [id, config] of Object.entries(userServers)) {
+          servers[id] = config
+          hasServers = true
         }
       }
     }
+
+    return hasServers ? servers : null
   }
 
   private flushDeltas(sessionId: string): void {
@@ -90,6 +112,15 @@ export class AgentManager {
 
   private wireEvents(sessionId: string, agent: AgentProcess): void {
     agent.on('event', (event: AgentEvent) => {
+      // Handle system init events to capture Claude-reported MCP servers
+      if (event.type === 'system' && event.subtype === 'init') {
+        const systemEvent = event as import('./types').SystemInitEvent
+        console.log('[AgentManager] SystemInitEvent received, tools:', systemEvent.tools?.length, 'mcp_servers:', systemEvent.mcp_servers)
+        if (this.mcpManager && systemEvent.tools) {
+          this.mcpManager.updateClaudeReportedServers(systemEvent.mcp_servers, systemEvent.tools)
+        }
+      }
+
       const isTextDelta =
         event.type === 'stream_event' &&
         (event as StreamEvent).event?.type === 'content_block_delta'
@@ -155,7 +186,12 @@ export class AgentManager {
     })
   }
 
-  startAgent(options: AgentProcessOptions, initialPrompt: string): string {
+  async startAgent(options: AgentProcessOptions, initialPrompt: string): Promise<string> {
+    // Ensure external .mcp.json configs are loaded for this project before building server list
+    if (this.mcpManager) {
+      await this.mcpManager.loadExternalConfigs(options.projectPath)
+    }
+
     const mcpServers = this.buildMcpServers(options.projectPath)
 
     const agentOptions: AgentProcessOptions = {
@@ -178,7 +214,12 @@ export class AgentManager {
    * Resume a session that was restored from disk.
    * Creates a new AgentProcess with the saved sessionId and calls resume().
    */
-  resumeAgent(sessionId: string, projectPath: string, model: string | null, message: string): string {
+  async resumeAgent(sessionId: string, projectPath: string, model: string | null, message: string): Promise<string> {
+    // Ensure external .mcp.json configs are loaded for this project before building server list
+    if (this.mcpManager) {
+      await this.mcpManager.loadExternalConfigs(projectPath)
+    }
+
     const mcpServers = this.buildMcpServers(projectPath)
     const agent = new AgentProcess({
       projectPath,

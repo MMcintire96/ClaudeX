@@ -150,6 +150,19 @@ export interface ElectronAPI {
   utils: {
     getPathForFile: (file: File) => string
   }
+  mcp: {
+    list: () => Promise<Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; claudeReported?: boolean; source?: string; tools?: string[] }>>
+    getConfig: (id: string) => Promise<{ id: string; name: string; command: string; args: string[]; env?: Record<string, string>; enabled: boolean; autoStart: boolean } | null>
+    refresh: (projectPath?: string) => Promise<{ success: boolean; error?: string }>
+    add: (config: { name: string; command: string; args: string[]; env?: Record<string, string>; enabled: boolean; autoStart: boolean }) => Promise<{ success: boolean; server?: { id: string; name: string; command: string; args: string[]; env?: Record<string, string>; enabled: boolean; autoStart: boolean }; error?: string }>
+    update: (config: { id: string; name: string; command: string; args: string[]; env?: Record<string, string>; enabled: boolean; autoStart: boolean }) => Promise<{ success: boolean; error?: string }>
+    remove: (id: string) => Promise<{ success: boolean; error?: string }>
+    start: (id: string) => Promise<{ success: boolean; error?: string }>
+    stop: (id: string) => Promise<{ success: boolean; error?: string }>
+    setEnabled: (id: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
+    onStatusChanged: (callback: (data: { servers: Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; claudeReported?: boolean; source?: string; tools?: string[] }> }) => void) => () => void
+    onConfigChanged: (callback: (data: { servers: Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; claudeReported?: boolean; source?: string; tools?: string[] }> }) => void) => () => void
+  }
 }
 
 declare global {

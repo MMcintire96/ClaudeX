@@ -12,6 +12,7 @@ import { ClaudexBridgeServer } from './bridge/ClaudexBridgeServer'
 import { registerAllHandlers } from './ipc'
 import { WorktreeManager } from './worktree/WorktreeManager'
 import { NeovimManager } from './neovim/NeovimManager'
+import { McpManager } from './mcp/McpManager'
 import { addBroadcastWindow, removeBroadcastWindow, markWindowReady } from './broadcast'
 
 // Auto-grant media permissions (Electron has no native permission dialog)
@@ -40,6 +41,7 @@ const sessionPersistence = new SessionPersistence()
 const projectConfigManager = new ProjectConfigManager()
 const worktreeManager = new WorktreeManager()
 const neovimManager = new NeovimManager()
+const mcpManager = new McpManager()
 const bridgeServer = new ClaudexBridgeServer(terminalManager, browserManager)
 
 let mainWindow: BrowserWindow | null = null
@@ -135,6 +137,7 @@ function createWindow(): void {
   browserManager.setMainWindow(mainWindow)
   terminalManager.setMainWindow(mainWindow)
   neovimManager.setMainWindow(mainWindow)
+  mcpManager.setMainWindow(mainWindow)
 
   // Prevent the window from navigating away
   mainWindow.webContents.on('will-navigate', (e) => {
@@ -347,13 +350,21 @@ app.whenReady().then(async () => {
   await settingsManager.init()
   await terminalManager.init()
   await bridgeServer.start()
+  
+  // Initialize MCP manager with saved configs and bridge info
+  mcpManager.loadConfigs(settingsManager.getMcpServers())
+  mcpManager.setBridgeInfo(bridgeServer.port, bridgeServer.token)
+  await mcpManager.loadExternalConfigs() // Load ~/.mcp.json
+  mcpManager.startAutoStartServers()
+  
   agentManager.setBridgeInfo(bridgeServer.port, bridgeServer.token)
   agentManager.setSettingsManager(settingsManager)
   agentManager.setNeovimManager(neovimManager)
+  agentManager.setMcpManager(mcpManager)
   registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, {
     bridgePort: bridgeServer.port,
     bridgeToken: bridgeServer.token
-  }, sessionPersistence, projectConfigManager, worktreeManager, neovimManager)
+  }, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager)
 
   createWindow()
 
@@ -379,6 +390,7 @@ app.on('will-quit', () => {
   terminalManager.destroy()
   neovimManager.destroy()
   voiceManager.destroy()
+  mcpManager.stopAll()
   bridgeServer.stop()
   worktreeManager.cleanupAll().catch(() => {})
 })

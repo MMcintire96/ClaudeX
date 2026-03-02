@@ -295,6 +295,36 @@ const api = {
         return ''
       }
     }
+  },
+  mcp: {
+    list: () =>
+      ipcRenderer.invoke('mcp:list'),
+    getConfig: (id: string) =>
+      ipcRenderer.invoke('mcp:get-config', id),
+    refresh: (projectPath?: string) =>
+      ipcRenderer.invoke('mcp:refresh', projectPath),
+    add: (config: { name: string; command: string; args: string[]; env?: Record<string, string>; enabled: boolean; autoStart: boolean }) =>
+      ipcRenderer.invoke('mcp:add', config),
+    update: (config: { id: string; name: string; command: string; args: string[]; env?: Record<string, string>; enabled: boolean; autoStart: boolean }) =>
+      ipcRenderer.invoke('mcp:update', config),
+    remove: (id: string) =>
+      ipcRenderer.invoke('mcp:remove', id),
+    start: (id: string) =>
+      ipcRenderer.invoke('mcp:start', id),
+    stop: (id: string) =>
+      ipcRenderer.invoke('mcp:stop', id),
+    setEnabled: (id: string, enabled: boolean) =>
+      ipcRenderer.invoke('mcp:set-enabled', id, enabled),
+    onStatusChanged: (callback: (data: { servers: Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; source?: string }> }) => void) => {
+      const handler = (_: unknown, data: { servers: Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; source?: string }> }) => callback(data)
+      ipcRenderer.on('mcp:status-changed', handler)
+      return () => ipcRenderer.removeListener('mcp:status-changed', handler)
+    },
+    onConfigChanged: (callback: (data: { servers: Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; source?: string }> }) => void) => {
+      const handler = (_: unknown, data: { servers: Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; source?: string }> }) => callback(data)
+      ipcRenderer.on('mcp:config-changed', handler)
+      return () => ipcRenderer.removeListener('mcp:config-changed', handler)
+    }
   }
 }
 

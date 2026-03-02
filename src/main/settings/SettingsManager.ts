@@ -2,6 +2,16 @@ import { app } from 'electron'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 
+export interface McpServerConfig {
+  id: string
+  name: string
+  command: string
+  args: string[]
+  env?: Record<string, string>
+  enabled: boolean // Whether Claude should use this server
+  autoStart: boolean // Whether to auto-start when app launches
+}
+
 export interface AppSettings {
   claude: {
     dangerouslySkipPermissions: boolean
@@ -12,6 +22,7 @@ export interface AppSettings {
   notificationSounds: boolean
   vimChatMode: boolean
   preventSleep: boolean
+  mcpServers: McpServerConfig[]
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -23,7 +34,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoExpandEdits: false,
   notificationSounds: true,
   vimChatMode: false,
-  preventSleep: true
+  preventSleep: true,
+  mcpServers: []
 }
 
 /**
@@ -49,7 +61,8 @@ export class SettingsManager {
         autoExpandEdits: loaded.autoExpandEdits ?? DEFAULT_SETTINGS.autoExpandEdits,
         notificationSounds: loaded.notificationSounds ?? DEFAULT_SETTINGS.notificationSounds,
         vimChatMode: loaded.vimChatMode ?? DEFAULT_SETTINGS.vimChatMode,
-        preventSleep: loaded.preventSleep ?? DEFAULT_SETTINGS.preventSleep
+        preventSleep: loaded.preventSleep ?? DEFAULT_SETTINGS.preventSleep,
+        mcpServers: Array.isArray(loaded.mcpServers) ? loaded.mcpServers : []
       }
     } catch {
       this.settings = structuredClone(DEFAULT_SETTINGS)
@@ -82,8 +95,20 @@ export class SettingsManager {
     if (partial.preventSleep !== undefined) {
       this.settings.preventSleep = partial.preventSleep
     }
+    if (partial.mcpServers !== undefined) {
+      this.settings.mcpServers = partial.mcpServers
+    }
     await this.persist()
     return this.settings
+  }
+
+  getMcpServers(): McpServerConfig[] {
+    return this.settings.mcpServers
+  }
+
+  async updateMcpServers(servers: McpServerConfig[]): Promise<void> {
+    this.settings.mcpServers = servers
+    await this.persist()
   }
 
   private async persist(): Promise<void> {
