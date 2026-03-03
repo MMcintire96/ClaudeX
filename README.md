@@ -4,45 +4,129 @@ A desktop IDE for managing Claude Code agent sessions across multiple projects. 
 
 ClaudeX gives you a visual interface to run Claude Code agents with integrated terminals, an embedded browser, diff views, and session persistence — all in one window.
 
-## Features
+## Screenshots
 
-### Core
-- **Multi-project management** — Open and switch between multiple projects with independent sessions
-- **Agent sessions** — Spawn Claude Code agents via the SDK with streaming output, tool use visualization, and cost tracking
-- **Integrated terminals** — Per-project PTY terminals with Claude attention detection
-- **Embedded browser** — Side-panel browser with tabs for previewing web apps alongside your code
-- **Diff viewer** — GitHub-style diff visualization for reviewing file edits
-- **Git worktrees** — Create isolated worktrees per session with branch selection and automatic cleanup
-- **Popout chat** — Detach conversations into floating windows
-- **Vim mode** — Optional Vim keybindings for the chat input
-- **Themes** — Dark, Light, and Monokai themes with terminal color sync
-- **Model switching** — Choose between Opus, Sonnet, and Haiku per session
+Main Interface (chat + side panels + terminals):
 
-### Session Management
-- **Session persistence** — Sessions survive app restarts with full state restoration (conversation history, layout, active project, theme)
-- **Session history** — Browse and resume past sessions per project (last 200 stored)
-- **Session renaming** — Inline rename of sessions directly in the sidebar
-- **Session forking** — Fork a conversation into two parallel branches (Fork A / Fork B) from any point
-- **Status indicators** — Visual badges showing session state: running, idle, or needs-input
+![Main Interface](screenshots/main-interface.png)
 
-### Agent Interaction
-- **Extended thinking** — Collapsible thinking blocks showing Claude's reasoning with word count
-- **Todo tracking** — Real-time task list with progress bars and status indicators (pending, in-progress, completed)
-- **Plan approval** — Review and approve/reject agent plans before execution with optional feedback
-- **User questions** — Rich question blocks with single/multi-select, custom text input, and auto-submit
-- **Tool permissions** — Approve or deny individual tool calls with visual request blocks
-- **Desktop notifications** — Alerts when Claude needs your input
+Commit Dialog (diff-aware commit flow with AI message generation):
 
-### Project & Git
-- **Diff stats** — File-level addition/deletion counts in the sidebar
-- **Branch tracking** — Current branch displayed per project
-- **Project reordering** — Drag-and-drop to rearrange projects in the sidebar
+![Commit Dialog](screenshots/commit-dialog.png)
+
+Command Palette (commands, files, sessions, projects, branches, themes):
+
+![Command Palette](screenshots/command-palette.png)
+
+## Full Feature Support
+
+### Threads and Sessions
+- **Multi-project workspace** — Open, switch, and reorder projects with per-project state memory
+- **Quick Chat sessions** — Chat without opening a project (`__scratch__` mode)
+- **Multiple concurrent Claude threads per project** with active/inactive/needs-input status
+- **Session history** — Persist and resume past sessions (stored history capped at 200 entries)
+- **Session persistence across restart** — Restores UI layout, theme, expanded projects, and serialized sessions
+- **Inline session rename** and context menu actions (rename, close, fork, close others)
+- **Session forking** — Fork into two parallel branches (Fork A / Fork B) with independent worktrees
+- **Pop-out chat window** — Detach and re-dock chat
+
+### Claude Agent Integration
+- **Claude Agent SDK integration** with streaming partial output and typed event handling
+- **Model selection per session** — `Opus 4.6`, `Sonnet 4.6`, `Haiku 4.5`
+- **Cost + turns tracking** from SDK result metadata
+- **Thinking blocks** (streaming and completed) with expandable rendering
+- **Tool execution timeline** with grouped tool calls and compact read grouping
+- **Tool permission controls** — Allow / Allow Always / Deny on pending tool calls
+- **Plan review flow** for `ExitPlanMode` prompts (Approve, Reject, or Feedback)
+- **Ask-user flow** for structured questions (single-select, multi-select, and free text)
+- **Todo tool rendering** with pinned active todo state
+- **Queued outbound user messages** while an agent is busy
+- **Retry last user prompt** action
+
+### Project, Git, and Diff Tooling
+- **Git status + diff views** for staged and unstaged changes (including untracked file diffs)
+- **File tree diff browser** with directory expansion, filters, and status badges
+- **Context actions from diff** — Add file reference to prompt, open in editor
+- **Branch visibility and branch switching** in chat footer and command palette
+- **Git helpers** — stage, commit, push, remotes, log, diff summary
+- **Commit modal workflow**:
+- Include unstaged toggle
+- AI-generated commit message
+- Commit / Commit+Push / Commit+PR (via `gh pr create --web`)
+- **Project start configuration** — save named startup commands, optional build command, optional browser URL
+- **Run actions** — launch configured commands into integrated terminals
+
+### Worktrees
+- **Optional per-thread isolated worktree** on first prompt
+- **Include local uncommitted changes** when creating worktree
+- **Worktree action bar**:
+- open terminal in worktree
+- create branch
+- sync to local (`apply` or `overwrite`)
+- discard/remove worktree
+- **Bidirectional sync APIs** (`sync-to-local`, `sync-from-local`) and worktree diff retrieval
+- **Automatic cleanup/pruning** on app shutdown
+
+### Integrated Terminal
+- **Per-project PTY terminals** with multiple tabs
+- **Terminal split view** (two shell panes with draggable divider)
+- **Inline tab rename**, add/remove tabs, active tab memory by project
+- **Search inside terminal output** (`Ctrl+F`)
+- **Copy/paste support** (context menu + `Ctrl+Shift+C/V` in terminal view)
+- **Bracketed paste mode** for CLI safety/compat
+
+### Editor and Browser Panels
+- **Embedded Neovim editor tab** (per-project `nvim` process)
+- **Open file in editor** from command palette and diff/project integrations
+- **Auto buffer refresh after agent tool results** (`:checktime`) and `autoread` support
+- **Embedded browser side panel** with:
+- per-project tab sets
+- URL navigation/back/forward/reload
+- tab create/switch/close
+- context menu actions
+- inspect element/devtools
+- page URL/content/screenshot bridge APIs
+
+### MCP Support
+- **Built-in ClaudeX bridge MCP server** (terminal + browser + session messaging tools)
+- **User-managed local MCP servers** — add/edit/remove/start/stop/enable
+- **Auto-start MCP servers** on launch
+- **External MCP config discovery** from:
+- `~/.mcp.json`
+- project `.mcp.json` files found by walking ancestor directories
+- **Claude-reported remote MCP visibility** (tools surfaced in settings UI)
+- **Per-project MCP refresh** when project context changes
+
+### Voice, Screenshots, and Notifications
+- **Voice input button** with local Whisper transcription (`onnx-community/whisper-tiny.en`)
+- **Screenshot-to-prompt** capture that inserts `@/path/to/image.png` references
+- **Desktop notifications** when a session needs user input
+- **Optional completion sound** and attention notifications
+- **Prevent sleep toggle** while working
+
+### Appearance and UX
+- **12 built-in themes** with xterm theme synchronization:
+- `dark`, `light`, `monokai`, `solarized-dark`, `solarized-light`, `nord`,
+- `dracula`, `catppuccin-mocha`, `tokyo-night`, `gruvbox-dark`, `one-dark`, `rose-pine`
+- **Customizable modifier key** for app shortcuts
+- **Vim mode options**:
+- legacy input behavior toggle
+- Vim keybindings in chat textarea (`NORMAL/INSERT/VISUAL`)
+- **Resizable layout panes** (sidebar, side panel, terminal height, terminal split ratio)
+- **Command palette** with fuzzy search across commands/files/sessions/terminals/projects/branches/themes
 
 ## Installation
 
 ### Prerequisites
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- `git` available on `PATH` for git/diff/worktree features
+
+### Optional dependencies (feature-specific)
+
+- `nvim` for embedded editor support
+- `scrot` for screenshot capture button
+- `gh` for "Commit and create PR" flow
 
 ### Pre-built packages
 
@@ -133,17 +217,20 @@ src/
 | Shortcut | Action |
 |---|---|
 | `Mod+K` | Command palette |
+| `Mod+?` | Show keyboard shortcuts |
 | `Mod+N` | New session |
+| `Mod+Shift+N` | New quick chat |
 | `Mod+T` | New terminal |
 | `Mod+O` | Open project |
 | `Mod+B` | Toggle browser panel |
 | `Mod+D` | Toggle diff panel |
 | `Mod+S` | Toggle sidebar |
-| `Mod+L` | Clear chat |
+| `Mod+L` | Cycle color scheme |
+| `Mod+V` | Voice input toggle |
 | `Mod+P` | Popout chat |
-| `Mod+W` | Toggle worktree |
-| `Mod+1-9` | Switch terminal tabs |
-| `Shift+Tab` | Toggle plan/execute mode |
+| `Mod+W` | Close active session |
+| `Mod+1-9` | Switch session by index |
+| `Ctrl+\`` | Toggle terminal panel |
 
 ## License
 

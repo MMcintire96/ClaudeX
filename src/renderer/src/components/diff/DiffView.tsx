@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react'
 import { parse as diffParse } from 'diff2html'
+import { createPortal } from 'react-dom'
 
 interface Props {
   diff: string
@@ -75,6 +76,16 @@ export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props)
   )
 }
 
+function getMenuPosition(clientX: number, clientY: number) {
+  const MENU_WIDTH = 180
+  const MENU_HEIGHT = 110
+  const PADDING = 8
+  return {
+    x: Math.max(PADDING, Math.min(clientX, window.innerWidth - MENU_WIDTH - PADDING)),
+    y: Math.max(PADDING, Math.min(clientY, window.innerHeight - MENU_HEIGHT - PADDING))
+  }
+}
+
 function DiffFileBlock({
   file,
   collapsed,
@@ -110,7 +121,7 @@ function DiffFileBlock({
         onContextMenu={(e) => {
           if (!onAddToClaude && !onOpenInEditor) return
           e.preventDefault()
-          setContextMenu({ x: e.clientX, y: e.clientY })
+          setContextMenu(getMenuPosition(e.clientX, e.clientY))
         }}
       >
         <span className="gh-diff-chevron">{collapsed ? '\u25B8' : '\u25BE'}</span>
@@ -177,7 +188,7 @@ function DiffFileBlock({
         </div>
       )}
 
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div
           className="context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
@@ -204,7 +215,8 @@ function DiffFileBlock({
               Add to Claude
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

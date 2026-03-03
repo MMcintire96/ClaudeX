@@ -3,6 +3,7 @@ import DiffView from './DiffView'
 import CommitModal from '../git/CommitModal'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useEditorStore } from '../../stores/editorStore'
+import { createPortal } from 'react-dom'
 
 
 interface FileStatus {
@@ -13,6 +14,16 @@ interface FileStatus {
 
 interface DiffPanelProps {
   projectPath: string
+}
+
+function getMenuPosition(clientX: number, clientY: number) {
+  const MENU_WIDTH = 180
+  const MENU_HEIGHT = 110
+  const PADDING = 8
+  return {
+    x: Math.max(PADDING, Math.min(clientX, window.innerWidth - MENU_WIDTH - PADDING)),
+    y: Math.max(PADDING, Math.min(clientY, window.innerHeight - MENU_HEIGHT - PADDING))
+  }
 }
 
 /** Group files by directory into a tree structure */
@@ -314,7 +325,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
         onClick={() => handleFileClick(f.path, f.index === '?')}
         onContextMenu={(e) => {
           e.preventDefault()
-          setContextMenu({ x: e.clientX, y: e.clientY, filePath: f.path })
+          setContextMenu({ ...getMenuPosition(e.clientX, e.clientY), filePath: f.path })
         }}
       >
         <span className="diff-tree-file-icon">
@@ -433,7 +444,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
         />
       )}
 
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div
           className="context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
@@ -456,7 +467,8 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
           >
             Add to Claude
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
