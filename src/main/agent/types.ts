@@ -8,6 +8,8 @@ export interface SystemInitEvent {
   mcp_servers?: Record<string, unknown>[]
   model?: string
   claude_code_version?: string
+  skills?: string[]
+  slash_commands?: string[]
 }
 
 export interface ContentBlockDelta {

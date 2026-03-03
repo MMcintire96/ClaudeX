@@ -105,6 +105,8 @@ export interface SessionState {
   forkChildren: string[] | null
   forkLabel: string | null
   isForkParent: boolean
+  // SDK-provided skills/slash commands for this session
+  sdkSkills: string[]
 }
 
 function createSessionState(sessionId: string, projectPath: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }): SessionState {
@@ -132,7 +134,8 @@ function createSessionState(sessionId: string, projectPath: string, worktreeOpts
     forkedFrom: null,
     forkChildren: null,
     forkLabel: null,
-    isForkParent: false
+    isForkParent: false,
+    sdkSkills: []
   }
 }
 
@@ -267,6 +270,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     switch (event.type) {
       case 'system': {
         if (event.subtype === 'init') {
+          // Merge skills and slash_commands from SDK, deduplicating
+          const skills = (event.skills as string[]) ?? []
+          const slashCmds = (event.slash_commands as string[]) ?? []
+          const sdkSkills = [...new Set([...skills, ...slashCmds])]
+
           set(s => ({
             sessions: {
               ...s.sessions,
@@ -274,7 +282,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 ...s.sessions[sessionId],
                 sessionId: (event.session_id as string) ?? sessionId,
                 claudeVersion: (event.claude_code_version as string) ?? null,
-                isProcessing: true
+                isProcessing: true,
+                sdkSkills
               }
             }
           }))
@@ -609,7 +618,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       forkedFrom: data.forkedFrom ?? null,
       forkChildren: data.forkChildren ?? null,
       forkLabel: data.forkLabel ?? null,
-      isForkParent: data.isForkParent ?? false
+      isForkParent: data.isForkParent ?? false,
+      sdkSkills: []
     }
     set(s => ({
       sessions: { ...s.sessions, [data.id]: session },

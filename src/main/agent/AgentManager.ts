@@ -6,6 +6,7 @@ import { AgentProcess, AgentProcessOptions } from './AgentProcess'
 import type { AgentEvent, StreamEvent } from './types'
 import { broadcastSend } from '../broadcast'
 import { generateSessionTitle } from './TitleGenerator'
+import { loadUserSkills, formatSkillsForPrompt } from './SkillLoader'
 import type { SettingsManager } from '../settings/SettingsManager'
 import type { NeovimManager } from '../neovim/NeovimManager'
 import type { McpManager } from '../mcp/McpManager'
@@ -115,7 +116,7 @@ export class AgentManager {
       // Handle system init events to capture Claude-reported MCP servers
       if (event.type === 'system' && event.subtype === 'init') {
         const systemEvent = event as import('./types').SystemInitEvent
-        console.log('[AgentManager] SystemInitEvent received, tools:', systemEvent.tools?.length, 'mcp_servers:', systemEvent.mcp_servers)
+        console.log('[AgentManager] SystemInitEvent received, tools:', systemEvent.tools?.length, 'mcp_servers:', systemEvent.mcp_servers, 'skills:', systemEvent.skills?.length, 'slash_commands:', systemEvent.slash_commands?.length)
         if (this.mcpManager && systemEvent.tools) {
           this.mcpManager.updateClaudeReportedServers(systemEvent.mcp_servers, systemEvent.tools)
         }
@@ -186,6 +187,27 @@ export class AgentManager {
     })
   }
 
+  private async buildSystemPromptAppend(hasMcp: boolean): Promise<string | null> {
+    const parts: string[] = []
+    if (hasMcp) {
+      parts.push(SYSTEM_PROMPT_APPEND)
+    }
+
+    // Load user-defined skills from ~/.claude/skills/
+    try {
+      const skills = await loadUserSkills()
+      if (skills.length > 0) {
+        const skillSection = formatSkillsForPrompt(skills)
+        parts.push(skillSection)
+        console.log(`[AgentManager] Loaded ${skills.length} user skill(s): ${skills.map(s => s.name).join(', ')}`)
+      }
+    } catch (err) {
+      console.warn('[AgentManager] Failed to load user skills:', err)
+    }
+
+    return parts.length > 0 ? parts.join('\n\n') : null
+  }
+
   async startAgent(options: AgentProcessOptions, initialPrompt: string): Promise<string> {
     // Ensure external .mcp.json configs are loaded for this project before building server list
     if (this.mcpManager) {
@@ -193,11 +215,12 @@ export class AgentManager {
     }
 
     const mcpServers = this.buildMcpServers(options.projectPath)
+    const systemPromptAppend = await this.buildSystemPromptAppend(!!mcpServers)
 
     const agentOptions: AgentProcessOptions = {
       ...options,
       mcpServers,
-      systemPromptAppend: mcpServers ? SYSTEM_PROMPT_APPEND : null
+      systemPromptAppend
     }
 
     const agent = new AgentProcess(agentOptions)
@@ -221,12 +244,13 @@ export class AgentManager {
     }
 
     const mcpServers = this.buildMcpServers(projectPath)
+    const systemPromptAppend = await this.buildSystemPromptAppend(!!mcpServers)
     const agent = new AgentProcess({
       projectPath,
       sessionId,
       model,
       mcpServers,
-      systemPromptAppend: mcpServers ? SYSTEM_PROMPT_APPEND : null
+      systemPromptAppend
     })
     this.wireEvents(sessionId, agent)
     agent.resume(message)

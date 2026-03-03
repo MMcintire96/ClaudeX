@@ -4,10 +4,10 @@ import { useSessionStore } from '../../stores/sessionStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { AVAILABLE_MODELS, DEFAULT_MODEL, MODEL_IDS } from '../../constants/models'
 
-const SLASH_COMMANDS = [
-  { cmd: '/models', desc: 'Change the model' },
-  { cmd: '/compact', desc: 'Compact conversation context' },
-  { cmd: '/clear', desc: 'Clear chat history' },
+const LOCAL_COMMANDS = [
+  { cmd: '/models', desc: 'Change the model', isLocal: true },
+  { cmd: '/compact', desc: 'Compact conversation context', isLocal: true },
+  { cmd: '/clear', desc: 'Clear chat history', isLocal: true },
 ]
 
 interface InputBarProps {
@@ -30,6 +30,7 @@ export default function InputBar({ sessionId }: InputBarProps) {
     sessionId ? s.sessions[sessionId] ?? null : null
   )
   const selectedModel = session?.selectedModel ?? DEFAULT_MODEL
+
   const handleSlashCommand = useCallback((command: string): boolean => {
     const cmd = command.trim().toLowerCase()
 
@@ -181,7 +182,7 @@ export default function InputBar({ sessionId }: InputBarProps) {
       {/* Slash command autocomplete */}
       {showSlashMenu && (
         <div className="slash-menu">
-          {SLASH_COMMANDS.map(c => (
+          {LOCAL_COMMANDS.map(c => (
             <button
               key={c.cmd}
               className="slash-menu-item"
