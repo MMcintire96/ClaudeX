@@ -2,7 +2,7 @@ import { ipcMain, app } from 'electron'
 import { resolve, join, relative } from 'path'
 import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
-import { readdir } from 'fs/promises'
+import { readdir, readFile } from 'fs/promises'
 import { ProjectManager } from '../project/ProjectManager'
 import { GitService } from '../project/GitService'
 import { query } from '@anthropic-ai/claude-agent-sdk'
@@ -315,6 +315,34 @@ export function registerProjectHandlers(
       return { success: true, files }
     } catch {
       return { success: false, files: [], error: 'Failed to list files' }
+    }
+  })
+
+  ipcMain.handle('project:read-file', async (_event, projectPath: string, filePath: string, maxBytes?: number) => {
+    try {
+      const fullPath = resolve(projectPath, filePath)
+      // Security: ensure file is within project
+      if (!fullPath.startsWith(resolve(projectPath))) {
+        return { success: false, error: 'Path traversal denied' }
+      }
+      const limit = Math.min(maxBytes ?? 64 * 1024, 256 * 1024) // default 64KB, max 256KB
+      const buf = Buffer.alloc(limit)
+      const { open } = await import('fs/promises')
+      const fh = await open(fullPath, 'r')
+      try {
+        const { bytesRead } = await fh.read(buf, 0, limit, 0)
+        const content = buf.subarray(0, bytesRead).toString('utf-8')
+        // Check if binary (has null bytes in first 8KB)
+        const checkLen = Math.min(bytesRead, 8192)
+        for (let i = 0; i < checkLen; i++) {
+          if (buf[i] === 0) return { success: true, content: '', binary: true }
+        }
+        return { success: true, content, binary: false, truncated: bytesRead >= limit }
+      } finally {
+        await fh.close()
+      }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
     }
   })
 

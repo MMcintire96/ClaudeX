@@ -95,7 +95,9 @@ const api = {
     gitDiffSummary: (projectPath: string, staged?: boolean) =>
       ipcRenderer.invoke('project:git-diff-summary', projectPath, staged),
     generateCommitMessage: (projectPath: string, includeUnstaged: boolean) =>
-      ipcRenderer.invoke('project:generate-commit-message', projectPath, includeUnstaged)
+      ipcRenderer.invoke('project:generate-commit-message', projectPath, includeUnstaged),
+    readFile: (projectPath: string, filePath: string, maxBytes?: number) =>
+      ipcRenderer.invoke('project:read-file', projectPath, filePath, maxBytes)
   },
   terminal: {
     create: (projectPath: string) =>

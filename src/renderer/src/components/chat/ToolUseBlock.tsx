@@ -6,6 +6,7 @@ interface Props {
   message: UIToolUseMessage
   awaitingPermission?: boolean
   terminalId?: string
+  isInProgress?: boolean
 }
 
 function formatInput(input: Record<string, unknown>): string {
@@ -22,8 +23,9 @@ function formatInput(input: Record<string, unknown>): string {
   return parts.join('\n')
 }
 
-export default function ToolUseBlock({ message, awaitingPermission, terminalId }: Props) {
+export default function ToolUseBlock({ message, awaitingPermission, terminalId, isInProgress }: Props) {
   const [expanded, setExpanded] = useState(false)
+  const [hasBeenExpanded, setHasBeenExpanded] = useState(false)
   const [responded, setResponded] = useState(false)
 
   const handleAllow = useCallback(async () => {
@@ -61,23 +63,31 @@ export default function ToolUseBlock({ message, awaitingPermission, terminalId }
       {needsInput && <div className="needs-input-indicator" />}
       <button
         className="tool-use-header"
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => { if (!expanded) setHasBeenExpanded(true); setExpanded(!expanded) }}
       >
         <span className="tool-icon">&#9881;</span>
         <span className="tool-name">{message.toolName}</span>
-        <span className="tool-expand">{expanded ? '▼' : '▶'}</span>
+        {isInProgress ? (
+          <span className="tool-spinner" />
+        ) : (
+          <svg className={`tool-chevron${expanded ? ' open' : ''}`} width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 2L7 5L3.5 8" /></svg>
+        )}
       </button>
-      {expanded && (
-        <div className="tool-use-body">
-          <pre className="tool-input">{formatInput(message.input)}</pre>
-          {Object.keys(message.input).length > 3 && (
-            <details className="tool-full-input">
-              <summary>Full input</summary>
-              <pre>{JSON.stringify(message.input, null, 2)}</pre>
-            </details>
+      <div className={`tool-collapsible${expanded ? ' open' : ''}`}>
+        <div className="tool-collapsible-inner">
+          {hasBeenExpanded && (
+            <div className="tool-use-body">
+              <pre className="tool-input">{formatInput(message.input)}</pre>
+              {Object.keys(message.input).length > 3 && (
+                <details className="tool-full-input">
+                  <summary>Full input</summary>
+                  <pre>{JSON.stringify(message.input, null, 2)}</pre>
+                </details>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </div>
       {awaitingPermission && !responded && (
         <div className="permission-request-inline">
           <span className="permission-request-label">This action requires approval</span>

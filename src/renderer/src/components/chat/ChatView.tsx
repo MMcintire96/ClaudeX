@@ -928,12 +928,14 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
         const hasResult = !!pairedResult
         const isLast = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
         const needsPermission = !skipPermissions && !hasResult && isLast
-        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult ?? null} awaitingPermission={needsPermission} terminalId={sessionId} /></div>
+        const toolInProgress = isProcessing && !hasResult && !needsPermission
+        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult ?? null} awaitingPermission={needsPermission} terminalId={sessionId} isInProgress={toolInProgress} /></div>
       }
       const hasToolResult = toolResultByToolUseId.has(toolMsg.toolId)
       const isLastToolUse = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
       const awaitingPermission = !skipPermissions && !hasToolResult && isLastToolUse
-      return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolUseBlock message={toolMsg} awaitingPermission={awaitingPermission} terminalId={sessionId} /></div>
+      const toolInProgress = isProcessing && !hasToolResult && !awaitingPermission
+      return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolUseBlock message={toolMsg} awaitingPermission={awaitingPermission} terminalId={sessionId} isInProgress={toolInProgress} /></div>
     } else if (msg.type === 'tool_result') {
       const resultMsg = msg as UIToolResultMessage
       const parentTool = toolUseById.get(resultMsg.toolUseId)
@@ -961,7 +963,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       )
     }
     return null
-  }, [messages, searchMatchIds, currentMatchMsgId, searchOpen, searchQuery, toolResultByToolUseId, toolUseById, skipPermissions, sessionId])
+  }, [messages, searchMatchIds, currentMatchMsgId, searchOpen, searchQuery, toolResultByToolUseId, toolUseById, skipPermissions, sessionId, isProcessing])
 
   return (
     <div

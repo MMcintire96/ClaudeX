@@ -1,55 +1,15 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import hljs from 'highlight.js/lib/core'
-import typescript from 'highlight.js/lib/languages/typescript'
-import javascript from 'highlight.js/lib/languages/javascript'
-import python from 'highlight.js/lib/languages/python'
-import css from 'highlight.js/lib/languages/css'
-import json from 'highlight.js/lib/languages/json'
-import bash from 'highlight.js/lib/languages/bash'
-import xml from 'highlight.js/lib/languages/xml'
-import markdown from 'highlight.js/lib/languages/markdown'
+import hljs, { detectLanguage } from '../../lib/hljs'
 import { sendNotification } from '../../lib/notificationSound'
-import rust from 'highlight.js/lib/languages/rust'
-import go from 'highlight.js/lib/languages/go'
-import java from 'highlight.js/lib/languages/java'
-import yaml from 'highlight.js/lib/languages/yaml'
-import sql from 'highlight.js/lib/languages/sql'
 import type { UIToolUseMessage, UIToolResultMessage } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
-
-// Register languages for syntax highlighting in diffs
-hljs.registerLanguage('typescript', typescript)
-hljs.registerLanguage('javascript', javascript)
-hljs.registerLanguage('python', python)
-hljs.registerLanguage('css', css)
-hljs.registerLanguage('json', json)
-hljs.registerLanguage('bash', bash)
-hljs.registerLanguage('xml', xml)
-hljs.registerLanguage('html', xml)
-hljs.registerLanguage('markdown', markdown)
-hljs.registerLanguage('rust', rust)
-hljs.registerLanguage('go', go)
-hljs.registerLanguage('java', java)
-hljs.registerLanguage('yaml', yaml)
-hljs.registerLanguage('sql', sql)
-
-const EXT_TO_LANG: Record<string, string> = {
-  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
-  py: 'python', css: 'css', json: 'json', sh: 'bash', bash: 'bash', zsh: 'bash',
-  html: 'html', htm: 'html', xml: 'xml', svg: 'xml', md: 'markdown',
-  rs: 'rust', go: 'go', java: 'java', yml: 'yaml', yaml: 'yaml', sql: 'sql',
-}
-
-function detectLanguage(filePath: string): string | null {
-  const ext = filePath.split('.').pop()?.toLowerCase()
-  return ext ? EXT_TO_LANG[ext] ?? null : null
-}
 
 interface Props {
   message: UIToolUseMessage
   result?: UIToolResultMessage | null
   awaitingPermission?: boolean
   terminalId?: string
+  isInProgress?: boolean
 }
 
 // Tool icons as simple SVG components
@@ -107,8 +67,8 @@ function iconForTool(name: string): React.ReactNode {
 
 function shortPath(filePath: string): string {
   const parts = filePath.split('/')
-  if (parts.length <= 3) return filePath
-  return '.../' + parts.slice(-2).join('/')
+  if (parts.length <= 2) return filePath
+  return parts.slice(-2).join('/')
 }
 
 function labelForTool(name: string): string {
@@ -176,11 +136,13 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-export default function FileEditBlock({ message, result, awaitingPermission, terminalId }: Props) {
+export default function FileEditBlock({ message, result, awaitingPermission, terminalId, isInProgress }: Props) {
   const autoExpand = useSettingsStore(s => s.autoExpandEdits)
   const isEditTool = message.toolName === 'Edit' || message.toolName === 'Write'
+  const isExpandable = message.toolName !== 'Read'
   const [expanded, setExpanded] = useState(autoExpand && isEditTool)
   const [permissionResponded, setPermissionResponded] = useState(false)
+  const [hasBeenExpanded, setHasBeenExpanded] = useState(autoExpand && isEditTool)
 
   const handleAllow = useCallback(async () => {
     if (!terminalId || permissionResponded) return
@@ -252,23 +214,39 @@ export default function FileEditBlock({ message, result, awaitingPermission, ter
   }, [needsInput])
 
   return (
-    <div className={`file-edit-block ${hasError ? 'file-edit-error' : ''}${needsInput ? ' awaiting-permission' : ''}`}>
+    <div className={`file-edit-block ${hasError ? 'file-edit-error' : ''}${needsInput ? ' awaiting-permission' : ''}`} data-tool={message.toolName}>
       {needsInput && <div className="needs-input-indicator" />}
-      <button
-        className="file-edit-header"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <span className="file-edit-icon">{iconForTool(message.toolName)}</span>
-        <span className="file-edit-label">{label}</span>
-        {displayPath && (
-          <span className="file-edit-path" title={fullPath}>{displayPath}</span>
-        )}
-        {summary && !displayPath && (
-          <span className="file-edit-summary">{summary}</span>
-        )}
-        {hasError && <span className="file-edit-error-badge">error</span>}
-        <span className="file-edit-chevron">{expanded ? '▾' : '▸'}</span>
-      </button>
+      {isExpandable ? (
+        <button
+          className="file-edit-header"
+          onClick={() => { if (!expanded) setHasBeenExpanded(true); setExpanded(!expanded) }}
+        >
+          <span className="file-edit-icon">{iconForTool(message.toolName)}</span>
+          <span className="file-edit-label">{label}</span>
+          {displayPath && (
+            <span className="file-edit-path" title={fullPath}>{displayPath}</span>
+          )}
+          {summary && !displayPath && (
+            <span className="file-edit-summary">{summary}</span>
+          )}
+          {hasError && <span className="file-edit-error-badge">error</span>}
+          {isInProgress ? (
+            <span className="tool-spinner" />
+          ) : (
+            <svg className={`tool-chevron${expanded ? ' open' : ''}`} width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 2L7 5L3.5 8" /></svg>
+          )}
+        </button>
+      ) : (
+        <div className="file-edit-header file-edit-header-static">
+          <span className="file-edit-icon">{iconForTool(message.toolName)}</span>
+          <span className="file-edit-label">{label}</span>
+          {displayPath && (
+            <span className="file-edit-path" title={fullPath}>{displayPath}</span>
+          )}
+          {hasError && <span className="file-edit-error-badge">error</span>}
+          {isInProgress && <span className="tool-spinner" />}
+        </div>
+      )}
 
       {/* Inline summary when Bash — show command below header */}
       {message.toolName === 'Bash' && summary && displayPath && !expanded && (
@@ -277,41 +255,38 @@ export default function FileEditBlock({ message, result, awaitingPermission, ter
         </div>
       )}
 
-      {expanded && (
-        <div className="file-edit-body">
-          {/* Edit: show diff with syntax highlighting */}
-          {message.toolName === 'Edit' && oldString != null && newString != null && (
-            <DiffView oldString={oldString} newString={newString} filePath={filePath} />
-          )}
-
-          {/* Write: show content preview */}
-          {message.toolName === 'Write' && content && (
-            <div className="file-edit-content-preview">
-              <pre>{content.length > 500 ? content.slice(0, 500) + '\n...' : content}</pre>
-            </div>
-          )}
-
-          {/* Bash: show command */}
-          {message.toolName === 'Bash' && command && (
-            <div className="file-edit-command">
-              <pre>$ {command}</pre>
-            </div>
-          )}
-
-          {/* Grep/Glob: show pattern + path */}
-          {(message.toolName === 'Grep' || message.toolName === 'Glob') && (
-            <div className="file-edit-search-info">
-              {pattern && <div><strong>Pattern:</strong> <code>{pattern}</code></div>}
-              {filePath && <div><strong>Path:</strong> <code>{filePath}</code></div>}
-            </div>
-          )}
-
-          {/* Result output */}
-          {resultPreview && (
-            <div className={`file-edit-result ${hasError ? 'file-edit-result-error' : ''}`}>
-              <pre>{resultPreview}</pre>
-            </div>
-          )}
+      {isExpandable && (
+        <div className={`tool-collapsible${expanded ? ' open' : ''}`}>
+          <div className="tool-collapsible-inner">
+            {hasBeenExpanded && (
+              <div className="file-edit-body">
+                {message.toolName === 'Edit' && oldString != null && newString != null && (
+                  <DiffView oldString={oldString} newString={newString} filePath={filePath} />
+                )}
+                {message.toolName === 'Write' && content && (
+                  <div className="file-edit-content-preview">
+                    <pre>{content.length > 500 ? content.slice(0, 500) + '\n...' : content}</pre>
+                  </div>
+                )}
+                {message.toolName === 'Bash' && command && (
+                  <div className="file-edit-command">
+                    <pre>$ {command}</pre>
+                  </div>
+                )}
+                {(message.toolName === 'Grep' || message.toolName === 'Glob') && (
+                  <div className="file-edit-search-info">
+                    {pattern && <div><strong>Pattern:</strong> <code>{pattern}</code></div>}
+                    {filePath && <div><strong>Path:</strong> <code>{filePath}</code></div>}
+                  </div>
+                )}
+                {resultPreview && (
+                  <div className={`file-edit-result ${hasError ? 'file-edit-result-error' : ''}`}>
+                    <pre>{resultPreview}</pre>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
       {awaitingPermission && !permissionResponded && (
