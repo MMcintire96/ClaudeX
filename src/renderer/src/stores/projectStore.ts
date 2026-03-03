@@ -18,6 +18,8 @@ interface ProjectState {
   setRecent: (projects: RecentProject[]) => void
   toggleProjectExpanded: (path: string) => void
   setProjectExpanded: (path: string, expanded: boolean) => void
+  expandAllProjects: () => void
+  collapseAllProjects: () => void
   reorderProjects: (paths: string[]) => void
   removeProject: (path: string) => void
   setGitBranch: (projectPath: string, branch: string) => void
@@ -61,6 +63,16 @@ export const useProjectStore = create<ProjectState>((set) => ({
           : [...state.expandedProjects, path]
         : state.expandedProjects.filter(p => p !== path)
     }))
+  },
+
+  expandAllProjects: (): void => {
+    set(state => ({
+      expandedProjects: state.recentProjects.map(p => p.path)
+    }))
+  },
+
+  collapseAllProjects: (): void => {
+    set({ expandedProjects: [] })
   },
 
   reorderProjects: (paths: string[]): void => {

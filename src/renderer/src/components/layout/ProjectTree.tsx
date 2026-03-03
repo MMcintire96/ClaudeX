@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { sessionNeedsInput, type SessionState } from '../../stores/sessionStore'
 
 interface InlineRenameProps {
@@ -74,6 +75,7 @@ interface ProjectTreeProps {
   onNewThread: () => void
   onRemoveProject: () => void
   onClearOldSessions: () => void
+  onClearAllSessions: () => void
   onForkSession: (sessionId: string) => void
   historyEntries: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>
   onResumeHistory: (entry: { claudeSessionId?: string; projectPath: string; name: string; worktreePath?: string | null; isWorktree?: boolean }) => void
@@ -100,6 +102,7 @@ export default function ProjectTree({
   onNewThread,
   onRemoveProject,
   onClearOldSessions,
+  onClearAllSessions,
   onForkSession,
   historyEntries,
   collapsed,
@@ -306,7 +309,7 @@ export default function ProjectTree({
       </div>
 
       {/* Context menu */}
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div
           className="thread-context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
@@ -331,6 +334,17 @@ export default function ProjectTree({
                   }}
                 >
                   Clear old sessions
+                </button>
+              )}
+              {(sdkSessions.length > 0 || historyEntries.length > 0) && (
+                <button
+                  className="thread-context-menu-item thread-context-menu-danger"
+                  onClick={() => {
+                    onClearAllSessions()
+                    setContextMenu(null)
+                  }}
+                >
+                  Clear all sessions
                 </button>
               )}
               <button
@@ -394,7 +408,8 @@ export default function ProjectTree({
               )}
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

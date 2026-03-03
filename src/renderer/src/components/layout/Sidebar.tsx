@@ -13,7 +13,8 @@ export default function Sidebar() {
     currentPath, isGitRepo, recentProjects,
     setProject, setRecent, removeProject, reorderProjects,
     gitBranches, setGitBranch,
-    expandedProjects, toggleProjectExpanded
+    expandedProjects, toggleProjectExpanded,
+    expandAllProjects, collapseAllProjects
   } = useProjectStore()
   const {
     setSidePanelView, projectSidePanelMemory
@@ -205,6 +206,34 @@ export default function Sidebar() {
     setHistoryByProject(prev => ({ ...prev, [projectPath]: [] }))
   }, [])
 
+  const handleClearAllSessions = useCallback(async (projectPath: string) => {
+    // Close all active sessions for this project
+    const projectSessions = Object.values(useSessionStore.getState().sessions)
+      .filter(s => s.projectPath === projectPath)
+    for (const s of projectSessions) {
+      window.api.agent.stop(s.sessionId).catch(() => {})
+      removeSession(s.sessionId)
+    }
+    // Clear history
+    await window.api.session.clearHistory(projectPath)
+    setHistoryByProject(prev => ({ ...prev, [projectPath]: [] }))
+    // Create a fresh empty session
+    ensureSession(projectPath)
+  }, [removeSession, ensureSession])
+
+  const handleClearQuickChats = useCallback(async () => {
+    // Close all active quick chat sessions
+    const scratchSessions = Object.values(useSessionStore.getState().sessions)
+      .filter(s => s.projectPath === SCRATCH_PROJECT_PATH)
+    for (const s of scratchSessions) {
+      window.api.agent.stop(s.sessionId).catch(() => {})
+      removeSession(s.sessionId)
+    }
+    // Clear quick chat history
+    await window.api.session.clearHistory(SCRATCH_PROJECT_PATH)
+    setHistoryByProject(prev => ({ ...prev, [SCRATCH_PROJECT_PATH]: [] }))
+  }, [removeSession])
+
   const handleForkSession = useCallback(async (sessionId: string) => {
     const session = useSessionStore.getState().sessions[sessionId]
     console.log('[handleForkSession] sessionId:', sessionId, 'session:', session ? { messages: session.messages.length, projectPath: session.projectPath, worktreePath: session.worktreePath } : null)
@@ -371,7 +400,33 @@ export default function Sidebar() {
 
       {/* Threads */}
       <div className="sidebar-projects">
-        <div className="sidebar-section-label">Threads</div>
+        <div className="sidebar-section-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>Threads</span>
+          {projectList.length > 0 && (
+            <span className="sidebar-section-actions">
+              <button
+                className="sidebar-section-action"
+                onClick={expandAllProjects}
+                title="Expand all"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="7 13 12 18 17 13" />
+                  <polyline points="7 6 12 11 17 6" />
+                </svg>
+              </button>
+              <button
+                className="sidebar-section-action"
+                onClick={collapseAllProjects}
+                title="Collapse all"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="17 11 12 6 7 11" />
+                  <polyline points="17 18 12 13 7 18" />
+                </svg>
+              </button>
+            </span>
+          )}
+        </div>
 
         {projectList.map((proj, index) => (
           <div
@@ -400,6 +455,7 @@ export default function Sidebar() {
               onNewThread={() => handleNewThread(proj.path)}
               onRemoveProject={() => handleRemoveProject(proj.path)}
               onClearOldSessions={() => handleClearOldSessions(proj.path)}
+              onClearAllSessions={() => handleClearAllSessions(proj.path)}
               onForkSession={handleForkSession}
               historyEntries={historyByProject[proj.path] || []}
               onResumeHistory={handleResumeHistory}
@@ -422,7 +478,19 @@ export default function Sidebar() {
           if (scratchSessions.length === 0 && scratchHistory.length === 0) return null
           return (
             <div className="sidebar-scratch-section">
-              <div className="sidebar-section-label">Quick Chats</div>
+              <div className="sidebar-section-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Quick Chats</span>
+                <button
+                  className="sidebar-section-action"
+                  onClick={handleClearQuickChats}
+                  title="Clear all quick chats"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
               {scratchSessions.map(s => {
                 const isActive = activeSessionId === s.sessionId
                 const displayName = s.name || 'Quick Chat'
