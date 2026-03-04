@@ -86,6 +86,13 @@ export function registerMcpHandlers(
         mcpManager.setBridgeEnabled(enabled)
         return { success: true }
       }
+      // Handle Claude-reported (remote) servers
+      if (id.startsWith('claude-reported-')) {
+        const serverName = id.slice('claude-reported-'.length)
+        const disabledList = mcpManager.setRemoteServerEnabled(serverName, enabled)
+        await settingsManager.update({ disabledRemoteMcpServers: disabledList })
+        return { success: true }
+      }
       mcpManager.setEnabled(id, enabled)
       await settingsManager.updateMcpServers(mcpManager.getConfigs())
       return { success: true }

@@ -217,9 +217,7 @@ export default function Sidebar() {
     // Clear history
     await window.api.session.clearHistory(projectPath)
     setHistoryByProject(prev => ({ ...prev, [projectPath]: [] }))
-    // Create a fresh empty session
-    ensureSession(projectPath)
-  }, [removeSession, ensureSession])
+  }, [removeSession])
 
   const handleClearQuickChats = useCallback(async () => {
     // Close all active quick chat sessions

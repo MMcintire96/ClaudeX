@@ -13,6 +13,7 @@ import TodoBlock from './TodoBlock'
 import ThinkingBlock from './ThinkingBlock'
 import VoiceButton from '../common/VoiceButton'
 import WorktreeBar from './WorktreeBar'
+import KeyMomentsRail from './KeyMomentsRail'
 import { useProjectStore } from '../../stores/projectStore'
 import { AVAILABLE_MODELS, DEFAULT_MODEL, getModelLabel } from '../../constants/models'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -95,6 +96,15 @@ function VimBlockCursor({ textareaRef, text }: { textareaRef: React.RefObject<HT
 const EMPTY_MESSAGES: UIMessage[] = []
 const MESSAGES_PER_PAGE = 50
 
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg']
+function isImagePath(p: string): boolean {
+  const lower = p.toLowerCase()
+  return IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext))
+}
+
+// Ephemeral per-session draft storage — survives session switches but not app restarts
+const sessionDrafts = new Map<string, { text: string; chunks: { text: string; lineCount: number; charCount: number }[]; images?: { path: string; previewUrl: string }[] }>()
+
 /** Render input text with @file references highlighted */
 function renderHighlightedInput(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = []
@@ -118,6 +128,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const isScratchSession = projectPath === SCRATCH_PROJECT_PATH
   const [inputText, setInputText] = useState('')
   const [pastedChunks, setPastedChunks] = useState<{ text: string; lineCount: number; charCount: number }[]>([])
+  const [imageAttachments, setImageAttachments] = useState<{ path: string; previewUrl: string }[]>([])
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [planMode, setPlanMode] = useState(false)
   const [filePickerOpen, setFilePickerOpen] = useState(false)
@@ -131,11 +142,21 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PER_PAGE)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // Key moments rail state
+  const [keyMomentsOpen, setKeyMomentsOpen] = useState(false)
+
   // Search state
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Refs for draft persistence across session switches
+  const prevSessionIdRef = useRef(sessionId)
+  const pastedChunksRef = useRef(pastedChunks)
+  pastedChunksRef.current = pastedChunks
+  const imageAttachmentsRef = useRef(imageAttachments)
+  imageAttachmentsRef.current = imageAttachments
 
   // Vim mode for chat input
   const skipPermissions = useSettingsStore(s => s.claude.dangerouslySkipPermissions)
@@ -278,10 +299,27 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     }
   }, [worktreeDropdownOpen])
 
-  // Reset transient input state when sessionId changes
+  // Save/restore draft input when switching sessions
   useEffect(() => {
-    setInputText('')
-    setPastedChunks([])
+    // Save draft for the session we're leaving
+    const prevId = prevSessionIdRef.current
+    if (prevId && prevId !== sessionId) {
+      const text = inputTextRef.current
+      const chunks = pastedChunksRef.current
+      const images = imageAttachmentsRef.current
+      if (text || chunks.length > 0 || images.length > 0) {
+        sessionDrafts.set(prevId, { text, chunks, images })
+      } else {
+        sessionDrafts.delete(prevId)
+      }
+    }
+    prevSessionIdRef.current = sessionId
+
+    // Restore draft for the new session (or clear)
+    const draft = sessionDrafts.get(sessionId)
+    setInputText(draft?.text ?? '')
+    setPastedChunks(draft?.chunks ?? [])
+    setImageAttachments(draft?.images ?? [])
     setMessageQueue([])
     sendingQueueRef.current = false
     historyIndexRef.current = -1
@@ -300,8 +338,17 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       setWorktreeLocked(false)
     }
     setWorktreeDropdownOpen(false)
-    // Auto-focus the input when switching sessions
-    setTimeout(() => textareaRef.current?.focus(), 0)
+    // Auto-focus the input and resize for restored draft
+    setTimeout(() => {
+      const ta = textareaRef.current
+      if (ta) {
+        ta.focus()
+        if (draft?.text) {
+          ta.style.height = 'auto'
+          ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
+        }
+      }
+    }, 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
 
@@ -546,10 +593,15 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const handleSend = useCallback(async () => {
     const trimmed = inputText.trim()
     const hasPasted = pastedChunks.length > 0
-    if (!trimmed && !hasPasted) return
+    const hasImages = imageAttachments.length > 0
+    if (!trimmed && !hasPasted && !hasImages) return
 
-    // Build full message: pasted chunks + typed text
+    // Build full message: image refs + pasted chunks + typed text
     const parts: string[] = []
+    if (hasImages) {
+      const imageRefs = imageAttachments.map(img => '@' + img.path).join(' ')
+      parts.push(imageRefs)
+    }
     for (const chunk of pastedChunks) {
       parts.push(chunk.text)
     }
@@ -576,6 +628,8 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
 
       setInputText('')
       setPastedChunks([])
+      setImageAttachments([])
+      sessionDrafts.delete(sessionId)
       if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
       // Scroll to bottom when user sends a message
@@ -604,6 +658,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
 
     setInputText('')
     setPastedChunks([])
+    sessionDrafts.delete(sessionId)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
@@ -629,7 +684,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
       // Follow-up message
       await sendMessage(text)
     }
-  }, [inputText, pastedChunks, sessionId, isProcessing, worktreeMode, worktreeLocked, startNewSession, sendMessage])
+  }, [inputText, pastedChunks, imageAttachments, sessionId, isProcessing, worktreeMode, worktreeLocked, startNewSession, sendMessage])
 
   const handleModelChange = useCallback((modelId: string) => {
     setModelPickerOpen(false)
@@ -773,19 +828,21 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     try {
       const result = await window.api.screenshot.capture()
       if (result.success && result.path) {
-        setInputText(prev => {
-          const prefix = prev.length > 0 && !prev.endsWith(' ') ? prev + ' ' : prev
-          return prefix + '@' + result.path + ' '
-        })
-        if (textareaRef.current) {
-          textareaRef.current.focus()
-          requestAnimationFrame(() => {
-            if (textareaRef.current) {
-              textareaRef.current.style.height = 'auto'
-              textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
-            }
+        try {
+          const preview = await window.api.utils.readImage(result.path)
+          if (preview.success && preview.dataUrl) {
+            setImageAttachments(prev => [...prev, { path: result.path!, previewUrl: preview.dataUrl! }])
+          } else {
+            throw new Error('preview failed')
+          }
+        } catch {
+          // Fallback: add as text reference if preview fails
+          setInputText(prev => {
+            const prefix = prev.length > 0 && !prev.endsWith(' ') ? prev + ' ' : prev
+            return prefix + '@' + result.path + ' '
           })
         }
+        textareaRef.current?.focus()
       }
     } finally {
       setScreenshotCapturing(false)
@@ -868,35 +925,53 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     const files = e.dataTransfer.files
     if (!files || files.length === 0) return
 
-    const paths: string[] = []
+    const textPaths: string[] = []
+    const imageFiles: { absPath: string; file: File }[] = []
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
       const filePath = window.api.utils.getPathForFile(file)
-      if (filePath) {
+      if (filePath && isImagePath(filePath)) {
+        imageFiles.push({ absPath: filePath, file })
+      } else if (filePath) {
         const relativePath = filePath.startsWith(projectPath + '/')
           ? filePath.slice(projectPath.length + 1)
           : filePath
-        paths.push(relativePath)
+        textPaths.push(relativePath)
       } else if (file.name) {
-        paths.push(file.name)
+        textPaths.push(file.name)
       }
     }
 
-    if (paths.length > 0) {
-      const refs = paths.map(p => '@' + p).join(' ')
+    // Add non-image files as @path text references
+    if (textPaths.length > 0) {
+      const refs = textPaths.map(p => '@' + p).join(' ')
       setInputText(prev => {
         const prefix = prev.length > 0 && !prev.endsWith(' ') ? prev + ' ' : prev
         return prefix + refs + ' '
       })
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-        requestAnimationFrame(() => {
-          if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto'
-            textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
-          }
-        })
+    }
+
+    // Add image files as visual attachments
+    if (imageFiles.length > 0) {
+      for (const { absPath, file } of imageFiles) {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const dataUrl = reader.result as string
+          setImageAttachments(prev => [...prev, { path: absPath, previewUrl: dataUrl }])
+        }
+        reader.readAsDataURL(file)
       }
+    }
+
+    if (textareaRef.current) {
+      textareaRef.current.focus()
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto'
+          textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
+        }
+      })
     }
   }, [projectPath])
 
@@ -1012,8 +1087,18 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
           </button>
         </div>
       )}
-      <div className="chat-view-messages" ref={listRef}>
-        <div className="messages-container">
+      <div className="chat-view-body">
+        {messages.length > 10 && (
+          <button
+            className={`key-moments-toggle${keyMomentsOpen ? ' active' : ''}`}
+            onClick={() => setKeyMomentsOpen(o => !o)}
+            title={keyMomentsOpen ? 'Hide key moments' : 'Show key moments'}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>
+          </button>
+        )}
+        <div className="chat-view-messages" ref={listRef}>
+          <div className="messages-container">
           {messages.length > visibleCount && (
             <button
               className="btn-load-more"
@@ -1090,6 +1175,15 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
           })()}
 
         </div>
+      </div>
+        {keyMomentsOpen && (
+          <KeyMomentsRail
+            messages={messages}
+            listRef={listRef}
+            visibleCount={visibleCount}
+            setVisibleCount={setVisibleCount}
+          />
+        )}
       </div>
 
       {/* Pinned todo block — sticks above input area */}
@@ -1169,8 +1263,21 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
           </div>
         )}
         <div className={`input-bar${isForkParent ? ' input-bar-disabled' : ''}`}>
-          {pastedChunks.length > 0 && (
+          {(pastedChunks.length > 0 || imageAttachments.length > 0) && (
             <div className="pasted-chunks">
+              {imageAttachments.map((img, i) => (
+                <div key={`img-${i}`} className="image-chip">
+                  <img src={img.previewUrl} alt="" className="image-chip-preview" />
+                  <span className="image-chip-name">{img.path.split('/').pop()}</span>
+                  <button
+                    className="pasted-chip-remove"
+                    onClick={() => setImageAttachments(prev => prev.filter((_, j) => j !== i))}
+                    title="Remove"
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
               {pastedChunks.map((chunk, i) => (
                 <div key={i} className="pasted-chip">
                   <span className="pasted-chip-text">
@@ -1296,7 +1403,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
                 <button
                   className="btn-send"
                   onClick={handleSend}
-                  disabled={!inputText.trim() && pastedChunks.length === 0}
+                  disabled={!inputText.trim() && pastedChunks.length === 0 && imageAttachments.length === 0}
                   title="Send"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

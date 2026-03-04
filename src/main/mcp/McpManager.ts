@@ -58,7 +58,13 @@ export class McpManager extends EventEmitter {
   
   // MCP servers reported by Claude sessions (like claude_ai_HubSpot)
   private claudeReportedServers: Map<string, { name: string; tools: string[] }> = new Map()
-  
+
+  // Remote MCP server names that the user has disabled
+  private disabledRemoteServers: Set<string> = new Set()
+
+  // Persisted tool names per remote server (survives session restarts)
+  private knownRemoteServers: Map<string, string[]> = new Map()
+
   // Main window reference for broadcasting events
   private mainWindow: import('electron').BrowserWindow | null = null
 
@@ -240,19 +246,30 @@ export class McpManager extends EventEmitter {
     
     // Update claude-reported servers
     let changed = false
+    let knownChanged = false
     for (const [serverName, toolList] of serverTools) {
       // Skip our own bridge
       if (serverName === 'claudex-bridge') continue
-      
+
       const existing = this.claudeReportedServers.get(serverName)
       if (!existing || existing.tools.length !== toolList.length) {
         this.claudeReportedServers.set(serverName, { name: serverName, tools: toolList })
         changed = true
       }
+
+      // Persist tool names so they're available before system_init fires in new sessions
+      const knownTools = this.knownRemoteServers.get(serverName)
+      if (!knownTools || knownTools.length !== toolList.length) {
+        this.knownRemoteServers.set(serverName, toolList)
+        knownChanged = true
+      }
     }
-    
+
     if (changed) {
       this.emit('configChanged')
+    }
+    if (knownChanged) {
+      this.emit('knownServersUpdated')
     }
   }
 
@@ -264,6 +281,62 @@ export class McpManager extends EventEmitter {
       this.claudeReportedServers.clear()
       this.emit('configChanged')
     }
+  }
+
+  /**
+   * Load disabled remote server names from settings
+   */
+  loadDisabledRemoteServers(names: string[]): void {
+    this.disabledRemoteServers = new Set(names)
+  }
+
+  /**
+   * Load persisted known remote server tool names from settings
+   */
+  loadKnownRemoteServers(servers: Record<string, string[]>): void {
+    this.knownRemoteServers = new Map(Object.entries(servers))
+  }
+
+  /**
+   * Get known remote server tool names for persistence
+   */
+  getKnownRemoteServers(): Record<string, string[]> {
+    return Object.fromEntries(this.knownRemoteServers)
+  }
+
+  /**
+   * Toggle a remote MCP server's enabled state
+   * Returns the updated list of disabled server names for persistence
+   */
+  setRemoteServerEnabled(serverName: string, enabled: boolean): string[] {
+    if (enabled) {
+      this.disabledRemoteServers.delete(serverName)
+    } else {
+      this.disabledRemoteServers.add(serverName)
+    }
+    this.emit('configChanged')
+    return Array.from(this.disabledRemoteServers)
+  }
+
+  /**
+   * Get disallowed tool names for disabled remote MCP servers.
+   * These are full tool names (mcp__servername__toolname) that should be
+   * passed to the SDK's disallowedTools option.
+   * Uses claudeReportedServers when available, falls back to persisted knownRemoteServers.
+   */
+  getDisallowedRemoteTools(): string[] {
+    const disallowed: string[] = []
+    for (const serverName of this.disabledRemoteServers) {
+      // Prefer live tool list; fall back to persisted known tools
+      const serverInfo = this.claudeReportedServers.get(serverName)
+      const tools = serverInfo?.tools ?? this.knownRemoteServers.get(serverName)
+      if (tools) {
+        for (const tool of tools) {
+          disallowed.push(`mcp__${serverName}__${tool}`)
+        }
+      }
+    }
+    return disallowed
   }
 
   /**
@@ -312,7 +385,7 @@ export class McpManager extends EventEmitter {
         id: `claude-reported-${serverName}`,
         name: serverName,
         running: true, // Always considered running since they're active in Claude
-        enabled: true, // Can't disable these from ClaudeX
+        enabled: !this.disabledRemoteServers.has(serverName),
         claudeReported: true,
         source: 'Claude Account (Remote MCP)',
         tools: serverInfo.tools

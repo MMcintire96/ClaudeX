@@ -11,6 +11,7 @@ export interface AgentProcessOptions {
   model?: string | null
   mcpServers?: Record<string, any> | null
   systemPromptAppend?: string | null
+  disallowedTools?: string[] | null
 }
 
 /**
@@ -27,6 +28,7 @@ export class AgentProcess extends EventEmitter {
   private _model: string | null
   private _mcpServers: Record<string, any> | null
   private _systemPromptAppend: string | null
+  private _disallowedTools: string[] | null
   private _isRunning = false
   private _hasCompletedFirstTurn = false
 
@@ -53,10 +55,15 @@ export class AgentProcess extends EventEmitter {
     this._model = options.model ?? null
     this._mcpServers = options.mcpServers ?? null
     this._systemPromptAppend = options.systemPromptAppend ?? null
+    this._disallowedTools = options.disallowedTools ?? null
   }
 
   setModel(model: string | null): void {
     this._model = model
+  }
+
+  updateDisallowedTools(tools: string[] | null): void {
+    this._disallowedTools = tools
   }
 
   start(initialPrompt: string): void {
@@ -127,6 +134,10 @@ export class AgentProcess extends EventEmitter {
         preset: 'claude_code' as const,
         append: this._systemPromptAppend
       }
+    }
+
+    if (this._disallowedTools && this._disallowedTools.length > 0) {
+      options.disallowedTools = this._disallowedTools
     }
 
     console.log(`[AgentProcess] Starting SDK query (resume=${isResume})`)

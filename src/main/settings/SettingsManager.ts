@@ -23,6 +23,8 @@ export interface AppSettings {
   vimChatMode: boolean
   preventSleep: boolean
   mcpServers: McpServerConfig[]
+  disabledRemoteMcpServers: string[] // Remote MCP server names that are disabled
+  knownRemoteMcpServers: Record<string, string[]> // Persisted tool names per remote server
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -35,7 +37,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   notificationSounds: true,
   vimChatMode: false,
   preventSleep: true,
-  mcpServers: []
+  mcpServers: [],
+  disabledRemoteMcpServers: [],
+  knownRemoteMcpServers: {}
 }
 
 /**
@@ -62,7 +66,9 @@ export class SettingsManager {
         notificationSounds: loaded.notificationSounds ?? DEFAULT_SETTINGS.notificationSounds,
         vimChatMode: loaded.vimChatMode ?? DEFAULT_SETTINGS.vimChatMode,
         preventSleep: loaded.preventSleep ?? DEFAULT_SETTINGS.preventSleep,
-        mcpServers: Array.isArray(loaded.mcpServers) ? loaded.mcpServers : []
+        mcpServers: Array.isArray(loaded.mcpServers) ? loaded.mcpServers : [],
+        disabledRemoteMcpServers: Array.isArray(loaded.disabledRemoteMcpServers) ? loaded.disabledRemoteMcpServers : [],
+        knownRemoteMcpServers: (loaded.knownRemoteMcpServers && typeof loaded.knownRemoteMcpServers === 'object') ? loaded.knownRemoteMcpServers : {}
       }
     } catch {
       this.settings = structuredClone(DEFAULT_SETTINGS)
@@ -97,6 +103,12 @@ export class SettingsManager {
     }
     if (partial.mcpServers !== undefined) {
       this.settings.mcpServers = partial.mcpServers
+    }
+    if (partial.disabledRemoteMcpServers !== undefined) {
+      this.settings.disabledRemoteMcpServers = partial.disabledRemoteMcpServers
+    }
+    if (partial.knownRemoteMcpServers !== undefined) {
+      this.settings.knownRemoteMcpServers = partial.knownRemoteMcpServers
     }
     await this.persist()
     return this.settings

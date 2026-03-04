@@ -54,6 +54,12 @@ export class AgentManager {
 
   setMcpManager(manager: McpManager): void {
     this.mcpManager = manager
+    // Persist known remote server tool names whenever they're updated
+    manager.on('knownServersUpdated', () => {
+      if (this.settingsManager) {
+        this.settingsManager.update({ knownRemoteMcpServers: manager.getKnownRemoteServers() }).catch(() => {})
+      }
+    })
   }
 
   private getMcpServerPath(): string {
@@ -216,11 +222,13 @@ export class AgentManager {
 
     const mcpServers = this.buildMcpServers(options.projectPath)
     const systemPromptAppend = await this.buildSystemPromptAppend(!!mcpServers)
+    const disallowedTools = this.mcpManager?.getDisallowedRemoteTools() ?? null
 
     const agentOptions: AgentProcessOptions = {
       ...options,
       mcpServers,
-      systemPromptAppend
+      systemPromptAppend,
+      disallowedTools: disallowedTools && disallowedTools.length > 0 ? disallowedTools : null
     }
 
     const agent = new AgentProcess(agentOptions)
@@ -245,12 +253,14 @@ export class AgentManager {
 
     const mcpServers = this.buildMcpServers(projectPath)
     const systemPromptAppend = await this.buildSystemPromptAppend(!!mcpServers)
+    const disallowedTools = this.mcpManager?.getDisallowedRemoteTools() ?? null
     const agent = new AgentProcess({
       projectPath,
       sessionId,
       model,
       mcpServers,
-      systemPromptAppend
+      systemPromptAppend,
+      disallowedTools: disallowedTools && disallowedTools.length > 0 ? disallowedTools : null
     })
     this.wireEvents(sessionId, agent)
     agent.resume(message)
@@ -275,6 +285,13 @@ export class AgentManager {
     // Re-wire events for the new query
     agent.removeAllListeners()
     this.wireEvents(sessionId, agent)
+
+    // Refresh disallowed tools in case user toggled remote servers since session start
+    if (this.mcpManager) {
+      const disallowedTools = this.mcpManager.getDisallowedRemoteTools()
+      agent.updateDisallowedTools(disallowedTools.length > 0 ? disallowedTools : null)
+    }
+
     agent.resume(content)
   }
 

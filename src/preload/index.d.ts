@@ -150,6 +150,7 @@ export interface ElectronAPI {
   }
   utils: {
     getPathForFile: (file: File) => string
+    readImage: (filePath: string) => Promise<{ success: boolean; dataUrl?: string }>
   }
   mcp: {
     list: () => Promise<Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; claudeReported?: boolean; source?: string; tools?: string[] }>>

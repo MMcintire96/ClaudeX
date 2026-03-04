@@ -293,7 +293,7 @@ export default function CommitModal({ projectPath, onClose, onCommitted }: Commi
           <button
             className="commit-modal-continue"
             onClick={handleContinue}
-            disabled={loading}
+            disabled={loading || !message.trim()}
           >
             {loading ? 'Working...' : 'Continue'}
           </button>

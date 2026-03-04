@@ -112,7 +112,7 @@ export interface ToolResultEvent {
   type: 'tool_result'
   subtype?: string
   tool_use_id: string
-  content: string | Array<{ type: 'text'; text: string }>
+  content: string | Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>
   is_error?: boolean
   uuid?: string
   session_id: string

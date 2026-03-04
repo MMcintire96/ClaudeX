@@ -353,6 +353,8 @@ app.whenReady().then(async () => {
   
   // Initialize MCP manager with saved configs and bridge info
   mcpManager.loadConfigs(settingsManager.getMcpServers())
+  mcpManager.loadDisabledRemoteServers(settingsManager.get().disabledRemoteMcpServers)
+  mcpManager.loadKnownRemoteServers(settingsManager.get().knownRemoteMcpServers)
   mcpManager.setBridgeInfo(bridgeServer.port, bridgeServer.token)
   await mcpManager.loadExternalConfigs() // Load ~/.mcp.json
   mcpManager.startAutoStartServers()

@@ -213,7 +213,7 @@ export default function MCPConfigPanel() {
                 )}
               </div>
               <div className="mcp-server-actions">
-                {!server.external && !server.claudeReported && (
+                {!server.external && (
                   <label className="settings-toggle mcp-toggle" title={server.enabled ? 'Enabled for Claude' : 'Disabled for Claude'}>
                     <input
                       type="checkbox"

@@ -52,6 +52,7 @@ export interface UIToolResultMessage {
   type: 'tool_result'
   toolUseId: string
   content: string
+  imageData?: Array<{ data: string; mimeType: string }>
   isError: boolean
   timestamp: number
 }
@@ -448,12 +449,21 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       case 'tool_result': {
         const toolContent = event.content
         let textContent: string
+        let imageData: Array<{ data: string; mimeType: string }> | undefined
         if (typeof toolContent === 'string') {
           textContent = toolContent
         } else if (Array.isArray(toolContent)) {
-          textContent = (toolContent as Array<{ text: string }>)
-            .map(c => c.text)
-            .join('\n')
+          const textParts: string[] = []
+          const images: Array<{ data: string; mimeType: string }> = []
+          for (const block of toolContent as Array<Record<string, unknown>>) {
+            if (block.type === 'text') {
+              textParts.push(block.text as string)
+            } else if (block.type === 'image') {
+              images.push({ data: block.data as string, mimeType: (block.mimeType as string) || 'image/jpeg' })
+            }
+          }
+          textContent = textParts.join('\n')
+          if (images.length > 0) imageData = images
         } else {
           textContent = String(toolContent)
         }
@@ -464,6 +474,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           type: 'tool_result',
           toolUseId: event.tool_use_id as string,
           content: textContent,
+          ...(imageData ? { imageData } : {}),
           isError: (event.is_error as boolean) ?? false,
           timestamp: Date.now()
         }

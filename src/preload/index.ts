@@ -296,7 +296,9 @@ const api = {
       } catch {
         return ''
       }
-    }
+    },
+    readImage: (filePath: string) =>
+      ipcRenderer.invoke('utils:read-image', filePath) as Promise<{ success: boolean; dataUrl?: string }>
   },
   mcp: {
     list: () =>
