@@ -16,6 +16,7 @@ export default function App() {
   const setProcessing = useSessionStore(s => s.setProcessing)
   const setError = useSessionStore(s => s.setError)
   const renameSession = useSessionStore(s => s.renameSession)
+  const setSuggestion = useSessionStore(s => s.setSuggestion)
   const theme = useUIStore(s => s.theme)
   const removeTerminal = useTerminalStore(s => s.removeTerminal)
   const currentPath = useProjectStore(s => s.currentPath)
@@ -56,14 +57,19 @@ export default function App() {
       renameSession(sessionId, title)
     })
 
+    const unsubSuggestion = window.api.agent.onSuggestion(({ sessionId, suggestion }) => {
+      setSuggestion(sessionId, suggestion)
+    })
+
     return () => {
       unsubEvent()
       unsubEvents()
       unsubClosed()
       unsubError()
       unsubTitle()
+      unsubSuggestion()
     }
-  }, [processEvent, setProcessing, setError, renameSession])
+  }, [processEvent, setProcessing, setError, renameSession, setSuggestion])
 
   // Centralized notification: fire when any non-active session transitions to needsInput
   const sessions = useSessionStore(s => s.sessions)

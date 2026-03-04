@@ -15,6 +15,7 @@ interface ManagedTerminal {
   pty: pty.IPty
   outputBuffer: string[]
   partialLine: string
+  rawBuffer: string
 }
 
 /**
@@ -75,7 +76,8 @@ export class TerminalManager {
       projectPath,
       pty: ptyProcess,
       outputBuffer: [],
-      partialLine: ''
+      partialLine: '',
+      rawBuffer: ''
     }
 
     this.createdAt.set(id, Date.now())
@@ -171,7 +173,15 @@ export class TerminalManager {
     this.terminals.clear()
   }
 
+  private static readonly MAX_RAW_BUFFER = 200_000 // ~200KB of raw PTY output
+
   private _processOutput(managed: ManagedTerminal, data: string): void {
+    // Store raw output for replay when terminal view remounts
+    managed.rawBuffer += data
+    if (managed.rawBuffer.length > TerminalManager.MAX_RAW_BUFFER) {
+      managed.rawBuffer = managed.rawBuffer.slice(-TerminalManager.MAX_RAW_BUFFER)
+    }
+
     managed.partialLine += data
     const lines = managed.partialLine.split('\n')
     managed.partialLine = lines.pop()!
@@ -188,6 +198,12 @@ export class TerminalManager {
     if (!managed) return []
     const buf = managed.outputBuffer
     return buf.slice(Math.max(0, buf.length - lines))
+  }
+
+  getRawBuffer(id: string): string {
+    const managed = this.findTerminal(id)
+    if (!managed) return ''
+    return managed.rawBuffer
   }
 
   private stripAnsi(text: string): string {

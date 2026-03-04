@@ -42,6 +42,11 @@ const api = {
       ipcRenderer.on('agent:title', handler)
       return () => ipcRenderer.removeListener('agent:title', handler)
     },
+    onSuggestion: (callback: (data: { sessionId: string; suggestion: string }) => void) => {
+      const handler = (_: unknown, data: { sessionId: string; suggestion: string }) => callback(data)
+      ipcRenderer.on('agent:suggestion', handler)
+      return () => ipcRenderer.removeListener('agent:suggestion', handler)
+    },
     resume: (sessionId: string, projectPath: string, message: string, model?: string | null) =>
       ipcRenderer.invoke('agent:resume', sessionId, projectPath, message, model),
     fork: (sourceSessionId: string, projectPath: string, sourceSdkSessionId: string | null) =>
@@ -112,6 +117,8 @@ const api = {
       ipcRenderer.invoke('terminal:list', projectPath),
     rename: (id: string, name: string) =>
       ipcRenderer.invoke('terminal:rename', id, name),
+    getBuffer: (id: string): Promise<string> =>
+      ipcRenderer.invoke('terminal:getBuffer', id),
     onData: (callback: (id: string, data: string) => void) => {
       const handler = (_: unknown, id: string, data: string) => callback(id, data)
       ipcRenderer.on('terminal:data', handler)

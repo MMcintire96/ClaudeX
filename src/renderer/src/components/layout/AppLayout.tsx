@@ -87,6 +87,7 @@ export default function AppLayout() {
   const isScratchSession = activeSession?.projectPath === SCRATCH_PROJECT_PATH
   const terminalOwner = isScratchSession ? SCRATCH_PROJECT_PATH : currentPath
   const hasShellTerminals = terminals.some(t => t.projectPath === terminalOwner)
+  const hasAnyTerminals = terminals.length > 0
   const showTerminal = terminalPanelVisible && hasShellTerminals
 
   return (
@@ -107,7 +108,7 @@ export default function AppLayout() {
           </div>
         )}
       </div>
-      {hasShellTerminals && (
+      {hasAnyTerminals && (
         <div style={{ display: showTerminal ? undefined : 'none' }}>
           <TerminalPanel />
         </div>

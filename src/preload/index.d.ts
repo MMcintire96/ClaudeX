@@ -21,6 +21,7 @@ export interface ElectronAPI {
     onError: (callback: (data: { sessionId: string; error: string }) => void) => () => void
     onStderr: (callback: (data: { sessionId: string; data: string }) => void) => () => void
     onTitle: (callback: (data: { sessionId: string; title: string }) => void) => () => void
+    onSuggestion: (callback: (data: { sessionId: string; suggestion: string }) => void) => () => void
     resume: (sessionId: string, projectPath: string, message: string, model?: string | null) => Promise<{ success: boolean; sessionId?: string; error?: string }>
     fork: (sourceSessionId: string, projectPath: string, sourceSdkSessionId: string | null) => Promise<{
       success: boolean

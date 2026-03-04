@@ -16,7 +16,7 @@ const MOD_KEY_LABELS: Record<string, string> = {
 type SettingsTab = 'general' | 'mcp'
 
 export default function SettingsPanel() {
-  const { claude, modKey, vimMode, autoExpandEdits, notificationSounds, vimChatMode, preventSleep, updateSettings } = useSettingsStore()
+  const { claude, modKey, vimMode, autoExpandEdits, notificationSounds, vimChatMode, preventSleep, suggestNextMessage, updateSettings } = useSettingsStore()
   const { theme, setTheme } = useUIStore()
   const currentPath = useProjectStore(s => s.currentPath)
   const [capturing, setCapturing] = useState(false)
@@ -212,6 +212,24 @@ export default function SettingsPanel() {
       {/* Claude */}
       <div className="settings-section">
         <div className="settings-section-title">Claude</div>
+        <div className="settings-row">
+          <div className="settings-label">
+            <span>Suggest next message</span>
+            <span className="settings-description">
+              Predict your next message when Claude finishes
+            </span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={suggestNextMessage}
+              onChange={(e) =>
+                updateSettings({ suggestNextMessage: e.target.checked })
+              }
+            />
+            <span className="settings-toggle-slider" />
+          </label>
+        </div>
         <div className="settings-row">
           <div className="settings-label">
             <span>Skip permissions</span>

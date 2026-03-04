@@ -96,6 +96,9 @@ export default function TerminalView({ terminalId, visible, active, background }
     fitAddonRef.current = fitAddon
     searchAddonRef.current = searchAddon
 
+    // Track whether Ctrl+Shift+V already handled a paste (to avoid duplicate from paste event)
+    let keyPasteInFlight = false
+
     // Ctrl+Shift+C = copy, Ctrl+Shift+V = paste, Ctrl+F = search
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       if (e.type === 'keydown' && e.ctrlKey && e.shiftKey) {
@@ -105,6 +108,7 @@ export default function TerminalView({ terminalId, visible, active, background }
           return false
         }
         if (e.key === 'V' || e.code === 'KeyV') {
+          keyPasteInFlight = true
           navigator.clipboard.readText().then(text => {
             if (text) window.api.terminal.write(terminalId, `\x1b[200~${text}\x1b[201~`)
           })
@@ -124,30 +128,56 @@ export default function TerminalView({ terminalId, visible, active, background }
       return true
     })
 
-    // Prevent xterm's built-in paste handler so Ctrl+Shift+V doesn't paste twice
-    const xtermEl = xtermContainerRef.current!.querySelector('.xterm') as HTMLElement | null
-    const preventDoublePaste = (e: ClipboardEvent) => e.preventDefault()
-    xtermEl?.addEventListener('paste', preventDoublePaste)
+    // Intercept ALL paste events in capture phase (before xterm's handler)
+    // so paste is only handled once through our own write path.
+    const handleTerminalPaste = (e: ClipboardEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      // If Ctrl+Shift+V key handler already sent the paste, skip
+      if (keyPasteInFlight) {
+        keyPasteInFlight = false
+        return
+      }
+
+      const text = e.clipboardData?.getData('text/plain')
+      if (text) {
+        window.api.terminal.write(terminalId, `\x1b[200~${text}\x1b[201~`)
+      }
+    }
+    const containerEl = xtermContainerRef.current!
+    containerEl.addEventListener('paste', handleTerminalPaste, true)
 
     // User keystrokes → PTY
     const onDataDisposable = term.onData((data: string) => {
       window.api.terminal.write(terminalId, data)
     })
 
-    // PTY output → terminal screen (filtered by terminal ID)
-    const unsubData = window.api.terminal.onData(
-      (id: string, data: string) => {
-        if (id === terminalId) {
-          term.write(data)
-        }
-      }
-    )
-
     // PTY exit → handled by store (via App.tsx listener)
     const unsubExit = window.api.terminal.onExit((id: string) => {
       if (id === terminalId) {
         term.write('\r\n\x1b[90m[Process exited]\x1b[0m\r\n')
       }
+    })
+
+    // Replay buffered output from main process, then subscribe to live data.
+    // This ordering avoids duplicate output from the race between buffer
+    // snapshot and live event subscription.
+    let unsubData: (() => void) | null = null
+    let disposed = false
+    window.api.terminal.getBuffer(terminalId).then((raw: string) => {
+      if (disposed) return
+      if (raw) {
+        term.write(raw)
+      }
+      // Subscribe to live PTY data only after buffer is replayed
+      unsubData = window.api.terminal.onData(
+        (id: string, data: string) => {
+          if (id === terminalId) {
+            term.write(data)
+          }
+        }
+      )
     })
 
     // ResizeObserver → fit + notify PTY
@@ -162,10 +192,11 @@ export default function TerminalView({ terminalId, visible, active, background }
     observer.observe(xtermContainerRef.current)
 
     return () => {
-      xtermEl?.removeEventListener('paste', preventDoublePaste)
+      disposed = true
+      containerEl.removeEventListener('paste', handleTerminalPaste, true)
       observer.disconnect()
       onDataDisposable.dispose()
-      unsubData()
+      unsubData?.()
       unsubExit()
       term.dispose()
       termRef.current = null

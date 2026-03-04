@@ -6,6 +6,7 @@ import { AgentProcess, AgentProcessOptions } from './AgentProcess'
 import type { AgentEvent, StreamEvent } from './types'
 import { broadcastSend } from '../broadcast'
 import { generateSessionTitle } from './TitleGenerator'
+import { generateSuggestion } from './SuggestionGenerator'
 import { loadUserSkills, formatSkillsForPrompt } from './SkillLoader'
 import type { SettingsManager } from '../settings/SettingsManager'
 import type { NeovimManager } from '../neovim/NeovimManager'
@@ -31,6 +32,8 @@ export class AgentManager {
   private static readonly MAX_DELTA_BUFFER = 500
   private initialPrompts: Map<string, string> = new Map()
   private titleGenerated: Set<string> = new Set()
+  private lastUserMessage: Map<string, string> = new Map()
+  private lastResultText: Map<string, string> = new Map()
   private settingsManager: SettingsManager | null = null
   private neovimManager: NeovimManager | null = null
   private mcpManager: McpManager | null = null
@@ -153,6 +156,11 @@ export class AgentManager {
         }
         broadcastSend(this.mainWindow,'agent:event', { sessionId, event })
 
+        // Capture last result text for suggestion generation
+        if (event.type === 'result' && (event as import('./types').ResultEvent).result) {
+          this.lastResultText.set(sessionId, (event as import('./types').ResultEvent).result!)
+        }
+
         // Refresh Neovim buffers when a tool finishes (files may have changed)
         if (event.type === 'tool_result' && this.neovimManager) {
           const agent = this.agents.get(sessionId)
@@ -186,6 +194,19 @@ export class AgentManager {
           }
         })
       }
+
+      // Generate next-message suggestion (if enabled in settings)
+      const suggestEnabled = this.settingsManager?.get().suggestNextMessage ?? true
+      const lastUser = this.lastUserMessage.get(sessionId)
+      const lastResult = this.lastResultText.get(sessionId)
+      if (suggestEnabled && lastUser && lastResult) {
+        generateSuggestion(lastUser, lastResult).then(suggestion => {
+          if (suggestion) {
+            broadcastSend(this.mainWindow, 'agent:suggestion', { sessionId, suggestion })
+          }
+        })
+      }
+      this.lastResultText.delete(sessionId)
     })
 
     agent.on('error', (err: Error) => {
@@ -236,6 +257,7 @@ export class AgentManager {
     this.wireEvents(sessionId, agent)
 
     this.initialPrompts.set(sessionId, initialPrompt)
+    this.lastUserMessage.set(sessionId, initialPrompt)
     agent.start(initialPrompt)
     this.agents.set(sessionId, agent)
     return sessionId
@@ -292,6 +314,7 @@ export class AgentManager {
       agent.updateDisallowedTools(disallowedTools.length > 0 ? disallowedTools : null)
     }
 
+    this.lastUserMessage.set(sessionId, content)
     agent.resume(content)
   }
 

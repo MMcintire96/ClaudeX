@@ -173,6 +173,8 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const messages = useSessionStore(s => s.sessions[sessionId]?.messages ?? EMPTY_MESSAGES)
   const session = useSessionStore(s => s.sessions[sessionId])
   const isForkParent = session?.isForkParent ?? false
+  const suggestion = session?.suggestion ?? null
+  const setSuggestion = useSessionStore(s => s.setSuggestion)
   const detectedModel = session?.model ?? null
   const selectedModel = session?.selectedModel ?? DEFAULT_MODEL
   const thinkingText = useSessionStore(s => s.thinkingText[sessionId] ?? null)
@@ -658,6 +660,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
 
     setInputText('')
     setPastedChunks([])
+    setSuggestion(sessionId, null)
     sessionDrafts.delete(sessionId)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -750,6 +753,20 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
 
     // Vim mode handling
     if (vim.handleKeyDown(e)) return
+
+    // Tab to accept suggestion
+    if (e.key === 'Tab' && !filePickerOpen && suggestion && !inputText) {
+      e.preventDefault()
+      setInputText(suggestion)
+      setSuggestion(sessionId, null)
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto'
+          textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
+        }
+      }, 0)
+      return
+    }
 
     // File picker keyboard nav
     if (filePickerOpen && filteredPickerFiles.length > 0) {
@@ -853,6 +870,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     const val = e.target.value
     setInputText(val)
     historyIndexRef.current = -1
+    if (suggestion) setSuggestion(sessionId, null)
 
     // @ file picker detection
     const cursor = e.target.selectionStart
@@ -1296,7 +1314,12 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
           )}
           <div className="textarea-wrapper">
             <div className="input-highlight-overlay" aria-hidden="true">
-              {inputText ? renderHighlightedInput(inputText) : <span className="input-highlight-placeholder">{isForkParent ? 'Session forked — switch to a fork to continue' : 'Message Claude... (Enter to send)'}</span>}
+              {inputText
+                ? renderHighlightedInput(inputText)
+                : suggestion && !isProcessing
+                  ? <span className="input-suggestion-ghost">{suggestion}<span className="input-suggestion-hint">Tab</span></span>
+                  : <span className="input-highlight-placeholder">{isForkParent ? 'Session forked — switch to a fork to continue' : 'Message Claude... (Enter to send)'}</span>
+              }
             </div>
             <textarea
               ref={textareaRef}

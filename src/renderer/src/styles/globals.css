@@ -2279,6 +2279,23 @@ body {
 .input-highlight-placeholder {
   color: var(--text-muted);
 }
+.input-suggestion-ghost {
+  color: var(--text-muted);
+  opacity: 0.5;
+  font-style: italic;
+}
+.input-suggestion-hint {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-style: normal;
+  opacity: 0.6;
+  border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+  border-radius: 3px;
+  vertical-align: middle;
+  line-height: 1.4;
+}
 .input-file-ref {
   color: var(--accent, #5b9bd5);
 }
@@ -3992,6 +4009,16 @@ body {
 }
 .tree-item-thread.status-attention {
 }
+.tree-item-thread.unread {
+  color: var(--accent, #7c9bf7);
+  background: color-mix(in srgb, var(--accent, #7c9bf7) 8%, transparent);
+}
+.tree-item-thread.unread:hover {
+  background: color-mix(in srgb, var(--accent, #7c9bf7) 14%, transparent);
+}
+.tree-item-thread.unread .tree-item-status-indicator {
+  color: var(--accent, #7c9bf7) !important;
+}
 .tree-item-thread.tree-item-past {
   color: var(--text-muted);
   opacity: 0.7;
@@ -4194,6 +4221,7 @@ body {
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
   animation: modal-in 0.3s var(--transition-smooth, ease);
+  margin: auto;
 }
 @keyframes modal-in {
   from { opacity: 0; transform: scale(0.95) translateY(10px); }
@@ -5057,6 +5085,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow-y: auto;
   animation: overlay-in 0.2s ease;
 }
 @keyframes overlay-in {

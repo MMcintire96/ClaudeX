@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 interface StartCommand {
   name: string
@@ -63,7 +64,7 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
 
   if (loading) return null
 
-  return (
+  return createPortal(
     <div className="hotkeys-overlay" onClick={onClose}>
       <div className="start-config-modal" onClick={e => e.stopPropagation()}>
         <div className="hotkeys-header">
@@ -126,6 +127,7 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

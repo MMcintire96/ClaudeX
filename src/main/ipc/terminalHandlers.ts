@@ -47,6 +47,10 @@ export function registerTerminalHandlers(
     return { success: true }
   })
 
+  ipcMain.handle('terminal:getBuffer', (_event, id: string) => {
+    return terminalManager.getRawBuffer(id)
+  })
+
   // Session history handlers
   ipcMain.handle('session:history', (_event, projectPath: string) => {
     if (!sessionPersistence) return []

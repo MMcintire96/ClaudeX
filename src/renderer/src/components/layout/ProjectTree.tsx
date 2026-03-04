@@ -206,10 +206,11 @@ export default function ProjectTree({
           const isRunning = s.isProcessing
           const needsInput = sessionNeedsInput(s)
           const status = needsInput ? 'needs-input' : isRunning ? 'running' : 'idle'
+          const hasUnread = s.hasUnread && !isActive
           return (
             <button
               key={s.sessionId}
-              className={`tree-item tree-item-thread ${isActive ? 'active' : ''} status-${status}`}
+              className={`tree-item tree-item-thread ${isActive ? 'active' : ''} ${hasUnread ? 'unread' : ''} status-${status}`}
               onClick={() => onSelectSession(s.sessionId)}
               onDoubleClick={() => setRenamingSessionId(s.sessionId)}
               onContextMenu={(e) => {

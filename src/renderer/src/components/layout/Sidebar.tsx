@@ -28,6 +28,7 @@ export default function Sidebar() {
   const sessions = useSessionStore(s => s.sessions)
   const createSession = useSessionStore(s => s.createSession)
   const setActiveSession = useSessionStore(s => s.setActiveSession)
+  const markAsRead = useSessionStore(s => s.markAsRead)
   const removeSession = useSessionStore(s => s.removeSession)
 
   useEffect(() => {
@@ -151,7 +152,8 @@ export default function Sidebar() {
       await switchToProject(session.projectPath)
     }
     setActiveSession(sessionId)
-  }, [currentPath, setActiveSession])
+    markAsRead(sessionId)
+  }, [currentPath, setActiveSession, markAsRead])
 
   const handleOpenProject = useCallback(async () => {
     const result = await window.api.project.open()

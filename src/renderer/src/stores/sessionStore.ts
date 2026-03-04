@@ -108,6 +108,10 @@ export interface SessionState {
   isForkParent: boolean
   // SDK-provided skills/slash commands for this session
   sdkSkills: string[]
+  // Whether this session has unread responses (model finished while user wasn't viewing)
+  hasUnread: boolean
+  // Predicted next message suggestion (shown as ghost text in input)
+  suggestion: string | null
 }
 
 function createSessionState(sessionId: string, projectPath: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }): SessionState {
@@ -136,7 +140,9 @@ function createSessionState(sessionId: string, projectPath: string, worktreeOpts
     forkChildren: null,
     forkLabel: null,
     isForkParent: false,
-    sdkSkills: []
+    sdkSkills: [],
+    hasUnread: false,
+    suggestion: null
   }
 }
 
@@ -169,6 +175,8 @@ interface SessionStore {
   addSystemMessage: (sessionId: string, content: string) => void
   restoreSession: (data: { id: string; projectPath: string; name: string; messages?: unknown[]; model?: string | null; totalCostUsd?: number; numTurns?: number; selectedModel?: string | null; createdAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null; forkedFrom?: string | null; forkLabel?: string | null; forkChildren?: string[] | null; isForkParent?: boolean }) => void
   clearRestored: (sessionId: string) => void
+  setSuggestion: (sessionId: string, suggestion: string | null) => void
+  markAsRead: (sessionId: string) => void
   markAsForked: (sessionId: string, childIds: [string, string]) => void
   getSerializableSessions: () => Array<{ id: string; projectPath: string; name: string; messages: UIMessage[]; model: string | null; totalCostUsd: number; numTurns: number; selectedModel: string | null; createdAt: number; lastActiveAt: number; worktreePath: string | null; isWorktree: boolean; worktreeSessionId: string | null; forkedFrom: string | null; forkChildren: string[] | null; forkLabel: string | null; isForkParent: boolean }>
 }
@@ -532,10 +540,33 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   setProcessing: (sessionId: string, processing: boolean): void => {
     set(s => {
       if (!s.sessions[sessionId]) return s
+      const session = s.sessions[sessionId]
+      // Mark as unread when processing finishes and this isn't the active session
+      const hasUnread = !processing && session.isProcessing && s.activeSessionId !== sessionId
+        ? true
+        : session.hasUnread
       return {
         sessions: {
           ...s.sessions,
-          [sessionId]: { ...s.sessions[sessionId], isProcessing: processing }
+          [sessionId]: {
+            ...session,
+            isProcessing: processing,
+            hasUnread,
+            // Clear suggestion when a new run starts
+            suggestion: processing ? null : session.suggestion
+          }
+        }
+      }
+    })
+  },
+
+  setSuggestion: (sessionId: string, suggestion: string | null): void => {
+    set(s => {
+      if (!s.sessions[sessionId]) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: { ...s.sessions[sessionId], suggestion }
         }
       }
     })
@@ -630,7 +661,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       forkChildren: data.forkChildren ?? null,
       forkLabel: data.forkLabel ?? null,
       isForkParent: data.isForkParent ?? false,
-      sdkSkills: []
+      sdkSkills: [],
+      hasUnread: false,
+      suggestion: null
     }
     set(s => ({
       sessions: { ...s.sessions, [data.id]: session },
@@ -645,6 +678,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         sessions: {
           ...s.sessions,
           [sessionId]: { ...s.sessions[sessionId], isRestored: false }
+        }
+      }
+    })
+  },
+
+  markAsRead: (sessionId: string): void => {
+    set(s => {
+      if (!s.sessions[sessionId]?.hasUnread) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: { ...s.sessions[sessionId], hasUnread: false }
         }
       }
     })

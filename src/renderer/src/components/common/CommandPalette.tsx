@@ -646,7 +646,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
           label: s.name,
           description: 'Active',
           sessionId: s.sessionId,
-          action: () => useSessionStore.getState().setActiveSession(s.sessionId)
+          action: () => { const store = useSessionStore.getState(); store.setActiveSession(s.sessionId); store.markAsRead(s.sessionId) }
         })
       }
     }
@@ -661,7 +661,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         label: s.name,
         description: 'Quick Chat',
         sessionId: s.sessionId,
-        action: () => useSessionStore.getState().setActiveSession(s.sessionId)
+        action: () => { const store = useSessionStore.getState(); store.setActiveSession(s.sessionId); store.markAsRead(s.sessionId) }
       })
     }
 
