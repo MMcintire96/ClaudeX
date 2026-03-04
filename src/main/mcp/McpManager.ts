@@ -200,41 +200,33 @@ export class McpManager extends EventEmitter {
    * Called when we receive a system init event from the agent
    */
   updateClaudeReportedServers(mcpServers: Record<string, unknown>[] | undefined, tools: string[]): void {
-    console.log('[McpManager] updateClaudeReportedServers called with', tools.length, 'tools')
-    
     // Extract MCP server names from tools (format: mcp__servername__toolname)
     // Server names can contain single underscores (e.g., claude_ai_HubSpot)
     // Separators are double underscores (__)
     // Example: mcp__claude_ai_HubSpot__search_crm_objects
     //   -> server: claude_ai_HubSpot, tool: search_crm_objects
     const serverTools: Map<string, string[]> = new Map()
-    
+
     for (const tool of tools) {
       if (!tool.startsWith('mcp__')) continue
-      
+
       // Remove "mcp__" prefix and split by "__" (double underscore)
       const withoutPrefix = tool.slice(5) // Remove "mcp__"
       const parts = withoutPrefix.split('__')
-      
-      console.log('[McpManager] Parsing tool:', tool, '-> parts:', parts)
-      
+
       if (parts.length >= 2) {
         // First part is server name, last part is tool name
         // If there are more than 2 parts, the middle ones are part of server name
         const serverName = parts.slice(0, -1).join('__')
         const toolName = parts[parts.length - 1]
-        
-        console.log('[McpManager] Extracted server:', serverName, 'tool:', toolName)
-        
+
         if (!serverTools.has(serverName)) {
           serverTools.set(serverName, [])
         }
         serverTools.get(serverName)!.push(toolName)
       }
     }
-    
-    console.log('[McpManager] Found servers:', Array.from(serverTools.keys()))
-    
+
     // Update claude-reported servers
     let changed = false
     let knownChanged = false

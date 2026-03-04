@@ -10,7 +10,13 @@ export const THEME_LIST = [
   'tokyo-night',
   'gruvbox-dark',
   'one-dark',
-  'rose-pine'
+  'rose-pine',
+  'catppuccin-latte',
+  'everforest-dark',
+  'kanagawa',
+  'ayu-dark',
+  'github-dark',
+  'synthwave'
 ] as const
 
 export type ThemeName = (typeof THEME_LIST)[number]
@@ -36,7 +42,13 @@ export const THEME_META: ThemeMeta[] = [
   { id: 'tokyo-night', label: 'Tokyo Night', isDark: true, previewColors: { bg: '#1a1b26', fg: '#a9b1d6', accent: '#7aa2f7' } },
   { id: 'gruvbox-dark', label: 'Gruvbox Dark', isDark: true, previewColors: { bg: '#282828', fg: '#ebdbb2', accent: '#fabd2f' } },
   { id: 'one-dark', label: 'One Dark', isDark: true, previewColors: { bg: '#282c34', fg: '#abb2bf', accent: '#61afef' } },
-  { id: 'rose-pine', label: 'Rose Pine', isDark: true, previewColors: { bg: '#191724', fg: '#e0def4', accent: '#c4a7e7' } }
+  { id: 'rose-pine', label: 'Rose Pine', isDark: true, previewColors: { bg: '#191724', fg: '#e0def4', accent: '#c4a7e7' } },
+  { id: 'catppuccin-latte', label: 'Catppuccin Latte', isDark: false, previewColors: { bg: '#eff1f5', fg: '#4c4f69', accent: '#8839ef' } },
+  { id: 'everforest-dark', label: 'Everforest Dark', isDark: true, previewColors: { bg: '#2d353b', fg: '#d3c6aa', accent: '#a7c080' } },
+  { id: 'kanagawa', label: 'Kanagawa', isDark: true, previewColors: { bg: '#1f1f28', fg: '#dcd7ba', accent: '#7e9cd8' } },
+  { id: 'ayu-dark', label: 'Ayu Dark', isDark: true, previewColors: { bg: '#0d1017', fg: '#bfbdb6', accent: '#e6b450' } },
+  { id: 'github-dark', label: 'GitHub Dark', isDark: true, previewColors: { bg: '#0d1117', fg: '#e6edf3', accent: '#58a6ff' } },
+  { id: 'synthwave', label: 'Synthwave', isDark: true, previewColors: { bg: '#1a1028', fg: '#e0d0ff', accent: '#ff7edb' } }
 ]
 
 const THEME_SET = new Set<string>(THEME_LIST)
