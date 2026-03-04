@@ -46,6 +46,17 @@ const api = {
       ipcRenderer.invoke('agent:resume', sessionId, projectPath, message, model),
     fork: (sourceSessionId: string, projectPath: string, sourceSdkSessionId: string | null) =>
       ipcRenderer.invoke('agent:fork', sourceSessionId, projectPath, sourceSdkSessionId),
+    linkSessions: (sessionA: { id: string; name: string }, sessionB: { id: string; name: string }) =>
+      ipcRenderer.invoke('agent:link-sessions', sessionA, sessionB),
+    pairSessions: (sessionA: string, sessionB: string) =>
+      ipcRenderer.invoke('agent:pair-sessions', sessionA, sessionB),
+    unpairSessions: (sessionId: string) =>
+      ipcRenderer.invoke('agent:unpair-sessions', sessionId),
+    onForwardedReview: (callback: (data: { sessionId: string; content: string }) => void) => {
+      const handler = (_: unknown, data: { sessionId: string; content: string }) => callback(data)
+      ipcRenderer.on('agent:forwarded-review', handler)
+      return () => ipcRenderer.removeListener('agent:forwarded-review', handler)
+    },
   },
   project: {
     open: () =>

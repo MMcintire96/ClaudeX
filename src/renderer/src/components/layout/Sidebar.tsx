@@ -6,6 +6,8 @@ import { useSessionStore, sessionNeedsInput } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import ProjectTree from './ProjectTree'
+import { useSessionPreview } from '../../hooks/useSessionPreview'
+import SessionPreviewCard from './SessionPreviewCard'
 
 export default function Sidebar() {
   const [creatingThread, setCreatingThread] = useState(false)
@@ -19,10 +21,15 @@ export default function Sidebar() {
   const {
     setSidePanelView, projectSidePanelMemory
   } = useUIStore()
+  const splitView = useUIStore(s => s.splitView)
+  const splitSessionId = useUIStore(s => s.splitSessionId)
+  const projectPairMemory = useUIStore(s => s.projectPairMemory)
   const { loadSettings } = useSettingsStore()
   const {
     terminals, removeTerminal, switchToProjectTerminals
   } = useTerminalStore()
+
+  const sessionPreview = useSessionPreview()
 
   const activeSessionId = useSessionStore(s => s.activeSessionId)
   const sessions = useSessionStore(s => s.sessions)
@@ -151,11 +158,51 @@ export default function Sidebar() {
     if (session && session.projectPath !== SCRATCH_PROJECT_PATH && session.projectPath !== currentPath) {
       await switchToProject(session.projectPath)
     }
-    setActiveSession(sessionId)
+    const uiState = useUIStore.getState()
+
+    // If clicking a session that's part of the active split pair, just focus its pane
+    if (uiState.splitView && uiState.splitSessionId) {
+      const currentActive = useSessionStore.getState().activeSessionId
+      if (sessionId === currentActive) {
+        uiState.setFocusedSplitPane('left')
+        markAsRead(sessionId)
+        return
+      }
+      if (sessionId === uiState.splitSessionId) {
+        uiState.setFocusedSplitPane('right')
+        markAsRead(sessionId)
+        return
+      }
+    }
+
+    // If clicking a session in a stored pair (split view suspended), restore split view
+    if (!uiState.splitView && session) {
+      const pair = uiState.projectPairMemory[session.projectPath]
+      if (pair && (sessionId === pair.writerId || sessionId === pair.reviewerId)) {
+        const allSessions = useSessionStore.getState().sessions
+        if (allSessions[pair.writerId] && allSessions[pair.reviewerId]) {
+          setActiveSession(pair.writerId)
+          uiState.restoreSplitView(pair.reviewerId)
+          markAsRead(sessionId)
+          return
+        } else {
+          // One session was closed, clear stale pair
+          uiState.clearProjectPair(session.projectPath)
+        }
+      }
+    }
+
+    if (uiState.splitView && uiState.focusedSplitPane === 'right') {
+      uiState.setSplitSessionId(sessionId)
+    } else {
+      setActiveSession(sessionId)
+    }
     markAsRead(sessionId)
   }, [currentPath, setActiveSession, markAsRead])
 
   const handleOpenProject = useCallback(async () => {
+    const uiState = useUIStore.getState()
+    if (uiState.splitView) uiState.suspendSplitView()
     const result = await window.api.project.open()
     if (result.success && result.path) {
       setProject(result.path, result.isGitRepo ?? false)
@@ -169,6 +216,9 @@ export default function Sidebar() {
 
   const switchToProject = useCallback(async (path: string) => {
     if (path === currentPath) return
+    // Suspend split view when switching projects — pair memory is preserved for restoration
+    const uiState = useUIStore.getState()
+    if (uiState.splitView) uiState.suspendSplitView()
     const result = await window.api.project.selectRecent(path)
     if (!result.success) return
     setProject(result.path, result.isGitRepo)
@@ -455,6 +505,9 @@ export default function Sidebar() {
               onForkSession={handleForkSession}
               historyEntries={historyByProject[proj.path] || []}
               onResumeHistory={handleResumeHistory}
+              sessionPreview={sessionPreview}
+              pairedWriterId={projectPairMemory[proj.path]?.writerId ?? null}
+              pairedReviewerId={projectPairMemory[proj.path]?.reviewerId ?? null}
             />
           </div>
         ))}
@@ -493,7 +546,12 @@ export default function Sidebar() {
                 const isRunning = s.isProcessing
                 const needsInput = sessionNeedsInput(s)
                 return (
-                  <div key={s.sessionId} className={`tree-item tree-item-thread${isActive ? ' active' : ''}`}>
+                  <div
+                    key={s.sessionId}
+                    className={`tree-item tree-item-thread${isActive ? ' active' : ''}`}
+                    onMouseEnter={(e) => sessionPreview.onSessionMouseEnter(e, s.sessionId, null)}
+                    onMouseLeave={() => sessionPreview.onSessionMouseLeave()}
+                  >
                     <button
                       className="tree-item-btn"
                       onClick={() => handleSelectSession(s.sessionId)}
@@ -519,7 +577,12 @@ export default function Sidebar() {
                 )
               })}
               {scratchHistory.map(entry => (
-                <div key={entry.id} className="tree-item tree-item-thread tree-item-history">
+                <div
+                  key={entry.id}
+                  className="tree-item tree-item-thread tree-item-history"
+                  onMouseEnter={(e) => sessionPreview.onSessionMouseEnter(e, null, { name: entry.name, createdAt: entry.createdAt, endedAt: entry.endedAt })}
+                  onMouseLeave={() => sessionPreview.onSessionMouseLeave()}
+                >
                   <button
                     className="tree-item-btn"
                     onClick={() => handleResumeHistory(entry)}
@@ -537,6 +600,15 @@ export default function Sidebar() {
         })()}
       </div>
 
+      {sessionPreview.previewTarget && (
+        <SessionPreviewCard
+          sessionId={sessionPreview.previewTarget.sessionId}
+          historyEntry={sessionPreview.previewTarget.historyEntry}
+          triggerRect={sessionPreview.previewTarget.triggerRect}
+          onMouseEnter={sessionPreview.onPreviewMouseEnter}
+          onMouseLeave={sessionPreview.onPreviewMouseLeave}
+        />
+      )}
     </aside>
   )
 }

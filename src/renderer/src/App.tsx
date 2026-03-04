@@ -17,6 +17,7 @@ export default function App() {
   const setError = useSessionStore(s => s.setError)
   const renameSession = useSessionStore(s => s.renameSession)
   const setSuggestion = useSessionStore(s => s.setSuggestion)
+  const addUserMessage = useSessionStore(s => s.addUserMessage)
   const theme = useUIStore(s => s.theme)
   const removeTerminal = useTerminalStore(s => s.removeTerminal)
   const currentPath = useProjectStore(s => s.currentPath)
@@ -61,6 +62,12 @@ export default function App() {
       setSuggestion(sessionId, suggestion)
     })
 
+    // Handle auto-forwarded review messages from paired sessions
+    const unsubForwarded = window.api.agent.onForwardedReview(({ sessionId, content }) => {
+      addUserMessage(sessionId, content)
+      setProcessing(sessionId, true)
+    })
+
     return () => {
       unsubEvent()
       unsubEvents()
@@ -68,8 +75,9 @@ export default function App() {
       unsubError()
       unsubTitle()
       unsubSuggestion()
+      unsubForwarded()
     }
-  }, [processEvent, setProcessing, setError, renameSession, setSuggestion])
+  }, [processEvent, setProcessing, setError, renameSession, setSuggestion, addUserMessage])
 
   // Centralized notification: fire when any non-active session transitions to needsInput
   const sessions = useSessionStore(s => s.sessions)
@@ -350,6 +358,20 @@ export default function App() {
       if (key === 'p' && !e.shiftKey) {
         e.preventDefault()
         useUIStore.getState().toggleChatDetached()
+        return
+      }
+
+      // Mod+E — Toggle split view
+      if (key === 'e') {
+        e.preventDefault()
+        const ui = useUIStore.getState()
+        // When explicitly closing split view, clear the pair memory
+        if (ui.splitView) {
+          const activeId = useSessionStore.getState().activeSessionId
+          const session = activeId ? useSessionStore.getState().sessions[activeId] : null
+          if (session) ui.clearProjectPair(session.projectPath)
+        }
+        ui.toggleSplitView()
         return
       }
 

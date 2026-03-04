@@ -6,6 +6,7 @@ import { SettingsManager } from '../settings/SettingsManager'
 import { VoiceManager } from '../voice/VoiceManager'
 import { SessionPersistence } from '../session/SessionPersistence'
 import { ProjectConfigManager } from '../project/ProjectConfigManager'
+import { ClaudexBridgeServer } from '../bridge/ClaudexBridgeServer'
 import { registerAgentHandlers } from './agentHandlers'
 import { registerProjectHandlers } from './projectHandlers'
 import { registerBrowserHandlers } from './browserHandlers'
@@ -31,9 +32,10 @@ export function registerAllHandlers(
   projectConfigManager?: ProjectConfigManager,
   worktreeManager?: WorktreeManager,
   neovimManager?: NeovimManager,
-  mcpManager?: McpManager
+  mcpManager?: McpManager,
+  bridgeServer?: ClaudexBridgeServer
 ): void {
-  registerAgentHandlers(agentManager, worktreeManager, sessionPersistence)
+  registerAgentHandlers(agentManager, worktreeManager, sessionPersistence, bridgeServer)
   registerProjectHandlers(projectManager, projectConfigManager, terminalManager)
   registerBrowserHandlers(browserManager)
   registerTerminalHandlers(terminalManager, sessionPersistence)

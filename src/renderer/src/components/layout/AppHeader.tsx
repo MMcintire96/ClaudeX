@@ -29,6 +29,7 @@ export default function AppHeader() {
 
   const chatDetached = useUIStore(s => s.chatDetached)
   const toggleChatDetached = useUIStore(s => s.toggleChatDetached)
+  const splitView = useUIStore(s => s.splitView)
 
   // Use worktree path if the active session is in a worktree, otherwise project path
   const effectiveCwd = activeSession?.worktreePath || currentPath
@@ -311,6 +312,7 @@ const handleRunStart = useCallback(async () => {
             className={`btn-header-icon ${chatDetached ? 'active' : ''}`}
             onClick={toggleChatDetached}
             title={chatDetached ? 'Dock chat' : 'Pop out chat'}
+            disabled={splitView}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               {chatDetached ? (

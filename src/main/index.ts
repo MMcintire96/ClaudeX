@@ -360,10 +360,11 @@ app.whenReady().then(async () => {
   mcpManager.startAutoStartServers()
   
   agentManager.setBridgeInfo(bridgeServer.port, bridgeServer.token)
+  agentManager.setBridgeServer(bridgeServer)
   agentManager.setSettingsManager(settingsManager)
   agentManager.setNeovimManager(neovimManager)
   agentManager.setMcpManager(mcpManager)
-  registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager)
+  registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager, bridgeServer)
 
   createWindow()
 

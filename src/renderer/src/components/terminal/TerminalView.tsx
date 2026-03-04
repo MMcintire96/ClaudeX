@@ -47,6 +47,17 @@ export default function TerminalView({ terminalId, visible, active, background }
     }
   }, [terminalId])
 
+  const handleSendToClaude = useCallback(() => {
+    const term = termRef.current
+    if (!term) return
+    const selection = term.getSelection()
+    if (!selection) return
+    const lineCount = selection.split('\n').length
+    window.dispatchEvent(new CustomEvent('claude-add-terminal-output', {
+      detail: { text: selection, lineCount, charCount: selection.length }
+    }))
+  }, [])
+
   // Close context menu on outside click
   useEffect(() => {
     if (!contextMenu) return
@@ -317,6 +328,14 @@ export default function TerminalView({ terminalId, visible, active, background }
             onClick={() => { handlePaste(); setContextMenu(null) }}
           >
             Paste
+          </button>
+          <div className="context-menu-separator" />
+          <button
+            className="context-menu-item"
+            disabled={!termRef.current?.getSelection()}
+            onClick={() => { handleSendToClaude(); setContextMenu(null) }}
+          >
+            Send to Claude
           </button>
         </div>
       )}

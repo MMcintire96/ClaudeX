@@ -15,6 +15,7 @@ const HOTKEYS = [
   { key: 'D', label: 'Toggle diff panel' },
   { key: 'S', label: 'Toggle sidebar' },
   { key: 'L', label: 'Cycle color scheme' },
+  { key: 'E', label: 'Toggle split view' },
   { key: 'V', label: 'Voice input' },
   { key: 'W', label: 'Close active Claude tab' },
   { key: '1–9', label: 'Switch to Claude tab N' }

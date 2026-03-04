@@ -16,7 +16,10 @@ export const THEME_LIST = [
   'kanagawa',
   'ayu-dark',
   'github-dark',
-  'synthwave'
+  'github-light',
+  'synthwave',
+  'rose-pine-dawn',
+  'one-light'
 ] as const
 
 export type ThemeName = (typeof THEME_LIST)[number]
@@ -48,7 +51,10 @@ export const THEME_META: ThemeMeta[] = [
   { id: 'kanagawa', label: 'Kanagawa', isDark: true, previewColors: { bg: '#1f1f28', fg: '#dcd7ba', accent: '#7e9cd8' } },
   { id: 'ayu-dark', label: 'Ayu Dark', isDark: true, previewColors: { bg: '#0d1017', fg: '#bfbdb6', accent: '#e6b450' } },
   { id: 'github-dark', label: 'GitHub Dark', isDark: true, previewColors: { bg: '#0d1117', fg: '#e6edf3', accent: '#58a6ff' } },
-  { id: 'synthwave', label: 'Synthwave', isDark: true, previewColors: { bg: '#1a1028', fg: '#e0d0ff', accent: '#ff7edb' } }
+  { id: 'github-light', label: 'GitHub Light', isDark: false, previewColors: { bg: '#ffffff', fg: '#1f2328', accent: '#0969da' } },
+  { id: 'synthwave', label: 'Synthwave', isDark: true, previewColors: { bg: '#1a1028', fg: '#e0d0ff', accent: '#ff7edb' } },
+  { id: 'rose-pine-dawn', label: 'Rose Pine Dawn', isDark: false, previewColors: { bg: '#faf4ed', fg: '#575279', accent: '#907aa9' } },
+  { id: 'one-light', label: 'One Light', isDark: false, previewColors: { bg: '#fafafa', fg: '#383a42', accent: '#4078f2' } }
 ]
 
 const THEME_SET = new Set<string>(THEME_LIST)

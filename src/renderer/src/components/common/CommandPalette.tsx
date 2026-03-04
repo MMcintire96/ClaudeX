@@ -646,7 +646,16 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
           label: s.name,
           description: 'Active',
           sessionId: s.sessionId,
-          action: () => { const store = useSessionStore.getState(); store.setActiveSession(s.sessionId); store.markAsRead(s.sessionId) }
+          action: () => {
+            const store = useSessionStore.getState()
+            const ui = useUIStore.getState()
+            if (ui.splitView && ui.focusedSplitPane === 'right') {
+              ui.setSplitSessionId(s.sessionId)
+            } else {
+              store.setActiveSession(s.sessionId)
+            }
+            store.markAsRead(s.sessionId)
+          }
         })
       }
     }
@@ -661,7 +670,16 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         label: s.name,
         description: 'Quick Chat',
         sessionId: s.sessionId,
-        action: () => { const store = useSessionStore.getState(); store.setActiveSession(s.sessionId); store.markAsRead(s.sessionId) }
+        action: () => {
+          const store = useSessionStore.getState()
+          const ui = useUIStore.getState()
+          if (ui.splitView && ui.focusedSplitPane === 'right') {
+            ui.setSplitSessionId(s.sessionId)
+          } else {
+            store.setActiveSession(s.sessionId)
+          }
+          store.markAsRead(s.sessionId)
+        }
       })
     }
 

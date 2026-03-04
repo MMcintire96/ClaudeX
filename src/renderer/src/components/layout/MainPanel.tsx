@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react'
+import React, { useCallback, useState, useEffect, useRef } from 'react'
 import { useProjectStore } from '../../stores/projectStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -6,6 +6,16 @@ import { useEditorStore } from '../../stores/editorStore'
 import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import ChatView from '../chat/ChatView'
 import NeovimEditor from '../editor/NeovimEditor'
+
+function SplitEmptyState({ side }: { side: 'left' | 'right' }) {
+  return (
+    <div className="empty-state">
+      <div className="empty-state-icon">&#9672;</div>
+      <h2>{side === 'right' ? 'Select a session' : 'No active session'}</h2>
+      <p>{side === 'right' ? 'Click a session in the sidebar to show it here' : 'Start or select a session from the sidebar'}</p>
+    </div>
+  )
+}
 
 export default function MainPanel() {
   const currentPath = useProjectStore(s => s.currentPath)
@@ -15,6 +25,14 @@ export default function MainPanel() {
   const setActiveSession = useSessionStore(s => s.setActiveSession)
   const chatDetached = useUIStore(s => s.chatDetached)
   const toggleChatDetached = useUIStore(s => s.toggleChatDetached)
+  const splitView = useUIStore(s => s.splitView)
+  const toggleSplitView = useUIStore(s => s.toggleSplitView)
+  const splitSessionId = useUIStore(s => s.splitSessionId)
+  const splitRatio = useUIStore(s => s.splitRatio)
+  const setSplitRatio = useUIStore(s => s.setSplitRatio)
+  const focusedSplitPane = useUIStore(s => s.focusedSplitPane)
+  const setFocusedSplitPane = useUIStore(s => s.setFocusedSplitPane)
+  const splitSession = useSessionStore(s => splitSessionId ? s.sessions[splitSessionId] ?? null : null)
   const mainPanelTab = useEditorStore(s => s.mainPanelTab)
   const setMainPanelTab = useEditorStore(s => s.setMainPanelTab)
 
@@ -23,6 +41,66 @@ export default function MainPanel() {
   const chatProjectPath = activeSession?.projectPath ?? currentPath
 
   const [launching, setLaunching] = useState(false)
+  const splitContainerRef = useRef<HTMLDivElement>(null)
+
+  const onSplitDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const container = splitContainerRef.current
+    if (!container) return
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const rect = container.getBoundingClientRect()
+      const x = ev.clientX - rect.left
+      setSplitRatio(x / rect.width)
+    }
+    const onMouseUp = () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }, [setSplitRatio])
+
+  // Auto-create a paired session when entering split view
+  useEffect(() => {
+    if (!splitView || !activeSessionId || splitSessionId) return
+    const activeSession_ = useSessionStore.getState().sessions[activeSessionId]
+    if (!activeSession_) return
+
+    const projectPath = activeSession_.projectPath
+    const count = Object.values(useSessionStore.getState().sessions)
+      .filter(s => s.projectPath === projectPath).length
+    const newId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const store = useSessionStore.getState()
+    store.createSession(projectPath, newId)
+    const newName = `Claude Code ${count + 1}`
+    store.renameSession(newId, newName)
+    // Route the new session to the right pane (createSession sets it as active, undo that)
+    store.setActiveSession(activeSessionId)
+    useUIStore.getState().setSplitSessionId(newId)
+
+    // Show system messages in both UIs — agents discover each other via session_list
+    const leftName = activeSession_.name || 'Left session'
+    const addSystem = store.addSystemMessage
+    addSystem(activeSessionId, `Linked with "${newName}" — use session_list() to find the other session, session_send() to communicate.`)
+    addSystem(newId, `Linked with "${leftName}" — use session_list() to find the other session, session_send() to communicate.`)
+  }, [splitView, activeSessionId, splitSessionId])
+
+  // Pair sessions for auto-forwarding file changes between them
+  // Re-fires when session IDs change (e.g. after replaceSessionId re-keys)
+  useEffect(() => {
+    if (!splitView || !activeSessionId || !splitSessionId) return
+    window.api.agent.pairSessions(activeSessionId, splitSessionId)
+    // Persist the pair so it survives project switches
+    const session = useSessionStore.getState().sessions[activeSessionId]
+    if (session) {
+      useUIStore.getState().setProjectPair(session.projectPath, activeSessionId, splitSessionId)
+    }
+  }, [splitView, activeSessionId, splitSessionId])
 
   // Listen for popout window being closed externally
   useEffect(() => {
@@ -104,12 +182,61 @@ export default function MainPanel() {
               Editor
             </button>
           )}
+          <div style={{ flex: 1 }} />
+          {activeSessionId && !chatDetached && (
+            <button
+              className={`main-panel-tab split-toggle${splitView ? ' active' : ''}`}
+              onClick={() => {
+                // When explicitly closing split view, clear the pair memory
+                if (splitView && chatProjectPath) {
+                  useUIStore.getState().clearProjectPair(chatProjectPath)
+                }
+                toggleSplitView()
+              }}
+              title={splitView ? 'Exit split view (Mod+E)' : 'Split view — run two agents side-by-side (Mod+E)'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="8" height="18" rx="1" />
+                <rect x="13" y="3" width="8" height="18" rx="1" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
 
       {/* Chat tab content — stays mounted, toggled via display */}
       <div style={{ display: mainPanelTab === 'chat' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
-        {activeSessionId && chatProjectPath ? (
+        {splitView ? (
+          <div className="chat-split-container" ref={splitContainerRef}>
+            {/* Left pane: writer */}
+            <div
+              className={`chat-split-pane${focusedSplitPane === 'left' ? ' focused' : ''}`}
+              style={{ flex: `0 0 calc(${splitRatio * 100}% - 3px)` }}
+              onClick={() => setFocusedSplitPane('left')}
+            >
+              <div className="split-pane-label split-pane-label-writer">Writer</div>
+              {activeSessionId && chatProjectPath ? (
+                <ChatView key={activeSessionId} sessionId={activeSessionId} projectPath={chatProjectPath} />
+              ) : (
+                <SplitEmptyState side="left" />
+              )}
+            </div>
+            <div className="chat-split-divider" onMouseDown={onSplitDividerMouseDown} />
+            {/* Right pane: reviewer */}
+            <div
+              className={`chat-split-pane${focusedSplitPane === 'right' ? ' focused' : ''}`}
+              style={{ flex: 1 }}
+              onClick={() => setFocusedSplitPane('right')}
+            >
+              <div className="split-pane-label split-pane-label-reviewer">Reviewer</div>
+              {splitSessionId && splitSession ? (
+                <ChatView key={splitSessionId} sessionId={splitSessionId} projectPath={splitSession.projectPath} reviewerMode />
+              ) : (
+                <SplitEmptyState side="right" />
+              )}
+            </div>
+          </div>
+        ) : activeSessionId && chatProjectPath ? (
           chatDetached ? (
             <div className="empty-state">
               <div className="empty-state-icon">

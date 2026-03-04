@@ -1,6 +1,7 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { sessionNeedsInput, type SessionState } from '../../stores/sessionStore'
+import type { UseSessionPreviewReturn } from '../../hooks/useSessionPreview'
 
 interface InlineRenameProps {
   value: string
@@ -79,6 +80,9 @@ interface ProjectTreeProps {
   onForkSession: (sessionId: string) => void
   historyEntries: Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>
   onResumeHistory: (entry: { claudeSessionId?: string; projectPath: string; name: string; worktreePath?: string | null; isWorktree?: boolean }) => void
+  sessionPreview?: UseSessionPreviewReturn
+  pairedWriterId?: string | null
+  pairedReviewerId?: string | null
 }
 
 interface ContextMenuState {
@@ -108,6 +112,9 @@ export default function ProjectTree({
   collapsed,
   onToggleCollapse,
   onResumeHistory,
+  sessionPreview,
+  pairedWriterId,
+  pairedReviewerId,
 }: ProjectTreeProps) {
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
   const [diffStats, setDiffStats] = useState<DiffStats | null>(null)
@@ -198,8 +205,69 @@ export default function ProjectTree({
       </button>
 
       <div className={`project-tree-children ${collapsed ? 'collapsed' : ''}`}>
-        {/* Active SDK sessions */}
-        {sdkSessions.map((s, i) => {
+        {/* Paired session group (persists across project switches) */}
+        {(() => {
+          if (!pairedWriterId || !pairedReviewerId) return null
+          const writerSession = sdkSessions.find(s => s.sessionId === pairedWriterId)
+          const reviewerSession = sdkSessions.find(s => s.sessionId === pairedReviewerId)
+          if (!writerSession || !reviewerSession) return null
+          return (
+            <div className="paired-session-group">
+              {([
+                { session: writerSession, role: 'writer' as const },
+                { session: reviewerSession, role: 'reviewer' as const }
+              ]).map(({ session: s, role }) => {
+                const isRenaming = renamingSessionId === s.sessionId
+                const displayName = s.name || 'Claude Code'
+                const isRunning = s.isProcessing
+                const needsInput = sessionNeedsInput(s)
+                const status = needsInput ? 'needs-input' : isRunning ? 'running' : 'idle'
+                return (
+                  <button
+                    key={s.sessionId}
+                    className={`tree-item tree-item-thread tree-item-paired status-${status}`}
+                    onClick={() => onSelectSession(s.sessionId)}
+                    onDoubleClick={() => setRenamingSessionId(s.sessionId)}
+                    onContextMenu={(e) => {
+                      sessionPreview?.dismiss()
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setContextMenu({ type: 'thread', sessionId: s.sessionId, x: e.clientX, y: e.clientY })
+                    }}
+                    onMouseEnter={(e) => sessionPreview?.onSessionMouseEnter(e, s.sessionId, null)}
+                    onMouseLeave={() => sessionPreview?.onSessionMouseLeave()}
+                  >
+                    <span className={`paired-role-tag ${role}${isRunning ? ' pulsing' : ''}`}>
+                      {role === 'writer' ? 'W' : 'R'}
+                    </span>
+                    {isRenaming ? (
+                      <InlineRename
+                        value={displayName}
+                        onCommit={(name) => {
+                          onRenameSession(s.sessionId, name)
+                          setRenamingSessionId(null)
+                        }}
+                        onCancel={() => setRenamingSessionId(null)}
+                      />
+                    ) : (
+                      <span className="tree-item-label">{displayName}</span>
+                    )}
+                    {needsInput && <span className="thread-needs-input-badge" title="Needs your input" />}
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })()}
+        {/* Active SDK sessions (excluding paired) */}
+        {sdkSessions.filter(s => {
+          if (!pairedWriterId || !pairedReviewerId) return true
+          // Only exclude if both sessions still exist (group rendered)
+          const writerExists = sdkSessions.some(ss => ss.sessionId === pairedWriterId)
+          const reviewerExists = sdkSessions.some(ss => ss.sessionId === pairedReviewerId)
+          if (!writerExists || !reviewerExists) return true
+          return s.sessionId !== pairedWriterId && s.sessionId !== pairedReviewerId
+        }).map((s, i) => {
           const isActive = isCurrentProject && activeSessionId === s.sessionId
           const isRenaming = renamingSessionId === s.sessionId
           const displayName = s.name || `Claude Code ${i + 1}`
@@ -214,10 +282,13 @@ export default function ProjectTree({
               onClick={() => onSelectSession(s.sessionId)}
               onDoubleClick={() => setRenamingSessionId(s.sessionId)}
               onContextMenu={(e) => {
+                sessionPreview?.dismiss()
                 e.preventDefault()
                 e.stopPropagation()
                 setContextMenu({ type: 'thread', sessionId: s.sessionId, x: e.clientX, y: e.clientY })
               }}
+              onMouseEnter={(e) => sessionPreview?.onSessionMouseEnter(e, s.sessionId, null)}
+              onMouseLeave={() => sessionPreview?.onSessionMouseLeave()}
             >
               <span
                 className={`tree-item-status-indicator ${needsInput ? 'needs-input' : isRunning ? 'spinner' : ''}`}
@@ -291,6 +362,8 @@ export default function ProjectTree({
             onClick={() => onResumeHistory(entry)}
             title={entry.claudeSessionId ? 'Click to resume' : 'No session ID'}
             disabled={!entry.claudeSessionId}
+            onMouseEnter={(e) => sessionPreview?.onSessionMouseEnter(e, null, { name: entry.name, createdAt: entry.createdAt, endedAt: entry.endedAt })}
+            onMouseLeave={() => sessionPreview?.onSessionMouseLeave()}
           >
             <span className="tree-item-status-indicator past">{'\u25CB'}</span>
             <span className="tree-item-label">{entry.name.replace(/^[^\w\s]+\s*/, '')}</span>

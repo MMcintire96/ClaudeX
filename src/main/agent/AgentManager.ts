@@ -3,7 +3,7 @@ import { join, basename } from 'path'
 import { existsSync } from 'fs'
 import { execFile } from 'child_process'
 import { AgentProcess, AgentProcessOptions } from './AgentProcess'
-import type { AgentEvent, StreamEvent } from './types'
+import type { AgentEvent, StreamEvent, AssistantMessageEvent, ToolUseBlock } from './types'
 import { broadcastSend } from '../broadcast'
 import { generateSessionTitle } from './TitleGenerator'
 import { generateSuggestion } from './SuggestionGenerator'
@@ -11,6 +11,7 @@ import { loadUserSkills, formatSkillsForPrompt } from './SkillLoader'
 import type { SettingsManager } from '../settings/SettingsManager'
 import type { NeovimManager } from '../neovim/NeovimManager'
 import type { McpManager } from '../mcp/McpManager'
+import type { ClaudexBridgeServer } from '../bridge/ClaudexBridgeServer'
 
 const SYSTEM_PROMPT_APPEND =
   'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
@@ -38,6 +39,13 @@ export class AgentManager {
   private settingsManager: SettingsManager | null = null
   private neovimManager: NeovimManager | null = null
   private mcpManager: McpManager | null = null
+  private bridgeServer: ClaudexBridgeServer | null = null
+
+  // Session pairing for split-view collaboration
+  private sessionPartners: Map<string, string> = new Map()
+  private pendingModifiedFiles: Map<string, Set<string>> = new Map()
+  private pendingForwardQueue: Map<string, string> = new Map()
+  private static readonly MAX_DIFF_SIZE = 8192
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
@@ -54,6 +62,30 @@ export class AgentManager {
 
   setNeovimManager(manager: NeovimManager): void {
     this.neovimManager = manager
+  }
+
+  setBridgeServer(server: ClaudexBridgeServer): void {
+    this.bridgeServer = server
+  }
+
+  pairSessions(a: string, b: string): void {
+    // Clear any existing pairings for these sessions
+    this.unpairSession(a)
+    this.unpairSession(b)
+    this.sessionPartners.set(a, b)
+    this.sessionPartners.set(b, a)
+    console.log(`[AgentManager] Paired sessions: ${a.slice(0, 8)} <-> ${b.slice(0, 8)}`)
+  }
+
+  unpairSession(id: string): void {
+    const partner = this.sessionPartners.get(id)
+    if (partner) {
+      this.sessionPartners.delete(partner)
+      this.pendingForwardQueue.delete(partner)
+    }
+    this.sessionPartners.delete(id)
+    this.pendingModifiedFiles.delete(id)
+    this.pendingForwardQueue.delete(id)
   }
 
   setMcpManager(manager: McpManager): void {
@@ -162,6 +194,24 @@ export class AgentManager {
           this.lastResultText.set(sessionId, (event as import('./types').ResultEvent).result!)
         }
 
+        // Track file modifications from Edit/Write tools for session pairing
+        if (event.type === 'assistant') {
+          const assistantEvent = event as AssistantMessageEvent
+          const content = assistantEvent.message?.content
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block.type === 'tool_use') {
+                const toolBlock = block as ToolUseBlock
+                if ((toolBlock.name === 'Edit' || toolBlock.name === 'Write') && toolBlock.input?.file_path) {
+                  const files = this.pendingModifiedFiles.get(sessionId) ?? new Set()
+                  files.add(String(toolBlock.input.file_path))
+                  this.pendingModifiedFiles.set(sessionId, files)
+                }
+              }
+            }
+          }
+        }
+
         // Refresh Neovim buffers when a tool finishes (files may have changed)
         if (event.type === 'tool_result' && this.neovimManager) {
           const agent = this.agents.get(sessionId)
@@ -174,6 +224,15 @@ export class AgentManager {
 
     agent.on('close', (code: number | null) => {
       this.flushDeltas(sessionId)
+
+      // Forward file changes to paired session
+      this.forwardChangesToPartner(sessionId).catch(err => {
+        console.warn('[AgentManager] Failed to forward changes to partner:', err)
+      })
+      // Drain any queued review messages for this session (partner sent changes while we were busy)
+      this.drainForwardQueue(sessionId)
+
+      this.bridgeServer?.unregisterSession(sessionId)
       broadcastSend(this.mainWindow,'agent:closed', { sessionId, code })
 
       // Always send Linux notification + sound when agent finishes
@@ -206,6 +265,11 @@ export class AgentManager {
         generateSessionTitle(prompt).then(title => {
           if (title) {
             this.sessionNames.set(sessionId, title)
+            // Update the bridge registry so session_list returns the friendly name
+            const agent = this.agents.get(sessionId)
+            if (agent?.projectPath) {
+              this.bridgeServer?.registerSession(sessionId, title, agent.projectPath)
+            }
             broadcastSend(this.mainWindow, 'agent:title', { sessionId, title })
           }
         })
@@ -274,6 +338,7 @@ export class AgentManager {
 
     this.initialPrompts.set(sessionId, initialPrompt)
     this.lastUserMessage.set(sessionId, initialPrompt)
+    this.bridgeServer?.registerSession(sessionId, `Session ${sessionId.slice(0, 8)}`, options.projectPath)
     agent.start(initialPrompt)
     this.agents.set(sessionId, agent)
     return sessionId
@@ -301,6 +366,7 @@ export class AgentManager {
       disallowedTools: disallowedTools && disallowedTools.length > 0 ? disallowedTools : null
     })
     this.wireEvents(sessionId, agent)
+    this.bridgeServer?.registerSession(sessionId, this.sessionNames.get(sessionId) || `Session ${sessionId.slice(0, 8)}`, projectPath)
     agent.resume(message)
     this.agents.set(sessionId, agent)
     return sessionId
@@ -368,6 +434,98 @@ export class AgentManager {
       sessionId: agent?.sessionId ?? null,
       projectPath: agent?.projectPath ?? null,
       hasSession: agent?.hasCompletedFirstTurn ?? false
+    }
+  }
+
+  // --- Session pairing: file change forwarding ---
+
+  private async computeDiffForFiles(projectPath: string, files: Set<string>): Promise<string> {
+    return new Promise((resolve) => {
+      // Use git diff to get the actual changes for tracked files + untracked content
+      const args = ['diff', 'HEAD', '--', ...files]
+      execFile('git', args, { cwd: projectPath, maxBuffer: 64 * 1024 }, (err, stdout) => {
+        if (err || !stdout.trim()) {
+          // Fallback: try diff without HEAD (for new repos or untracked files)
+          execFile('git', ['diff', '--', ...files], { cwd: projectPath, maxBuffer: 64 * 1024 }, (_err2, stdout2) => {
+            resolve(stdout2?.trim() || '')
+          })
+          return
+        }
+        resolve(stdout.trim())
+      })
+    })
+  }
+
+  private async forwardChangesToPartner(sessionId: string): Promise<void> {
+    const files = this.pendingModifiedFiles.get(sessionId)
+    this.pendingModifiedFiles.delete(sessionId)
+    if (!files || files.size === 0) return
+
+    const partnerId = this.sessionPartners.get(sessionId)
+    if (!partnerId) return
+
+    const agent = this.agents.get(sessionId)
+    if (!agent?.projectPath) return
+
+    let diff = await this.computeDiffForFiles(agent.projectPath, files)
+    if (!diff) return
+
+    // Cap diff size
+    let truncated = false
+    if (diff.length > AgentManager.MAX_DIFF_SIZE) {
+      diff = diff.slice(0, AgentManager.MAX_DIFF_SIZE)
+      truncated = true
+    }
+
+    const fileList = [...files].map(f => `  - ${f}`).join('\n')
+    const reviewMessage =
+      `The paired session just made changes to the following files:\n${fileList}\n\n` +
+      '```diff\n' + diff + '\n```' +
+      (truncated ? '\n\n(Diff truncated — full changes are larger than 8KB)' : '') +
+      '\n\nPlease review these changes. Focus on correctness, potential bugs, and code quality. ' +
+      'Share your feedback using session_send().'
+
+    const partnerAgent = this.agents.get(partnerId)
+    if (!partnerAgent) {
+      // Partner has no agent process yet — inject into bridge inbox
+      this.bridgeServer?.injectMessage(partnerId, sessionId, this.sessionNames.get(sessionId) || 'Partner', reviewMessage)
+      return
+    }
+
+    if (partnerAgent.isRunning) {
+      // Partner is busy — queue message for when it finishes
+      this.pendingForwardQueue.set(partnerId, reviewMessage)
+      return
+    }
+
+    // Partner is idle — send directly
+    try {
+      broadcastSend(this.mainWindow, 'agent:forwarded-review', { sessionId: partnerId, content: reviewMessage })
+      this.lastUserMessage.set(partnerId, reviewMessage)
+      partnerAgent.removeAllListeners()
+      this.wireEvents(partnerId, partnerAgent)
+      partnerAgent.resume(reviewMessage)
+    } catch (err) {
+      console.warn('[AgentManager] Failed to send review to partner:', err)
+    }
+  }
+
+  private drainForwardQueue(sessionId: string): void {
+    const queuedMessage = this.pendingForwardQueue.get(sessionId)
+    if (!queuedMessage) return
+    this.pendingForwardQueue.delete(sessionId)
+
+    const agent = this.agents.get(sessionId)
+    if (!agent || agent.isRunning) return
+
+    try {
+      broadcastSend(this.mainWindow, 'agent:forwarded-review', { sessionId, content: queuedMessage })
+      this.lastUserMessage.set(sessionId, queuedMessage)
+      agent.removeAllListeners()
+      this.wireEvents(sessionId, agent)
+      agent.resume(queuedMessage)
+    } catch (err) {
+      console.warn('[AgentManager] Failed to drain forward queue:', err)
     }
   }
 }

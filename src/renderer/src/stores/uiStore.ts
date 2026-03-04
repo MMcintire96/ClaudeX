@@ -22,6 +22,15 @@ interface UIState {
   // Chat popped out to separate window
   chatDetached: boolean
 
+  // Split-view: two ChatViews side-by-side
+  splitView: boolean
+  splitSessionId: string | null
+  splitRatio: number
+  focusedSplitPane: 'left' | 'right'
+
+  // Per-project memory of paired split sessions (persists across project switches)
+  projectPairMemory: Record<string, { writerId: string; reviewerId: string }>
+
   toggleSidebar: () => void
   setSidePanelView: (view: SidePanelView | null) => void
   setPendingBrowserUrl: (url: string | null) => void
@@ -30,6 +39,14 @@ interface UIState {
   setSidebarWidth: (w: number) => void
   setSidePanelWidth: (w: number) => void
   toggleChatDetached: () => void
+  toggleSplitView: () => void
+  setSplitSessionId: (id: string | null) => void
+  setSplitRatio: (ratio: number) => void
+  setFocusedSplitPane: (pane: 'left' | 'right') => void
+  setProjectPair: (projectPath: string, writerId: string, reviewerId: string) => void
+  clearProjectPair: (projectPath: string) => void
+  suspendSplitView: () => void
+  restoreSplitView: (splitSessionId: string) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -41,6 +58,11 @@ export const useUIStore = create<UIState>((set) => ({
   projectSidePanelMemory: {},
   pendingBrowserUrl: null,
   chatDetached: false,
+  splitView: false,
+  splitSessionId: null,
+  splitRatio: 0.5,
+  focusedSplitPane: 'left',
+  projectPairMemory: {},
 
   setPendingBrowserUrl: (url: string | null): void => {
     set({ pendingBrowserUrl: url })
@@ -91,6 +113,75 @@ export const useUIStore = create<UIState>((set) => ({
   },
 
   toggleChatDetached: (): void => {
-    set(state => ({ chatDetached: !state.chatDetached }))
+    set(state => ({
+      chatDetached: !state.chatDetached,
+      // Mutual exclusion: disable split when popping out
+      ...(!state.chatDetached ? { splitView: false, splitSessionId: null, splitRatio: 0.5, focusedSplitPane: 'left' as const } : {})
+    }))
+  },
+
+  toggleSplitView: (): void => {
+    set(state => {
+      // When closing split view, unpair the sessions
+      if (state.splitView && state.splitSessionId) {
+        window.api.agent.unpairSessions(state.splitSessionId)
+      }
+      return {
+        splitView: !state.splitView,
+        // Reset split state when toggling off
+        ...(!state.splitView
+          ? { splitSessionId: null, focusedSplitPane: 'left' as const }
+          : { splitSessionId: null, splitRatio: 0.5, focusedSplitPane: 'left' as const }),
+        // Mutual exclusion: disable pop-out when splitting
+        ...(state.splitView ? {} : { chatDetached: false })
+      }
+    })
+  },
+
+  setSplitSessionId: (id: string | null): void => {
+    set({ splitSessionId: id })
+  },
+
+  setSplitRatio: (ratio: number): void => {
+    set({ splitRatio: Math.max(0.20, Math.min(0.80, ratio)) })
+  },
+
+  setFocusedSplitPane: (pane: 'left' | 'right'): void => {
+    set({ focusedSplitPane: pane })
+  },
+
+  setProjectPair: (projectPath: string, writerId: string, reviewerId: string): void => {
+    set(state => ({
+      projectPairMemory: { ...state.projectPairMemory, [projectPath]: { writerId, reviewerId } }
+    }))
+  },
+
+  clearProjectPair: (projectPath: string): void => {
+    set(state => {
+      const { [projectPath]: _, ...rest } = state.projectPairMemory
+      return { projectPairMemory: rest }
+    })
+  },
+
+  suspendSplitView: (): void => {
+    set(state => {
+      if (state.splitView && state.splitSessionId) {
+        window.api.agent.unpairSessions(state.splitSessionId)
+      }
+      return {
+        splitView: false,
+        splitSessionId: null,
+        focusedSplitPane: 'left' as const
+      }
+    })
+  },
+
+  restoreSplitView: (splitSessionId: string): void => {
+    set({
+      splitView: true,
+      splitSessionId,
+      focusedSplitPane: 'left' as const,
+      chatDetached: false
+    })
   }
 }))

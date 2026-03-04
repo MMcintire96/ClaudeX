@@ -43,9 +43,11 @@ export function useAgent(sessionId: string | null) {
       worktreeSessionId: result.worktreeSessionId
     }
 
-    // If we already have an active empty session, re-key it to the agent's session ID
-    // instead of creating a duplicate
-    if (sessionId && useSessionStore.getState().sessions[sessionId]?.messages.length === 0) {
+    // If we already have an active empty session (only system messages at most), re-key it
+    // to the agent's session ID instead of creating a duplicate
+    const existingMessages = sessionId ? useSessionStore.getState().sessions[sessionId]?.messages : undefined
+    const hasAgentMessages = existingMessages?.some(m => m.type !== 'system') ?? false
+    if (sessionId && !hasAgentMessages) {
       replaceSessionId(sessionId, newSessionId, worktreeOpts)
     } else {
       createSession(effectivePath, newSessionId, worktreeOpts)

@@ -24,6 +24,7 @@ import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 interface ChatViewProps {
   sessionId: string
   projectPath: string
+  reviewerMode?: boolean
 }
 
 /** Renders a vim-style block cursor overlay on top of a textarea */
@@ -103,7 +104,7 @@ function isImagePath(p: string): boolean {
 }
 
 // Ephemeral per-session draft storage — survives session switches but not app restarts
-const sessionDrafts = new Map<string, { text: string; chunks: { text: string; lineCount: number; charCount: number }[]; images?: { path: string; previewUrl: string }[] }>()
+const sessionDrafts = new Map<string, { text: string; chunks: { text: string; lineCount: number; charCount: number; source?: 'terminal' }[]; images?: { path: string; previewUrl: string }[] }>()
 
 /** Render input text with @file references highlighted */
 function renderHighlightedInput(text: string): React.ReactNode[] {
@@ -124,10 +125,10 @@ function renderHighlightedInput(text: string): React.ReactNode[] {
   return parts
 }
 
-export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
+export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatViewProps) {
   const isScratchSession = projectPath === SCRATCH_PROJECT_PATH
   const [inputText, setInputText] = useState('')
-  const [pastedChunks, setPastedChunks] = useState<{ text: string; lineCount: number; charCount: number }[]>([])
+  const [pastedChunks, setPastedChunks] = useState<{ text: string; lineCount: number; charCount: number; source?: 'terminal' }[]>([])
   const [imageAttachments, setImageAttachments] = useState<{ path: string; previewUrl: string }[]>([])
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [planMode, setPlanMode] = useState(false)
@@ -137,6 +138,7 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const [filePickerIndex, setFilePickerIndex] = useState(0)
   const filePickerLoadedRef = useRef<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const dragCounterRef = useRef(0)
   const listRef = useRef<HTMLDivElement>(null)
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PER_PAGE)
@@ -367,6 +369,17 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     window.addEventListener('claude-add-file', handler)
     return () => window.removeEventListener('claude-add-file', handler)
   }, [projectPath])
+
+  // Listen for "Send to Claude" events from terminal context menu
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { text, lineCount, charCount } = (e as CustomEvent).detail
+      setPastedChunks(prev => [...prev, { text, lineCount, charCount, source: 'terminal' as const }])
+      textareaRef.current?.focus()
+    }
+    window.addEventListener('claude-add-terminal-output', handler)
+    return () => window.removeEventListener('claude-add-terminal-output', handler)
+  }, [])
 
   // Drain message queue when agent finishes processing
   useEffect(() => {
@@ -678,8 +691,10 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
     }
 
     // Check if session has had a first turn — if not, start new; else send follow-up
+    // System messages (e.g. split-view link notifications) don't count as agent interaction
     const sessionState = useSessionStore.getState().sessions[sessionId]
-    if (!sessionState || sessionState.messages.length === 0) {
+    const hasAgentMessages = sessionState?.messages.some(m => m.type !== 'system') ?? false
+    if (!sessionState || !hasAgentMessages) {
       // First message — start the agent
       await startNewSession(text, undefined, isScratchSession ? SCRATCH_PROJECT_PATH : undefined)
     } else {
@@ -1280,12 +1295,27 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
             This conversation was forked. Switch to a fork in the sidebar to continue.
           </div>
         )}
-        <div className={`input-bar${isForkParent ? ' input-bar-disabled' : ''}`}>
+        {reviewerMode && !isProcessing && messages.every(m => m.type === 'system') && (
+          <div className="reviewer-waiting-banner">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            Waiting for the writer session to make changes...
+          </div>
+        )}
+        <div className={`input-bar${isForkParent ? ' input-bar-disabled' : ''}${reviewerMode ? ' input-bar-reviewer' : ''}`}>
           {(pastedChunks.length > 0 || imageAttachments.length > 0) && (
             <div className="pasted-chunks">
               {imageAttachments.map((img, i) => (
                 <div key={`img-${i}`} className="image-chip">
-                  <img src={img.previewUrl} alt="" className="image-chip-preview" />
+                  <img
+                    src={img.previewUrl}
+                    alt=""
+                    className="image-chip-preview"
+                    onClick={() => setLightboxImage(img.previewUrl)}
+                    style={{ cursor: 'pointer' }}
+                  />
                   <span className="image-chip-name">{img.path.split('/').pop()}</span>
                   <button
                     className="pasted-chip-remove"
@@ -1297,9 +1327,12 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
                 </div>
               ))}
               {pastedChunks.map((chunk, i) => (
-                <div key={i} className="pasted-chip">
+                <div key={i} className={`pasted-chip${chunk.source === 'terminal' ? ' terminal-chip' : ''}`}>
                   <span className="pasted-chip-text">
-                    [PASTED TEXT: {chunk.lineCount}:{chunk.charCount}]
+                    {chunk.source === 'terminal'
+                      ? `[TERMINAL: ${chunk.lineCount}L, ${chunk.charCount}C]`
+                      : `[PASTED TEXT: ${chunk.lineCount}:${chunk.charCount}]`
+                    }
                   </span>
                   <button
                     className="pasted-chip-remove"
@@ -1318,19 +1351,19 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
                 ? renderHighlightedInput(inputText)
                 : suggestion && !isProcessing
                   ? <span className="input-suggestion-ghost">{suggestion}<span className="input-suggestion-hint">Tab</span></span>
-                  : <span className="input-highlight-placeholder">{isForkParent ? 'Session forked — switch to a fork to continue' : 'Message Claude... (Enter to send)'}</span>
+                  : <span className="input-highlight-placeholder">{isForkParent ? 'Session forked — switch to a fork to continue' : reviewerMode ? 'Reviewer — input disabled' : 'Message Claude... (Enter to send)'}</span>
               }
             </div>
             <textarea
               ref={textareaRef}
               className={`input-textarea${vimChatEnabled && vim.mode !== 'insert' ? ' vim-normal' : ''}${inputText ? ' has-content' : ''}`}
-              placeholder={isForkParent ? 'Session forked — switch to a fork to continue' : 'Message Claude... (Enter to send)'}
+              placeholder={isForkParent ? 'Session forked — switch to a fork to continue' : reviewerMode ? 'Reviewer — input disabled (changes forwarded automatically)' : 'Message Claude... (Enter to send)'}
               value={inputText}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               rows={2}
-              disabled={isForkParent}
+              disabled={isForkParent || reviewerMode}
             />
             {vimChatEnabled && vim.mode !== 'insert' && (
               <VimBlockCursor textareaRef={textareaRef} text={inputText} />
@@ -1557,6 +1590,16 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
           </div>
         </div>
       </div>
+      {lightboxImage && (
+        <div className="image-lightbox-overlay" onClick={() => setLightboxImage(null)}>
+          <img
+            src={lightboxImage}
+            alt=""
+            className="image-lightbox-img"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   )
 }

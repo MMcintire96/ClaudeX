@@ -125,7 +125,12 @@ export class AgentProcess extends EventEmitter {
     }
 
     if (this._mcpServers) {
-      options.mcpServers = this._mcpServers
+      // Inject this agent's session ID so the MCP server can identify itself
+      const servers = JSON.parse(JSON.stringify(this._mcpServers))
+      if (servers['claudex-bridge']?.env) {
+        servers['claudex-bridge'].env.CLAUDEX_SESSION_ID = this._sessionId
+      }
+      options.mcpServers = servers
     }
 
     if (this._systemPromptAppend) {

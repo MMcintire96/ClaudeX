@@ -26,6 +26,9 @@ export class ClaudexBridgeServer {
   // Inter-session messaging: inbox per session ID
   private messageInboxes: Map<string, SessionMessage[]> = new Map()
 
+  // Session registry: tracks active agent sessions for discovery via session_list
+  private sessionRegistry: Map<string, { name: string; projectPath: string }> = new Map()
+
   get port(): number {
     return this._port
   }
@@ -53,6 +56,47 @@ export class ClaudexBridgeServer {
       })
       this.server.on('error', reject)
     })
+  }
+
+  /** Register an active agent session for discovery via /sessions/list. */
+  registerSession(sessionId: string, name: string, projectPath: string): void {
+    this.sessionRegistry.set(sessionId, { name, projectPath })
+  }
+
+  /** Unregister a session (e.g. when agent closes). */
+  unregisterSession(sessionId: string): void {
+    this.sessionRegistry.delete(sessionId)
+  }
+
+  /** Re-key a session after the SDK assigns a real session ID. */
+  replaceSessionId(oldId: string, newId: string): void {
+    const entry = this.sessionRegistry.get(oldId)
+    if (entry) {
+      this.sessionRegistry.delete(oldId)
+      this.sessionRegistry.set(newId, entry)
+    }
+    // Also migrate any pending inbox messages
+    const inbox = this.messageInboxes.get(oldId)
+    if (inbox) {
+      this.messageInboxes.delete(oldId)
+      this.messageInboxes.set(newId, inbox)
+    }
+  }
+
+  /** Programmatically deposit a message into a session's inbox. */
+  injectMessage(toSessionId: string, fromSessionId: string, fromName: string, content: string): void {
+    const msg: SessionMessage = {
+      from: fromSessionId,
+      fromName,
+      content,
+      timestamp: Date.now()
+    }
+    if (!this.messageInboxes.has(toSessionId)) {
+      this.messageInboxes.set(toSessionId, [])
+    }
+    const inbox = this.messageInboxes.get(toSessionId)!
+    inbox.push(msg)
+    if (inbox.length > 100) inbox.shift()
   }
 
   stop(): void {
@@ -132,6 +176,27 @@ export class ClaudexBridgeServer {
         }
         this.terminalManager.write(terminalId, command + '\n')
         this.sendJson(res, { success: true, terminalId })
+
+      } else if (req.method === 'POST' && path === '/terminal/write') {
+        const body = JSON.parse(await this.readBody(req))
+        const { data, projectPath } = body as { data: string; projectPath?: string }
+        if (!data) {
+          this.sendError(res, 'Missing "data" field')
+          return
+        }
+        let terminalId = body.terminalId as string | undefined
+        if (!terminalId && projectPath) {
+          const terminals = this.terminalManager.list(projectPath)
+          if (terminals.length > 0) {
+            terminalId = terminals[0].id
+          }
+        }
+        if (!terminalId) {
+          this.sendError(res, 'No terminal available — provide projectPath or terminalId')
+          return
+        }
+        this.terminalManager.write(terminalId, data)
+        this.sendJson(res, { success: true, terminalId })
       } else if (req.method === 'POST' && path === '/browser/navigate') {
         const body = JSON.parse(await this.readBody(req))
         const { url: navUrl } = body as { url: string }
@@ -147,6 +212,29 @@ export class ClaudexBridgeServer {
       } else if (req.method === 'GET' && path === '/browser/content') {
         const content = await this.browserManager.getPageContent()
         this.sendJson(res, { content })
+      } else if (req.method === 'POST' && path === '/browser/click') {
+        const body = JSON.parse(await this.readBody(req))
+        const { x, y, selector } = body as { x?: number; y?: number; selector?: string }
+        if (selector) {
+          await this.browserManager.clickSelector(selector)
+        } else if (x !== undefined && y !== undefined) {
+          await this.browserManager.click(x, y)
+        } else {
+          this.sendError(res, 'Provide either {x, y} coordinates or {selector}')
+          return
+        }
+        this.sendJson(res, { success: true })
+
+      } else if (req.method === 'POST' && path === '/browser/type') {
+        const body = JSON.parse(await this.readBody(req))
+        const { text } = body as { text: string }
+        if (!text) {
+          this.sendError(res, 'Missing "text" field')
+          return
+        }
+        await this.browserManager.type(text)
+        this.sendJson(res, { success: true })
+
       } else if (req.method === 'GET' && path === '/browser/screenshot') {
         const data = await this.browserManager.captureScreenshot()
         this.sendJson(res, { data })
@@ -154,13 +242,13 @@ export class ClaudexBridgeServer {
       // --- Inter-session messaging ---
       } else if (req.method === 'GET' && path === '/sessions/list') {
         const projectPath = url.searchParams.get('projectPath') || ''
-        // Return all claude terminals for the project with their names
-        const allTerminals = this.terminalManager.list(projectPath)
-        const sessions = allTerminals.map(t => ({
-          id: t.id,
-          name: this.terminalManager.getTerminalName(t.id) || t.id,
-          projectPath: t.projectPath
-        }))
+        // Return registered agent sessions for the project
+        const sessions: { id: string; name: string; projectPath: string }[] = []
+        for (const [id, entry] of this.sessionRegistry) {
+          if (!projectPath || entry.projectPath === projectPath) {
+            sessions.push({ id, name: entry.name, projectPath: entry.projectPath })
+          }
+        }
         this.sendJson(res, { sessions })
 
       } else if (req.method === 'POST' && path === '/sessions/send') {

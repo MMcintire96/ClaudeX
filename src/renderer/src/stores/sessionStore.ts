@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { DEFAULT_MODEL } from '../constants/models'
+import { useUIStore } from './uiStore'
 
 /** Check if a session's last pending tool_use needs user input (question, plan, or permission). */
 export function sessionNeedsInput(session: SessionState): boolean {
@@ -218,6 +219,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         }
       }
     })
+    // Also update splitSessionId in UI store if it was pointing to the old ID
+    const uiState = useUIStore.getState()
+    if (uiState.splitSessionId === oldId) {
+      uiState.setSplitSessionId(newId)
+    }
   },
 
   setWorktreeBranch: (sessionId: string, branchName: string): void => {
@@ -537,8 +543,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set(s => {
       if (!s.sessions[sessionId]) return s
       const session = s.sessions[sessionId]
-      // Mark as unread when processing finishes and this isn't the active session
-      const hasUnread = !processing && session.isProcessing && s.activeSessionId !== sessionId
+      // Mark as unread when processing finishes and this isn't the active/visible session
+      const uiState = useUIStore.getState()
+      const isVisibleInSplit = uiState.splitView && uiState.splitSessionId === sessionId
+      const hasUnread = !processing && session.isProcessing && s.activeSessionId !== sessionId && !isVisibleInSplit
         ? true
         : session.hasUnread
       return {

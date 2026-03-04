@@ -104,6 +104,18 @@ const TOOLS = [
     }
   },
   {
+    name: 'terminal_write',
+    description: 'Write raw data to the terminal (no trailing newline added). Use this to send control characters like Ctrl+C (\\x03), Ctrl+D (\\x04), Ctrl+Z (\\x1a), or arrow keys.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        data: { type: 'string', description: 'Raw data to write. Use \\x03 for Ctrl+C, \\x04 for Ctrl+D, \\x1a for Ctrl+Z.' },
+        terminalId: { type: 'string', description: 'Terminal ID to use. If omitted, uses the first terminal.' }
+      },
+      required: ['data']
+    }
+  },
+  {
     name: 'browser_navigate',
     description: 'Navigate the IDE browser panel to a URL. The user sees the page load in real-time.',
     inputSchema: {
@@ -130,6 +142,30 @@ const TOOLS = [
       type: 'object',
       properties: {},
       required: []
+    }
+  },
+  {
+    name: 'browser_click',
+    description: 'Click on an element in the IDE browser panel. Provide either {x, y} coordinates (from a screenshot) or a CSS selector.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        x: { type: 'number', description: 'X coordinate to click at (use with y)' },
+        y: { type: 'number', description: 'Y coordinate to click at (use with x)' },
+        selector: { type: 'string', description: 'CSS selector of the element to click (alternative to x/y)' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'browser_type',
+    description: 'Type text into the currently focused element in the IDE browser panel. Click on an input first to focus it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'The text to type into the focused element' }
+      },
+      required: ['text']
     }
   },
   {
@@ -216,6 +252,31 @@ async function executeTool(name, args) {
       return [{ type: 'text', text: 'Command sent to terminal ' + result.terminalId }]
     }
 
+    case 'terminal_write': {
+      // Resolve escape sequences: \x03 -> actual Ctrl+C byte, etc.
+      const data = args.data.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) =>
+        String.fromCharCode(parseInt(hex, 16))
+      )
+      let terminalId = args.terminalId
+      if (!terminalId) {
+        const listResult = await bridgeRequest('GET', '/terminal/list?projectPath=' + encodeURIComponent(PROJECT_PATH))
+        const terminals = listResult.terminals || []
+        if (terminals.length === 0) {
+          return [{ type: 'text', text: 'No terminals open.' }]
+        }
+        terminalId = terminals[0].id
+      }
+      const result = await bridgeRequest('POST', '/terminal/write', {
+        data: data,
+        terminalId: terminalId,
+        projectPath: PROJECT_PATH
+      })
+      if (result.error) {
+        return [{ type: 'text', text: 'Error: ' + result.error }]
+      }
+      return [{ type: 'text', text: 'Data written to terminal ' + result.terminalId }]
+    }
+
     case 'browser_navigate': {
       const result = await bridgeRequest('POST', '/browser/navigate', { url: args.url })
       if (result.error) {
@@ -235,6 +296,34 @@ async function executeTool(name, args) {
         return [{ type: 'text', text: 'Error: ' + result.error }]
       }
       return [{ type: 'text', text: result.content || '(empty page)' }]
+    }
+
+    case 'browser_click': {
+      const body = {}
+      if (args.selector) {
+        body.selector = args.selector
+      } else if (args.x !== undefined && args.y !== undefined) {
+        body.x = args.x
+        body.y = args.y
+      } else {
+        return [{ type: 'text', text: 'Error: provide either {x, y} coordinates or a {selector}' }]
+      }
+      const result = await bridgeRequest('POST', '/browser/click', body)
+      if (result.error) {
+        return [{ type: 'text', text: 'Error: ' + result.error }]
+      }
+      return [{ type: 'text', text: 'Clicked ' + (args.selector ? 'on ' + args.selector : 'at (' + args.x + ', ' + args.y + ')') }]
+    }
+
+    case 'browser_type': {
+      if (!args.text) {
+        return [{ type: 'text', text: 'Error: "text" is required' }]
+      }
+      const result = await bridgeRequest('POST', '/browser/type', { text: args.text })
+      if (result.error) {
+        return [{ type: 'text', text: 'Error: ' + result.error }]
+      }
+      return [{ type: 'text', text: 'Typed text into focused element' }]
     }
 
     case 'browser_screenshot': {

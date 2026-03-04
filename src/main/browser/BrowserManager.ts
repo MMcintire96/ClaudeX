@@ -428,6 +428,31 @@ export class BrowserManager {
     }
   }
 
+  async click(x: number, y: number): Promise<void> {
+    const tab = this.getActiveTab()
+    if (!tab) throw new Error('No active browser tab')
+    tab.view.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 })
+    tab.view.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 })
+  }
+
+  async clickSelector(selector: string): Promise<void> {
+    const tab = this.getActiveTab()
+    if (!tab) throw new Error('No active browser tab')
+    await tab.view.webContents.executeJavaScript(`
+      (() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) throw new Error('Element not found: ' + ${JSON.stringify(selector)});
+        el.click();
+      })()
+    `)
+  }
+
+  async type(text: string): Promise<void> {
+    const tab = this.getActiveTab()
+    if (!tab) throw new Error('No active browser tab')
+    await tab.view.webContents.insertText(text)
+  }
+
   async getPageContent(projectPath?: string): Promise<string> {
     const project = projectPath ?? this.activeProject
     if (!project) return 'Error: no active browser'
