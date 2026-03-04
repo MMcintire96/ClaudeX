@@ -17,7 +17,7 @@ export type ThemeName = (typeof THEME_LIST)[number]
 
 export const DEFAULT_THEME: ThemeName = 'dark'
 
-export interface ThemeMeta {
+interface ThemeMeta {
   id: ThemeName
   label: string
   isDark: boolean

@@ -151,10 +151,8 @@ interface SessionStore {
   activeSessionId: string | null
 
   // Per-session metadata from JSONL file watching
-  thinkingText: Record<string, string | null>
   streamingThinkingText: Record<string, string | null>
   streamingThinkingComplete: Record<string, boolean>
-  lastEntryType: Record<string, string | null>
 
   // Per-project memory: remembers last active session per project
   projectSessionMemory: Record<string, string>
@@ -184,10 +182,8 @@ interface SessionStore {
 export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: {},
   activeSessionId: null,
-  thinkingText: {},
   streamingThinkingText: {},
   streamingThinkingComplete: {},
-  lastEntryType: {},
   projectSessionMemory: {},
 
   createSession: (projectPath: string, sessionId: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }): void => {

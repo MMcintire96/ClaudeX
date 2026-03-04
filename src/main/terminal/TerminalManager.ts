@@ -3,7 +3,7 @@ import * as pty from 'node-pty'
 import { v4 as uuidv4 } from 'uuid'
 import { broadcastSend } from '../broadcast'
 
-export interface TerminalInfo {
+interface TerminalInfo {
   id: string
   projectPath: string
   pid: number
@@ -64,10 +64,6 @@ export class TerminalManager {
 
   getTerminalName(id: string): string | null {
     return this.terminalNames.get(id) || null
-  }
-
-  getCreatedAt(terminalId: string): number {
-    return this.createdAt.get(terminalId) || Date.now()
   }
 
   private _registerPty(id: string, projectPath: string, ptyProcess: pty.IPty): TerminalInfo {

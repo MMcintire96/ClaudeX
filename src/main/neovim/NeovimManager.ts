@@ -2,7 +2,7 @@ import { BrowserWindow } from 'electron'
 import * as pty from 'node-pty'
 import { broadcastSend } from '../broadcast'
 
-export interface NeovimInfo {
+interface NeovimInfo {
   projectPath: string
   pid: number
 }

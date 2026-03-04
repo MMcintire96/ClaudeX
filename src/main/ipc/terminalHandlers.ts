@@ -3,14 +3,8 @@ import { homedir } from 'os'
 import { TerminalManager } from '../terminal/TerminalManager'
 import { SessionPersistence } from '../session/SessionPersistence'
 
-export interface BridgeInfo {
-  bridgePort: number
-  bridgeToken: string
-}
-
 export function registerTerminalHandlers(
   terminalManager: TerminalManager,
-  _bridgeInfo?: BridgeInfo,
   sessionPersistence?: SessionPersistence
 ): void {
   ipcMain.handle('terminal:create', (_event, projectPath: string) => {

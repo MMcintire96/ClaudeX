@@ -196,15 +196,6 @@ export class McpManager extends EventEmitter {
   }
 
   /**
-   * Refresh external configs when project changes
-   */
-  async setProjectPath(projectPath: string | null): Promise<void> {
-    if (projectPath !== this.currentProjectPath) {
-      await this.loadExternalConfigs(projectPath ?? undefined)
-    }
-  }
-
-  /**
    * Update MCP servers reported by a Claude session
    * Called when we receive a system init event from the agent
    */
@@ -270,16 +261,6 @@ export class McpManager extends EventEmitter {
     }
     if (knownChanged) {
       this.emit('knownServersUpdated')
-    }
-  }
-
-  /**
-   * Clear Claude-reported servers (e.g., when session ends)
-   */
-  clearClaudeReportedServers(): void {
-    if (this.claudeReportedServers.size > 0) {
-      this.claudeReportedServers.clear()
-      this.emit('configChanged')
     }
   }
 

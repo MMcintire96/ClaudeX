@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils, webFrame } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 const api = {
   agent: {
@@ -31,11 +31,6 @@ const api = {
       const handler = (_: unknown, data: { sessionId: string; error: string }) => callback(data)
       ipcRenderer.on('agent:error', handler)
       return () => ipcRenderer.removeListener('agent:error', handler)
-    },
-    onStderr: (callback: (data: { sessionId: string; data: string }) => void) => {
-      const handler = (_: unknown, data: { sessionId: string; data: string }) => callback(data)
-      ipcRenderer.on('agent:stderr', handler)
-      return () => ipcRenderer.removeListener('agent:stderr', handler)
     },
     onTitle: (callback: (data: { sessionId: string; title: string }) => void) => {
       const handler = (_: unknown, data: { sessionId: string; title: string }) => callback(data)

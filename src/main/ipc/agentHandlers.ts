@@ -7,7 +7,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 
-export interface WorktreeOptions {
+interface WorktreeOptions {
   useWorktree: boolean
   baseBranch?: string
   includeChanges?: boolean

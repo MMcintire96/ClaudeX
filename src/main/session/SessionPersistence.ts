@@ -2,7 +2,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 
-export interface PersistedSession {
+interface PersistedSession {
   id: string
   claudeSessionId?: string
   projectPath: string
@@ -23,7 +23,7 @@ export interface PersistedSession {
   isForkParent?: boolean
 }
 
-export interface PersistedAppState {
+interface PersistedAppState {
   version: 1
   activeProjectPath: string | null
   expandedProjects: string[]

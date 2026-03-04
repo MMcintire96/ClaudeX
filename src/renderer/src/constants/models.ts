@@ -4,7 +4,7 @@ export const AVAILABLE_MODELS = [
   { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
 ] as const
 
-export type ModelId = (typeof AVAILABLE_MODELS)[number]['id']
+type ModelId = (typeof AVAILABLE_MODELS)[number]['id']
 
 export const DEFAULT_MODEL: ModelId = 'claude-opus-4-6'
 

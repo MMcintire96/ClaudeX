@@ -236,7 +236,6 @@ export default function Sidebar() {
 
   const handleForkSession = useCallback(async (sessionId: string) => {
     const session = useSessionStore.getState().sessions[sessionId]
-    console.log('[handleForkSession] sessionId:', sessionId, 'session:', session ? { messages: session.messages.length, projectPath: session.projectPath, worktreePath: session.worktreePath } : null)
     if (!session || session.messages.length === 0) return
 
     // Stop the agent if running
@@ -244,10 +243,7 @@ export default function Sidebar() {
 
     const sdkSessionId = session.sessionId
     const effectivePath = session.worktreePath || session.projectPath
-    console.log('[handleForkSession] calling fork:', { sdkSessionId, effectivePath })
-
     const result = await window.api.agent.fork(sessionId, effectivePath, sdkSessionId)
-    console.log('[handleForkSession] result:', result)
     if (!result.success || !result.forkA || !result.forkB) return
 
     const parentName = session.name || 'Session'

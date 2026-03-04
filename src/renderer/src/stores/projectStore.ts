@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export interface RecentProject {
+interface RecentProject {
   path: string
   name: string
   lastOpened: number

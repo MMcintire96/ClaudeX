@@ -363,10 +363,7 @@ app.whenReady().then(async () => {
   agentManager.setSettingsManager(settingsManager)
   agentManager.setNeovimManager(neovimManager)
   agentManager.setMcpManager(mcpManager)
-  registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, {
-    bridgePort: bridgeServer.port,
-    bridgeToken: bridgeServer.token
-  }, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager)
+  registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager)
 
   createWindow()
 

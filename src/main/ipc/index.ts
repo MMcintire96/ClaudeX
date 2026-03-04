@@ -9,7 +9,7 @@ import { ProjectConfigManager } from '../project/ProjectConfigManager'
 import { registerAgentHandlers } from './agentHandlers'
 import { registerProjectHandlers } from './projectHandlers'
 import { registerBrowserHandlers } from './browserHandlers'
-import { registerTerminalHandlers, BridgeInfo } from './terminalHandlers'
+import { registerTerminalHandlers } from './terminalHandlers'
 import { registerSettingsHandlers } from './settingsHandlers'
 import { registerVoiceHandlers } from './voiceHandlers'
 import { WorktreeManager } from '../worktree/WorktreeManager'
@@ -27,7 +27,6 @@ export function registerAllHandlers(
   terminalManager: TerminalManager,
   settingsManager: SettingsManager,
   voiceManager: VoiceManager,
-  bridgeInfo?: BridgeInfo,
   sessionPersistence?: SessionPersistence,
   projectConfigManager?: ProjectConfigManager,
   worktreeManager?: WorktreeManager,
@@ -37,7 +36,7 @@ export function registerAllHandlers(
   registerAgentHandlers(agentManager, worktreeManager, sessionPersistence)
   registerProjectHandlers(projectManager, projectConfigManager, terminalManager)
   registerBrowserHandlers(browserManager)
-  registerTerminalHandlers(terminalManager, bridgeInfo, sessionPersistence)
+  registerTerminalHandlers(terminalManager, sessionPersistence)
   registerSettingsHandlers(settingsManager)
   registerVoiceHandlers(voiceManager)
   if (worktreeManager) {

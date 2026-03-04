@@ -2,15 +2,7 @@ import { app } from 'electron'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 
-export interface McpServerConfig {
-  id: string
-  name: string
-  command: string
-  args: string[]
-  env?: Record<string, string>
-  enabled: boolean // Whether Claude should use this server
-  autoStart: boolean // Whether to auto-start when app launches
-}
+import { McpServerConfig } from '../mcp/McpManager'
 
 export interface AppSettings {
   claude: {

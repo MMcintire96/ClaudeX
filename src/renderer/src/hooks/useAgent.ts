@@ -90,12 +90,10 @@ export function useAgent(sessionId: string | null) {
   }, [sessionId, setProcessing])
 
   const forkSession = useCallback(async (): Promise<{ forkAId: string; forkBId: string } | null> => {
-    console.log('[forkSession] sessionId:', sessionId, 'currentPath:', currentPath)
     if (!sessionId || !currentPath) return null
 
     const currentSession = useSessionStore.getState().sessions[sessionId]
     if (currentSession?.projectPath === SCRATCH_PROJECT_PATH) return null
-    console.log('[forkSession] currentSession messages:', currentSession?.messages.length)
     if (!currentSession || currentSession.messages.length === 0) return null
 
     // The SDK session ID may differ from the UI session ID

@@ -177,7 +177,6 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   const setSuggestion = useSessionStore(s => s.setSuggestion)
   const detectedModel = session?.model ?? null
   const selectedModel = session?.selectedModel ?? DEFAULT_MODEL
-  const thinkingText = useSessionStore(s => s.thinkingText[sessionId] ?? null)
   const streamingThinkingText = useSessionStore(s => s.streamingThinkingText[sessionId] ?? null)
   const streamingThinkingComplete = useSessionStore(s => s.streamingThinkingComplete[sessionId] ?? false)
 

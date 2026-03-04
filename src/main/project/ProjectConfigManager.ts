@@ -3,7 +3,7 @@ import { join } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { createHash } from 'crypto'
 
-export interface StartCommand {
+interface StartCommand {
   name: string
   command: string
   cwd?: string

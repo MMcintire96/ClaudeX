@@ -28,7 +28,7 @@ hljs.registerLanguage('java', java)
 hljs.registerLanguage('yaml', yaml)
 hljs.registerLanguage('sql', sql)
 
-export const EXT_TO_LANG: Record<string, string> = {
+const EXT_TO_LANG: Record<string, string> = {
   ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
   py: 'python', css: 'css', json: 'json', sh: 'bash', bash: 'bash', zsh: 'bash',
   html: 'html', htm: 'html', xml: 'xml', svg: 'xml', md: 'markdown',
