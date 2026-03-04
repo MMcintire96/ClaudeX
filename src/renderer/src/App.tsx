@@ -83,12 +83,20 @@ export default function App() {
         notifiedSessionsRef.current.add(sid)
         const lastMsg = [...session.messages].reverse().find(m => m.type === 'tool_use')
         const toolName = lastMsg && 'toolName' in lastMsg ? (lastMsg as { toolName: string }).toolName : ''
-        let body = 'A session needs your attention'
-        if (toolName === 'AskUserQuestion') body = 'Claude has a question for you'
-        else if (toolName === 'ExitPlanMode') body = 'A plan is ready for your review'
-        else body = `${toolName || 'A tool'} requires permission`
+        let action = 'needs your attention'
+        if (toolName === 'AskUserQuestion') action = 'has a question for you'
+        else if (toolName === 'ExitPlanMode') action = 'has a plan ready for review'
+        else action = `needs permission for ${toolName || 'a tool'}`
 
-        sendNotification(session.name || 'Claude Code', body)
+        const projectName = session.projectPath && session.projectPath !== '__scratch__'
+          ? session.projectPath.split('/').pop()
+          : null
+        const threadLabel = session.name && session.name !== 'Session' ? session.name : null
+        const prefix = threadLabel
+          ? (projectName ? `${threadLabel} · ${projectName}` : threadLabel)
+          : (projectName || 'Claude Code')
+
+        sendNotification(prefix, action)
       } else if (!needs && notifiedSessionsRef.current.has(sid)) {
         // Clear notification tracking when input is no longer needed
         notifiedSessionsRef.current.delete(sid)

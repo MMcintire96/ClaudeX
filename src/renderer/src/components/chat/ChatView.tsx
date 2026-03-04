@@ -896,11 +896,12 @@ export default function ChatView({ sessionId, projectPath }: ChatViewProps) {
   }, [])
 
   const PASTE_LINE_THRESHOLD = 5
+  const PASTE_CHAR_THRESHOLD = 300
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const pastedText = e.clipboardData.getData('text')
     const lineCount = pastedText.split('\n').length
-    if (lineCount >= PASTE_LINE_THRESHOLD) {
+    if (lineCount >= PASTE_LINE_THRESHOLD || pastedText.length >= PASTE_CHAR_THRESHOLD) {
       e.preventDefault()
       setPastedChunks(prev => [...prev, { text: pastedText, lineCount, charCount: pastedText.length }])
     }

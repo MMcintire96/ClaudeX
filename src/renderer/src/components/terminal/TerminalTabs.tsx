@@ -61,6 +61,19 @@ export default function TerminalTabs() {
   const terminalFilterPath = isScratchSession ? SCRATCH_PROJECT_PATH : currentPath
 
   const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; id: string } | null>(null)
+  const ctxMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = (e: MouseEvent) => {
+      if (ctxMenuRef.current && !ctxMenuRef.current.contains(e.target as Node)) {
+        setCtxMenu(null)
+      }
+    }
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [ctxMenu])
 
   const projectTerminals = terminals.filter(t => t.projectPath === terminalFilterPath)
   const isShellSplit = shellSplitIds.length === 2
@@ -118,6 +131,11 @@ export default function TerminalTabs() {
             className={`terminal-tab ${t.id === activeTerminalId ? 'active' : ''} ${isShellSplit && shellSplitIds.includes(t.id) ? 'split-active' : ''}`}
             onClick={() => handleTabClick(t.id)}
             onDoubleClick={() => setRenamingId(t.id)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setCtxMenu({ x: e.clientX, y: e.clientY, id: t.id })
+            }}
           >
             {isRenaming ? (
               <InlineRename
@@ -162,6 +180,34 @@ export default function TerminalTabs() {
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
+
+      {ctxMenu && (
+        <div
+          ref={ctxMenuRef}
+          className="context-menu"
+          style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
+        >
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              setRenamingId(ctxMenu.id)
+              setCtxMenu(null)
+            }}
+          >
+            Rename
+          </button>
+          <button
+            className="context-menu-item context-menu-item-danger"
+            onClick={() => {
+              window.api.terminal.close(ctxMenu.id)
+              removeTerminal(ctxMenu.id)
+              setCtxMenu(null)
+            }}
+          >
+            Kill
+          </button>
+        </div>
+      )}
     </div>
   )
 }

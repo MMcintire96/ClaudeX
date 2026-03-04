@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, KeyboardEvent } from 'react'
+import React, { useState, useRef, useCallback, useEffect, KeyboardEvent } from 'react'
 import { useAgent } from '../../hooks/useAgent'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useProjectStore } from '../../stores/projectStore'
@@ -147,6 +147,7 @@ export default function InputBar({ sessionId }: InputBarProps) {
   const removePastedChunk = useCallback((index: number) => {
     setPastedChunks(prev => prev.filter((_, i) => i !== index))
   }, [])
+
 
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value

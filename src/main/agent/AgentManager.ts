@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron'
-import { join } from 'path'
+import { join, basename } from 'path'
 import { existsSync } from 'fs'
 import { execFile } from 'child_process'
 import { AgentProcess, AgentProcessOptions } from './AgentProcess'
@@ -34,6 +34,7 @@ export class AgentManager {
   private titleGenerated: Set<string> = new Set()
   private lastUserMessage: Map<string, string> = new Map()
   private lastResultText: Map<string, string> = new Map()
+  private sessionNames: Map<string, string> = new Map()
   private settingsManager: SettingsManager | null = null
   private neovimManager: NeovimManager | null = null
   private mcpManager: McpManager | null = null
@@ -176,7 +177,21 @@ export class AgentManager {
       broadcastSend(this.mainWindow,'agent:closed', { sessionId, code })
 
       // Always send Linux notification + sound when agent finishes
-      const body = code === 0 || code === null ? 'Task completed' : `Agent exited with code ${code}`
+      const agent = this.agents.get(sessionId)
+      const projectName = agent?.projectPath ? basename(agent.projectPath) : null
+      const threadName = this.sessionNames.get(sessionId)
+      let body: string
+      if (code !== 0 && code !== null) {
+        body = `Agent exited with code ${code}`
+      } else if (threadName && projectName) {
+        body = `${threadName} · ${projectName}`
+      } else if (threadName) {
+        body = threadName
+      } else if (projectName) {
+        body = `Task completed · ${projectName}`
+      } else {
+        body = 'Task completed'
+      }
       const soundFile = '/usr/share/sounds/freedesktop/stereo/complete.oga'
       execFile('notify-send', ['--app-name=ClaudeX', '--icon=dialog-information', 'Claude finished', body], () => {})
       execFile('pw-play', [soundFile], (err) => {
@@ -190,6 +205,7 @@ export class AgentManager {
         this.initialPrompts.delete(sessionId)
         generateSessionTitle(prompt).then(title => {
           if (title) {
+            this.sessionNames.set(sessionId, title)
             broadcastSend(this.mainWindow, 'agent:title', { sessionId, title })
           }
         })

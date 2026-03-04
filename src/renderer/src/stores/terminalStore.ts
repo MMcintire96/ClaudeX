@@ -97,7 +97,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       if (projectTerminals.length > 0) {
         return { activeTerminalId: projectTerminals[0].id }
       }
-      return {}
+      return { activeTerminalId: null, panelVisible: false }
     })
   },
 

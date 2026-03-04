@@ -781,8 +781,10 @@ body {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  flex-direction: column;
   align-items: center;
   pointer-events: none;
+  line-height: 1.2;
 }
 
 .main-header-title {
@@ -791,6 +793,16 @@ body {
   color: var(--text-secondary);
   letter-spacing: 0.01em;
   white-space: nowrap;
+}
+
+.main-header-thread {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
 }
 
 .main-header-actions {

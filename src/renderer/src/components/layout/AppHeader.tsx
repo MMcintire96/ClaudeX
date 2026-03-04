@@ -175,6 +175,9 @@ const handleRunStart = useCallback(async () => {
         <span className="main-header-title">
           {projectName ?? 'No project'}
         </span>
+        {activeSession?.name && (
+          <span className="main-header-thread">{activeSession.name}</span>
+        )}
       </div>
       <div className="main-header-actions">
         {/* Terminal */}
