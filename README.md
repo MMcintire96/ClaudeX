@@ -40,6 +40,9 @@ Command Palette (commands, files, sessions, projects, branches, themes):
 - **Plan review flow** for `ExitPlanMode` prompts (Approve, Reject, or Feedback)
 - **Ask-user flow** for structured questions (single-select, multi-select, and free text)
 - **Todo tool rendering** with pinned active todo state
+- **Next message suggestions** — AI-generated follow-up predictions shown as ghost text in the input, accept with Tab
+- **Key moments rail** — Scrollable sidebar showing conversation milestones (messages, tool uses, errors, questions) with click-to-jump navigation
+- **Session preview cards** — Hover over sessions in the sidebar to see model, turn count, last messages, and streaming status
 - **Queued outbound user messages** while an agent is busy
 - **Retry last user prompt** action
 
@@ -50,9 +53,9 @@ Command Palette (commands, files, sessions, projects, branches, themes):
 - **Branch visibility and branch switching** in chat footer and command palette
 - **Git helpers** — stage, commit, push, remotes, log, diff summary
 - **Commit modal workflow**:
-- Include unstaged toggle
-- AI-generated commit message
-- Commit / Commit+Push / Commit+PR (via `gh pr create --web`)
+  - Include unstaged toggle
+  - AI-generated commit message
+  - Commit / Commit+Push / Commit+PR (via `gh pr create --web`)
 - **Project start configuration** — save named startup commands, optional build command, optional browser URL
 - **Run actions** — launch configured commands into integrated terminals
 
@@ -60,16 +63,17 @@ Command Palette (commands, files, sessions, projects, branches, themes):
 - **Optional per-thread isolated worktree** on first prompt
 - **Include local uncommitted changes** when creating worktree
 - **Worktree action bar**:
-- open terminal in worktree
-- create branch
-- sync to local (`apply` or `overwrite`)
-- discard/remove worktree
+  - open terminal in worktree
+  - create branch
+  - sync to local (`apply` or `overwrite`)
+  - discard/remove worktree
 - **Bidirectional sync APIs** (`sync-to-local`, `sync-from-local`) and worktree diff retrieval
 - **Automatic cleanup/pruning** on app shutdown
 
 ### Integrated Terminal
 - **Per-project PTY terminals** with multiple tabs
 - **Terminal split view** (two shell panes with draggable divider)
+- **Terminal popout** — Launch any terminal tab in an external emulator (kitty, alacritty, wezterm, etc.) with automatic detection, buffer history replay, and bidirectional I/O via Unix sockets
 - **Inline tab rename**, add/remove tabs, active tab memory by project
 - **Search inside terminal output** (`Ctrl+F`)
 - **Copy/paste support** (context menu + `Ctrl+Shift+C/V` in terminal view)
@@ -80,20 +84,24 @@ Command Palette (commands, files, sessions, projects, branches, themes):
 - **Open file in editor** from command palette and diff/project integrations
 - **Auto buffer refresh after agent tool results** (`:checktime`) and `autoread` support
 - **Embedded browser side panel** with:
-- per-project tab sets
-- URL navigation/back/forward/reload
-- tab create/switch/close
-- context menu actions
-- inspect element/devtools
-- page URL/content/screenshot bridge APIs
+  - per-project tab sets
+  - URL navigation/back/forward/reload
+  - tab create/switch/close
+  - context menu actions
+  - inspect element/devtools
+  - page URL/content/screenshot bridge APIs
 
 ### MCP Support
-- **Built-in ClaudeX bridge MCP server** (terminal + browser + session messaging tools)
+- **Built-in ClaudeX bridge MCP server** with tools for:
+  - terminal operations (execute, write, read output)
+  - browser interactions (navigate, click, type, screenshot)
+  - inter-session messaging for agent coordination
 - **User-managed local MCP servers** — add/edit/remove/start/stop/enable
+- **Remote MCP server management** — Enable/disable Claude-authenticated remote servers (e.g., HubSpot) per-session with disallowed tools filtering
 - **Auto-start MCP servers** on launch
 - **External MCP config discovery** from:
-- `~/.mcp.json`
-- project `.mcp.json` files found by walking ancestor directories
+  - `~/.mcp.json`
+  - project `.mcp.json` files found by walking ancestor directories
 - **Claude-reported remote MCP visibility** (tools surfaced in settings UI)
 - **Per-project MCP refresh** when project context changes
 
@@ -105,13 +113,14 @@ Command Palette (commands, files, sessions, projects, branches, themes):
 - **Prevent sleep toggle** while working
 
 ### Appearance and UX
-- **12 built-in themes** with xterm theme synchronization:
-- `dark`, `light`, `monokai`, `solarized-dark`, `solarized-light`, `nord`,
-- `dracula`, `catppuccin-mocha`, `tokyo-night`, `gruvbox-dark`, `one-dark`, `rose-pine`
+- **18 built-in themes** with xterm theme synchronization:
+  - `dark`, `light`, `monokai`, `solarized-dark`, `solarized-light`, `nord`,
+  - `dracula`, `catppuccin-mocha`, `catppuccin-latte`, `tokyo-night`, `gruvbox-dark`, `one-dark`,
+  - `rose-pine`, `everforest-dark`, `kanagawa`, `ayu-dark`, `github-dark`, `synthwave`
 - **Customizable modifier key** for app shortcuts
 - **Vim mode options**:
-- legacy input behavior toggle
-- Vim keybindings in chat textarea (`NORMAL/INSERT/VISUAL`)
+  - legacy input behavior toggle
+  - Vim keybindings in chat textarea (`NORMAL/INSERT/VISUAL`)
 - **Resizable layout panes** (sidebar, side panel, terminal height, terminal split ratio)
 - **Command palette** with fuzzy search across commands/files/sessions/terminals/projects/branches/themes
 
