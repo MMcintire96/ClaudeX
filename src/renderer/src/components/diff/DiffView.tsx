@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react'
 import { parse as diffParse } from 'diff2html'
 import { createPortal } from 'react-dom'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 interface Props {
   diff: string
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props) {
+  const sideBySide = useSettingsStore(s => s.sideBySideDiffs)
   const files = useMemo(() => {
     if (!diff.trim()) return []
     try {
@@ -70,6 +72,7 @@ export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props)
           onToggle={() => toggleFile(i)}
           onAddToClaude={onAddToClaude}
           onOpenInEditor={onOpenInEditor}
+          sideBySide={sideBySide}
         />
       ))}
     </div>
@@ -91,13 +94,15 @@ function DiffFileBlock({
   collapsed,
   onToggle,
   onAddToClaude,
-  onOpenInEditor
+  onOpenInEditor,
+  sideBySide
 }: {
   file: ReturnType<typeof diffParse>[number]
   collapsed: boolean
   onToggle: () => void
   onAddToClaude?: (filePath: string) => void
   onOpenInEditor?: (filePath: string) => void
+  sideBySide: boolean
 }) {
   const fileName = file.newName !== '/dev/null' ? file.newName : file.oldName
   const isNew = file.oldName === '/dev/null'
@@ -144,7 +149,7 @@ function DiffFileBlock({
         )}
       </button>
 
-      {!collapsed && (
+      {!collapsed && !sideBySide && (
         <div className="gh-diff-file-body">
           <table className="gh-diff-table">
             <tbody>
@@ -185,6 +190,83 @@ function DiffFileBlock({
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {!collapsed && sideBySide && (
+        <div className="gh-diff-file-body gh-diff-side-by-side">
+          <div className="gh-diff-side gh-diff-side-old">
+            <table className="gh-diff-table">
+              <tbody>
+                {file.blocks.map((block, bi) => (
+                  <React.Fragment key={bi}>
+                    <tr className="gh-diff-hunk">
+                      <td className="gh-diff-ln gh-diff-ln-old" />
+                      <td className="gh-diff-hunk-content">{block.header}</td>
+                    </tr>
+                    {block.lines.map((line, li) => {
+                      if (line.type === 'insert') {
+                        return (
+                          <tr key={li} className="gh-diff-line gh-diff-line-ctx gh-diff-line-empty">
+                            <td className="gh-diff-ln gh-diff-ln-old" />
+                            <td className="gh-diff-code" />
+                          </tr>
+                        )
+                      }
+                      const type = line.type === 'delete' ? 'del' : 'ctx'
+                      const prefix = type === 'del' ? '\u2212' : '\u00A0'
+                      const content = line.content.substring(1)
+                      return (
+                        <tr key={li} className={`gh-diff-line gh-diff-line-${type}`}>
+                          <td className="gh-diff-ln gh-diff-ln-old">{line.oldNumber}</td>
+                          <td className="gh-diff-code">
+                            <span className="gh-diff-prefix">{prefix}</span>
+                            <span className="gh-diff-code-inner">{content}</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="gh-diff-side gh-diff-side-new">
+            <table className="gh-diff-table">
+              <tbody>
+                {file.blocks.map((block, bi) => (
+                  <React.Fragment key={bi}>
+                    <tr className="gh-diff-hunk">
+                      <td className="gh-diff-ln gh-diff-ln-new" />
+                      <td className="gh-diff-hunk-content">{block.header}</td>
+                    </tr>
+                    {block.lines.map((line, li) => {
+                      if (line.type === 'delete') {
+                        return (
+                          <tr key={li} className="gh-diff-line gh-diff-line-ctx gh-diff-line-empty">
+                            <td className="gh-diff-ln gh-diff-ln-new" />
+                            <td className="gh-diff-code" />
+                          </tr>
+                        )
+                      }
+                      const type = line.type === 'insert' ? 'add' : 'ctx'
+                      const prefix = type === 'add' ? '+' : '\u00A0'
+                      const content = line.content.substring(1)
+                      return (
+                        <tr key={li} className={`gh-diff-line gh-diff-line-${type}`}>
+                          <td className="gh-diff-ln gh-diff-ln-new">{line.newNumber}</td>
+                          <td className="gh-diff-code">
+                            <span className="gh-diff-prefix">{prefix}</span>
+                            <span className="gh-diff-code-inner">{content}</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

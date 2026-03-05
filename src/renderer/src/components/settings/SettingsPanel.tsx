@@ -16,7 +16,7 @@ const MOD_KEY_LABELS: Record<string, string> = {
 type SettingsTab = 'general' | 'mcp'
 
 export default function SettingsPanel() {
-  const { claude, modKey, vimMode, autoExpandEdits, notificationSounds, vimChatMode, preventSleep, suggestNextMessage, updateSettings } = useSettingsStore()
+  const { claude, modKey, vimMode, autoExpandEdits, notificationSounds, vimChatMode, preventSleep, suggestNextMessage, sideBySideDiffs, updateSettings } = useSettingsStore()
   const { theme, setTheme } = useUIStore()
   const currentPath = useProjectStore(s => s.currentPath)
   const [capturing, setCapturing] = useState(false)
@@ -97,6 +97,24 @@ export default function SettingsPanel() {
               checked={autoExpandEdits}
               onChange={(e) =>
                 updateSettings({ autoExpandEdits: e.target.checked })
+              }
+            />
+            <span className="settings-toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-row">
+          <div className="settings-label">
+            <span>Side-by-side diffs</span>
+            <span className="settings-description">
+              Show old and new code side by side in edit blocks
+            </span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={sideBySideDiffs}
+              onChange={(e) =>
+                updateSettings({ sideBySideDiffs: e.target.checked })
               }
             />
             <span className="settings-toggle-slider" />

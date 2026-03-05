@@ -11,6 +11,7 @@ interface AppSettings {
   vimChatMode: boolean
   preventSleep: boolean
   suggestNextMessage: boolean
+  sideBySideDiffs: boolean
 }
 
 interface SettingsState extends AppSettings {
@@ -30,6 +31,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   vimChatMode: false,
   preventSleep: true,
   suggestNextMessage: true,
+  sideBySideDiffs: false,
   loaded: false,
 
   loadSettings: async (): Promise<void> => {

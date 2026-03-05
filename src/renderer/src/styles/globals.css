@@ -1562,6 +1562,21 @@ body {
   border-top: 1px dashed color-mix(in srgb, var(--border) 50%, transparent);
 }
 
+/* Side-by-side diff layout */
+.file-edit-diff-side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  overflow-x: hidden;
+}
+.file-edit-diff-side-by-side .diff-side {
+  overflow-x: auto;
+  min-width: 0;
+}
+.file-edit-diff-side-by-side .diff-side-old {
+  border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
 /* ===== SHARED TOOL POLISH ===== */
 
 /* Animated chevron (replaces unicode ▸/▾) */
@@ -3503,6 +3518,22 @@ body {
   overflow-x: auto;
   overflow-y: auto;
   max-height: 600px;
+}
+.gh-diff-side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  overflow-x: hidden;
+}
+.gh-diff-side-by-side .gh-diff-side {
+  overflow-x: auto;
+  min-width: 0;
+}
+.gh-diff-side-by-side .gh-diff-side-old {
+  border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+.gh-diff-line-empty .gh-diff-code {
+  opacity: 0.3;
 }
 
 /* --- Diff table --- */

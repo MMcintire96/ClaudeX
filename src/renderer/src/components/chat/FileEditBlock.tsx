@@ -90,6 +90,7 @@ export function isFileEditTool(toolName: string): boolean {
 }
 
 function DiffView({ oldString, newString, filePath }: { oldString: string; newString: string; filePath: string }) {
+  const sideBySide = useSettingsStore(s => s.sideBySideDiffs)
   const highlighted = useMemo(() => {
     const lang = detectLanguage(filePath)
     const highlightLine = (line: string): string => {
@@ -105,6 +106,29 @@ function DiffView({ oldString, newString, filePath }: { oldString: string; newSt
       newLines: newString ? newString.split('\n').map(highlightLine) : [],
     }
   }, [oldString, newString, filePath])
+
+  if (sideBySide) {
+    return (
+      <div className="file-edit-diff file-edit-diff-side-by-side">
+        <div className="diff-side diff-side-old">
+          {highlighted.oldLines.map((html, i) => (
+            <div key={`old-${i}`} className="diff-line diff-line-removed">
+              <span className="diff-sign">-</span>
+              <span dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
+          ))}
+        </div>
+        <div className="diff-side diff-side-new">
+          {highlighted.newLines.map((html, i) => (
+            <div key={`new-${i}`} className="diff-line diff-line-added">
+              <span className="diff-sign">+</span>
+              <span dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="file-edit-diff">
