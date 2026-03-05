@@ -54,6 +54,8 @@ export default function TerminalTabs() {
   const shellSplitIds = useTerminalStore(s => s.shellSplitIds)
   const splitShell = useTerminalStore(s => s.splitShell)
   const unsplitShell = useTerminalStore(s => s.unsplitShell)
+  const poppedOut = useTerminalStore(s => s.poppedOut)
+  const setPoppedOut = useTerminalStore(s => s.setPoppedOut)
   const currentPath = useProjectStore(s => s.currentPath)
   const activeSessionId = useSessionStore(s => s.activeSessionId)
   const activeSession = useSessionStore(s => activeSessionId ? s.sessions[activeSessionId] : null)
@@ -74,6 +76,21 @@ export default function TerminalTabs() {
     window.addEventListener('mousedown', close)
     return () => window.removeEventListener('mousedown', close)
   }, [ctxMenu])
+
+  // Listen for popout-closed events from main process
+  useEffect(() => {
+    const unsub = window.api.terminal.onPopoutClosed((id: string) => {
+      setPoppedOut(id, false)
+    })
+    return unsub
+  }, [setPoppedOut])
+
+  const handlePopout = useCallback(async (id: string) => {
+    const result = await window.api.terminal.popout(id)
+    if (result.success) {
+      setPoppedOut(id, true)
+    }
+  }, [setPoppedOut])
 
   const projectTerminals = terminals.filter(t => t.projectPath === terminalFilterPath)
   const isShellSplit = shellSplitIds.length === 2
@@ -147,7 +164,10 @@ export default function TerminalTabs() {
                 onCancel={() => setRenamingId(null)}
               />
             ) : (
-              <span className="terminal-tab-label">{displayName}</span>
+              <span className="terminal-tab-label">
+                {poppedOut[t.id] && <span className="terminal-tab-popout-indicator" title="Shared with external terminal">&#8599; </span>}
+                {displayName}
+              </span>
             )}
             <span
               className="terminal-tab-close"
@@ -169,6 +189,18 @@ export default function TerminalTabs() {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
           <rect x="3" y="3" width="8" height="18" rx="1"/>
           <rect x="13" y="3" width="8" height="18" rx="1"/>
+        </svg>
+      </button>
+      <button
+        className="terminal-tab terminal-tab-popout"
+        onClick={() => activeTerminalId && handlePopout(activeTerminalId)}
+        title="Open in external terminal"
+        disabled={!activeTerminalId || (activeTerminalId ? poppedOut[activeTerminalId] : false)}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
         </svg>
       </button>
       <button
@@ -195,6 +227,16 @@ export default function TerminalTabs() {
             }}
           >
             Rename
+          </button>
+          <button
+            className="context-menu-item"
+            disabled={poppedOut[ctxMenu.id]}
+            onClick={() => {
+              handlePopout(ctxMenu.id)
+              setCtxMenu(null)
+            }}
+          >
+            {poppedOut[ctxMenu.id] ? 'Already popped out' : 'Open in External Terminal'}
           </button>
           <button
             className="context-menu-item context-menu-item-danger"

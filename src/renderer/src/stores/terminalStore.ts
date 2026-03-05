@@ -18,6 +18,7 @@ interface TerminalState {
   manuallyRenamed: Record<string, boolean>
   shellSplitIds: string[]
   splitRatio: number
+  poppedOut: Record<string, boolean>
 
   addTerminal: (tab: TerminalTab) => void
   removeTerminal: (id: string) => void
@@ -31,6 +32,7 @@ interface TerminalState {
   splitShell: (newId: string) => void
   unsplitShell: () => void
   setSplitRatio: (ratio: number) => void
+  setPoppedOut: (id: string, value: boolean) => void
 }
 
 export const useTerminalStore = create<TerminalState>((set) => ({
@@ -42,6 +44,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   manuallyRenamed: {},
   shellSplitIds: [],
   splitRatio: 0.5,
+  poppedOut: {},
 
   addTerminal: (tab: TerminalTab): void => {
     set(state => ({
@@ -155,5 +158,17 @@ export const useTerminalStore = create<TerminalState>((set) => ({
 
   setSplitRatio: (ratio: number): void => {
     set({ splitRatio: Math.max(0.15, Math.min(0.85, ratio)) })
+  },
+
+  setPoppedOut: (id: string, value: boolean): void => {
+    set(state => {
+      const poppedOut = { ...state.poppedOut }
+      if (value) {
+        poppedOut[id] = true
+      } else {
+        delete poppedOut[id]
+      }
+      return { poppedOut }
+    })
   }
 }))

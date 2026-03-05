@@ -45,6 +45,20 @@ export function registerTerminalHandlers(
     return terminalManager.getRawBuffer(id)
   })
 
+  ipcMain.handle('terminal:popout', (_event, id: string) => {
+    try {
+      const result = terminalManager.popout(id)
+      return { success: true, ...result }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('terminal:close-popout', (_event, id: string) => {
+    terminalManager.closePopout(id)
+    return { success: true }
+  })
+
   // Session history handlers
   ipcMain.handle('session:history', (_event, projectPath: string) => {
     if (!sessionPersistence) return []

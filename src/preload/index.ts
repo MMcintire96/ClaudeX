@@ -134,6 +134,15 @@ const api = {
       const handler = (_: unknown, id: string, exitCode: number) => callback(id, exitCode)
       ipcRenderer.on('terminal:exit', handler)
       return () => ipcRenderer.removeListener('terminal:exit', handler)
+    },
+    popout: (id: string) =>
+      ipcRenderer.invoke('terminal:popout', id),
+    closePopout: (id: string) =>
+      ipcRenderer.invoke('terminal:close-popout', id),
+    onPopoutClosed: (callback: (id: string) => void) => {
+      const handler = (_: unknown, id: string) => callback(id)
+      ipcRenderer.on('terminal:popout-closed', handler)
+      return () => ipcRenderer.removeListener('terminal:popout-closed', handler)
     }
   },
   session: {
