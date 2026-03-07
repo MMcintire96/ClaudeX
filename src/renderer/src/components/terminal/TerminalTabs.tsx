@@ -217,7 +217,14 @@ export default function TerminalTabs() {
         <div
           ref={ctxMenuRef}
           className="context-menu"
-          style={{ position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999 }}
+          style={{
+            position: 'fixed',
+            left: Math.min(ctxMenu.x, window.innerWidth - 160),
+            zIndex: 9999,
+            ...(ctxMenu.y + 120 > window.innerHeight
+              ? { bottom: window.innerHeight - ctxMenu.y }
+              : { top: ctxMenu.y })
+          }}
         >
           <button
             className="context-menu-item"

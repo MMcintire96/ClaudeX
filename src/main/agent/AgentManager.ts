@@ -3,6 +3,7 @@ import { join, basename } from 'path'
 import { existsSync } from 'fs'
 import { execFile } from 'child_process'
 import { AgentProcess, AgentProcessOptions } from './AgentProcess'
+import { CodexProcess } from './CodexProcess'
 import type { AgentEvent, StreamEvent, AssistantMessageEvent, ToolUseBlock } from './types'
 import { broadcastSend } from '../broadcast'
 import { generateSessionTitle } from './TitleGenerator'
@@ -24,7 +25,7 @@ const SYSTEM_PROMPT_APPEND =
  * Each project can have multiple concurrent sessions.
  */
 export class AgentManager {
-  private agents: Map<string, AgentProcess> = new Map()
+  private agents: Map<string, AgentProcess | CodexProcess> = new Map()
   private mainWindow: BrowserWindow | null = null
   private bridgePort = 0
   private bridgeToken = ''
@@ -98,6 +99,11 @@ export class AgentManager {
     })
   }
 
+  private isCodexModel(model: string | null): boolean {
+    if (!model) return false
+    return model.startsWith('codex-') || model.startsWith('gpt-')
+  }
+
   private getMcpServerPath(): string {
     // In development: resources/ at project root
     // In packaged app: process.resourcesPath
@@ -153,7 +159,7 @@ export class AgentManager {
     broadcastSend(this.mainWindow,'agent:events', { sessionId, events })
   }
 
-  private wireEvents(sessionId: string, agent: AgentProcess): void {
+  private wireEvents(sessionId: string, agent: AgentProcess | CodexProcess): void {
     agent.on('event', (event: AgentEvent) => {
       // Handle system init events to capture Claude-reported MCP servers
       if (event.type === 'system' && event.subtype === 'init') {
@@ -252,7 +258,8 @@ export class AgentManager {
         body = 'Task completed'
       }
       const soundFile = '/usr/share/sounds/freedesktop/stereo/complete.oga'
-      execFile('notify-send', ['--app-name=ClaudeX', '--icon=dialog-information', 'Claude finished', body], () => {})
+      const notifyTitle = agent instanceof CodexProcess ? 'Codex finished' : 'Claude finished'
+      execFile('notify-send', ['--app-name=ClaudeX', '--icon=dialog-information', notifyTitle, body], () => {})
       execFile('pw-play', [soundFile], (err) => {
         if (err) execFile('paplay', [soundFile], () => {})
       })
@@ -316,6 +323,25 @@ export class AgentManager {
   }
 
   async startAgent(options: AgentProcessOptions, initialPrompt: string): Promise<string> {
+    const model = options.model ?? null
+
+    if (this.isCodexModel(model)) {
+      const agent = new CodexProcess({
+        projectPath: options.projectPath,
+        sessionId: options.sessionId,
+        model,
+      })
+      const sessionId = agent.sessionId
+      this.wireEvents(sessionId, agent)
+      this.initialPrompts.set(sessionId, initialPrompt)
+      this.lastUserMessage.set(sessionId, initialPrompt)
+      this.bridgeServer?.registerSession(sessionId, `Session ${sessionId.slice(0, 8)}`, options.projectPath)
+      agent.start(initialPrompt)
+      this.agents.set(sessionId, agent)
+      return sessionId
+    }
+
+    // Claude model — existing path
     // Ensure external .mcp.json configs are loaded for this project before building server list
     if (this.mcpManager) {
       await this.mcpManager.loadExternalConfigs(options.projectPath)
@@ -349,6 +375,20 @@ export class AgentManager {
    * Creates a new AgentProcess with the saved sessionId and calls resume().
    */
   async resumeAgent(sessionId: string, projectPath: string, model: string | null, message: string): Promise<string> {
+    if (this.isCodexModel(model)) {
+      const agent = new CodexProcess({
+        projectPath,
+        sessionId,
+        model,
+      })
+      this.wireEvents(sessionId, agent)
+      this.bridgeServer?.registerSession(sessionId, this.sessionNames.get(sessionId) || `Session ${sessionId.slice(0, 8)}`, projectPath)
+      agent.resume(message)
+      this.agents.set(sessionId, agent)
+      return sessionId
+    }
+
+    // Claude model — existing path
     // Ensure external .mcp.json configs are loaded for this project before building server list
     if (this.mcpManager) {
       await this.mcpManager.loadExternalConfigs(projectPath)

@@ -6,6 +6,7 @@ import CodeBlock from './CodeBlock'
 
 interface Props {
   content: string
+  projectPath?: string
 }
 
 function extractText(node: ReactNode): string {
@@ -36,6 +37,22 @@ export default function MarkdownRenderer({ content }: Props) {
             <CodeBlock language={match[1]} copyText={plainText}>
               {children}
             </CodeBlock>
+          )
+        },
+        a({ href, children, ...props }) {
+          return (
+            <a
+              href={href}
+              onClick={(e) => {
+                if (href) {
+                  e.preventDefault()
+                  window.open(href, '_blank')
+                }
+              }}
+              {...props}
+            >
+              {children}
+            </a>
           )
         }
       }}

@@ -157,6 +157,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   const prevSessionIdRef = useRef(sessionId)
   const pastedChunksRef = useRef(pastedChunks)
   pastedChunksRef.current = pastedChunks
+  const autoRunPendingRef = useRef(false)
   const imageAttachmentsRef = useRef(imageAttachments)
   imageAttachmentsRef.current = imageAttachments
 
@@ -197,6 +198,8 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
 
   // Resolve the display model: selected > detected > fallback
   const displayModel = selectedModel || detectedModel || DEFAULT_MODEL
+  const isCodexModel = displayModel.startsWith('codex-') || displayModel.startsWith('gpt-')
+  const assistantLabel = isCodexModel ? 'Codex' : 'Claude'
 
   // Show thinking only when processing
   const isThinking = isProcessing && !isStreaming
@@ -373,9 +376,13 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   // Listen for "Send to Claude" events from terminal context menu
   useEffect(() => {
     const handler = (e: Event) => {
-      const { text, lineCount, charCount } = (e as CustomEvent).detail
+      const { text, lineCount, charCount, autoRun } = (e as CustomEvent).detail
       setPastedChunks(prev => [...prev, { text, lineCount, charCount, source: 'terminal' as const }])
-      textareaRef.current?.focus()
+      if (autoRun) {
+        autoRunPendingRef.current = true
+      } else {
+        textareaRef.current?.focus()
+      }
     }
     window.addEventListener('claude-add-terminal-output', handler)
     return () => window.removeEventListener('claude-add-terminal-output', handler)
@@ -414,14 +421,11 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     return map
   }, [messages])
 
-  // Find the latest TodoWrite message for highlighting + pinned display
-  const latestTodoMessage = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i]
-      if (m.type === 'tool_use' && (m as UIToolUseMessage).toolName === 'TodoWrite') return m as UIToolUseMessage
-    }
-    return null
+  // Collect all TodoWrite messages for timestamp/duration tracking + find latest
+  const allTodoMessages = useMemo(() => {
+    return messages.filter(m => m.type === 'tool_use' && (m as UIToolUseMessage).toolName === 'TodoWrite') as UIToolUseMessage[]
   }, [messages])
+  const latestTodoMessage = allTodoMessages.length > 0 ? allTodoMessages[allTodoMessages.length - 1] : null
   const latestTodoId = latestTodoMessage?.id ?? null
 
   // Pre-process messages into render items: groups of completed tool calls + standalone items
@@ -610,6 +614,9 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     const hasImages = imageAttachments.length > 0
     if (!trimmed && !hasPasted && !hasImages) return
 
+    // Capture images before they get cleared
+    const currentImages = hasImages ? [...imageAttachments] : undefined
+
     // Build full message: image refs + pasted chunks + typed text
     const parts: string[] = []
     if (hasImages) {
@@ -653,7 +660,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
       }
 
       // Start a new session with worktree
-      const newId = await startNewSession(text, { useWorktree: true })
+      const newId = await startNewSession(text, { useWorktree: true }, undefined, currentImages)
       if (!newId) {
         setWorktreeLocked(false)
       }
@@ -672,6 +679,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
 
     setInputText('')
     setPastedChunks([])
+    setImageAttachments([])
     setSuggestion(sessionId, null)
     sessionDrafts.delete(sessionId)
     if (textareaRef.current) {
@@ -696,12 +704,20 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     const hasAgentMessages = sessionState?.messages.some(m => m.type !== 'system') ?? false
     if (!sessionState || !hasAgentMessages) {
       // First message — start the agent
-      await startNewSession(text, undefined, isScratchSession ? SCRATCH_PROJECT_PATH : undefined)
+      await startNewSession(text, undefined, isScratchSession ? SCRATCH_PROJECT_PATH : undefined, currentImages)
     } else {
       // Follow-up message
-      await sendMessage(text)
+      await sendMessage(text, currentImages)
     }
   }, [inputText, pastedChunks, imageAttachments, sessionId, isProcessing, worktreeMode, worktreeLocked, startNewSession, sendMessage])
+
+  // Auto-run: when "Send to Claude (Run)" adds a chunk, submit immediately
+  useEffect(() => {
+    if (autoRunPendingRef.current && pastedChunks.length > 0) {
+      autoRunPendingRef.current = false
+      handleSend()
+    }
+  }, [pastedChunks, handleSend])
 
   const handleModelChange = useCallback((modelId: string) => {
     setModelPickerOpen(false)
@@ -1015,7 +1031,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     if (msg.type === 'text') {
       return (
         <div key={msg.id} data-msg-id={msg.id} className={matchClass}>
-          <MessageBubble message={msg as UITextMessage} searchQuery={searchOpen ? searchQuery : ''} />
+          <MessageBubble message={msg as UITextMessage} searchQuery={searchOpen ? searchQuery : ''} projectPath={projectPath} modelLabel={assistantLabel} />
         </div>
       )
     } else if (msg.type === 'tool_use') {
@@ -1029,7 +1045,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
         return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><PlanModeBlock message={toolMsg} sessionId={sessionId} answered={hasResult} /></div>
       }
       if (toolMsg.toolName === 'TodoWrite') {
-        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><TodoBlock message={toolMsg} isLatest={msg.id === latestTodoId} /></div>
+        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><TodoBlock message={toolMsg} isLatest={msg.id === latestTodoId} allTodoMessages={allTodoMessages} /></div>
       }
       if (isFileEditTool(toolMsg.toolName)) {
         const pairedResult = toolResultByToolUseId.get(toolMsg.toolId)
@@ -1226,7 +1242,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
         if (allDone) return null
         return (
           <div className="pinned-todo-wrapper">
-            <TodoBlock message={latestTodoMessage} isLatest={true} />
+            <TodoBlock message={latestTodoMessage} isLatest={true} allTodoMessages={allTodoMessages} />
           </div>
         )
       })()}
@@ -1351,13 +1367,13 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
                 ? renderHighlightedInput(inputText)
                 : suggestion && !isProcessing
                   ? <span className="input-suggestion-ghost">{suggestion}<span className="input-suggestion-hint">Tab</span></span>
-                  : <span className="input-highlight-placeholder">{isForkParent ? 'Session forked — switch to a fork to continue' : reviewerMode ? 'Reviewer — input disabled' : 'Message Claude... (Enter to send)'}</span>
+                  : <span className="input-highlight-placeholder">{isForkParent ? 'Session forked — switch to a fork to continue' : reviewerMode ? 'Reviewer — input disabled' : `Message ${assistantLabel}... (Enter to send)`}</span>
               }
             </div>
             <textarea
               ref={textareaRef}
               className={`input-textarea${vimChatEnabled && vim.mode !== 'insert' ? ' vim-normal' : ''}${inputText ? ' has-content' : ''}`}
-              placeholder={isForkParent ? 'Session forked — switch to a fork to continue' : reviewerMode ? 'Reviewer — input disabled (changes forwarded automatically)' : 'Message Claude... (Enter to send)'}
+              placeholder={isForkParent ? 'Session forked — switch to a fork to continue' : reviewerMode ? 'Reviewer — input disabled (changes forwarded automatically)' : `Message ${assistantLabel}... (Enter to send)`}
               value={inputText}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
@@ -1384,7 +1400,18 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
                 </button>
                 {modelPickerOpen && (
                   <div className="model-picker-dropdown">
-                    {AVAILABLE_MODELS.map(m => (
+                    <div className="model-picker-group-label">Anthropic</div>
+                    {AVAILABLE_MODELS.filter(m => m.provider === 'anthropic').map(m => (
+                      <button
+                        key={m.id}
+                        className={`model-picker-option ${m.id === displayModel ? 'active' : ''}`}
+                        onClick={() => handleModelChange(m.id)}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                    <div className="model-picker-group-label">OpenAI</div>
+                    {AVAILABLE_MODELS.filter(m => m.provider === 'openai').map(m => (
                       <button
                         key={m.id}
                         className={`model-picker-option ${m.id === displayModel ? 'active' : ''}`}

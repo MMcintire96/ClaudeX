@@ -26,13 +26,16 @@ export function useAgent(sessionId: string | null) {
   const isStreaming = session?.isStreaming ?? false
   const isRunning = !!session
 
-  const startNewSession = useCallback(async (prompt: string, worktreeOptions?: WorktreeOptions, overrideProjectPath?: string): Promise<string | null> => {
+  const startNewSession = useCallback(async (prompt: string, worktreeOptions?: WorktreeOptions, overrideProjectPath?: string, images?: Array<{ path: string; previewUrl: string }>): Promise<string | null> => {
     const effectivePath = overrideProjectPath || currentPath
     if (!effectivePath) {
       return null
     }
 
-    const result = await window.api.agent.start(effectivePath, prompt, DEFAULT_MODEL, worktreeOptions)
+    // Use the session's selected model (which may be a Codex model) or fall back to default
+    const currentSession = sessionId ? useSessionStore.getState().sessions[sessionId] : null
+    const model = currentSession?.selectedModel || DEFAULT_MODEL
+    const result = await window.api.agent.start(effectivePath, prompt, model, worktreeOptions)
     if (!result.success || !result.sessionId) {
       return null
     }
@@ -52,15 +55,15 @@ export function useAgent(sessionId: string | null) {
     } else {
       createSession(effectivePath, newSessionId, worktreeOpts)
     }
-    addUserMessage(newSessionId, prompt)
+    addUserMessage(newSessionId, prompt, images)
     setProcessing(newSessionId, true)
     return newSessionId
   }, [currentPath, sessionId, createSession, replaceSessionId, addUserMessage, setProcessing])
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, images?: Array<{ path: string; previewUrl: string }>) => {
     if (!sessionId) return
     const currentSession = useSessionStore.getState().sessions[sessionId]
-    addUserMessage(sessionId, content)
+    addUserMessage(sessionId, content, images)
     setProcessing(sessionId, true)
 
     if (currentSession?.isRestored) {

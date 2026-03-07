@@ -47,14 +47,14 @@ export default function TerminalView({ terminalId, visible, active, background }
     }
   }, [terminalId])
 
-  const handleSendToClaude = useCallback(() => {
+  const handleSendToClaude = useCallback((autoRun = false) => {
     const term = termRef.current
     if (!term) return
     const selection = term.getSelection()
     if (!selection) return
     const lineCount = selection.split('\n').length
     window.dispatchEvent(new CustomEvent('claude-add-terminal-output', {
-      detail: { text: selection, lineCount, charCount: selection.length }
+      detail: { text: selection, lineCount, charCount: selection.length, autoRun }
     }))
   }, [])
 
@@ -315,7 +315,12 @@ export default function TerminalView({ terminalId, visible, active, background }
         <div
           ref={menuRef}
           className="context-menu"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
+          style={{
+            left: Math.min(contextMenu.x, window.innerWidth - 160),
+            ...(contextMenu.y + 120 > window.innerHeight
+              ? { bottom: window.innerHeight - contextMenu.y }
+              : { top: contextMenu.y })
+          }}
         >
           <button
             className="context-menu-item"
@@ -336,6 +341,13 @@ export default function TerminalView({ terminalId, visible, active, background }
             onClick={() => { handleSendToClaude(); setContextMenu(null) }}
           >
             Send to Claude
+          </button>
+          <button
+            className="context-menu-item"
+            disabled={!termRef.current?.getSelection()}
+            onClick={() => { handleSendToClaude(true); setContextMenu(null) }}
+          >
+            Send to Claude (Run)
           </button>
         </div>
       )}

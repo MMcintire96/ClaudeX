@@ -34,6 +34,7 @@ export interface UITextMessage {
   role: 'user' | 'assistant'
   type: 'text'
   content: string
+  images?: Array<{ path: string; previewUrl: string }>
   timestamp: number
 }
 
@@ -165,7 +166,7 @@ interface SessionStore {
   setActiveSession: (sessionId: string | null) => void
   getLastSessionForProject: (projectPath: string) => string | null
   processEvent: (sessionId: string, event: unknown) => void
-  addUserMessage: (sessionId: string, content: string) => void
+  addUserMessage: (sessionId: string, content: string, images?: Array<{ path: string; previewUrl: string }>) => void
   setProcessing: (sessionId: string, processing: boolean) => void
   setError: (sessionId: string, error: string | null) => void
   setSelectedModel: (sessionId: string, model: string | null) => void
@@ -520,12 +521,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
-  addUserMessage: (sessionId: string, content: string): void => {
+  addUserMessage: (sessionId: string, content: string, images?: Array<{ path: string; previewUrl: string }>): void => {
     const msg: UITextMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
       type: 'text',
       content,
+      ...(images && images.length > 0 ? { images } : {}),
       timestamp: Date.now()
     }
     set(s => ({

@@ -375,7 +375,12 @@ const handleRunStart = useCallback(async () => {
         <div
           ref={ctxMenuRef}
           className="context-menu"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          style={{
+            left: Math.min(ctxMenu.x, window.innerWidth - 160),
+            ...(ctxMenu.y + 120 > window.innerHeight
+              ? { bottom: window.innerHeight - ctxMenu.y }
+              : { top: ctxMenu.y })
+          }}
         >
           <button
             className="context-menu-item"

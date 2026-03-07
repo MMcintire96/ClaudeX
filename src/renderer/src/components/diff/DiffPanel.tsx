@@ -447,7 +447,12 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
       {contextMenu && createPortal(
         <div
           className="context-menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          style={{
+            left: Math.min(contextMenu.x, window.innerWidth - 160),
+            ...(contextMenu.y + 120 > window.innerHeight
+              ? { bottom: window.innerHeight - contextMenu.y }
+              : { top: contextMenu.y })
+          }}
         >
           <button
             className="context-menu-item"

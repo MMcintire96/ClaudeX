@@ -386,7 +386,12 @@ export default function ProjectTree({
       {contextMenu && createPortal(
         <div
           className="thread-context-menu"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
+          style={{
+            left: Math.min(contextMenu.x, window.innerWidth - 180),
+            ...(contextMenu.y + 200 > window.innerHeight
+              ? { bottom: window.innerHeight - contextMenu.y }
+              : { top: contextMenu.y })
+          }}
         >
           {contextMenu.type === 'project' ? (
             <>

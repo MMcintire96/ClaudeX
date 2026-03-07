@@ -35,7 +35,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   sideBySideDiffs: false,
   mcpServers: [],
   disabledRemoteMcpServers: [],
-  knownRemoteMcpServers: {}
+  knownRemoteMcpServers: {},
 }
 
 /**
@@ -66,7 +66,7 @@ export class SettingsManager {
         sideBySideDiffs: loaded.sideBySideDiffs ?? DEFAULT_SETTINGS.sideBySideDiffs,
         mcpServers: Array.isArray(loaded.mcpServers) ? loaded.mcpServers : [],
         disabledRemoteMcpServers: Array.isArray(loaded.disabledRemoteMcpServers) ? loaded.disabledRemoteMcpServers : [],
-        knownRemoteMcpServers: (loaded.knownRemoteMcpServers && typeof loaded.knownRemoteMcpServers === 'object') ? loaded.knownRemoteMcpServers : {}
+        knownRemoteMcpServers: (loaded.knownRemoteMcpServers && typeof loaded.knownRemoteMcpServers === 'object') ? loaded.knownRemoteMcpServers : {},
       }
     } catch {
       this.settings = structuredClone(DEFAULT_SETTINGS)

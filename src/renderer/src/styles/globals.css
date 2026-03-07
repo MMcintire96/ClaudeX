@@ -628,6 +628,29 @@ body {
   box-shadow: var(--focus-ring, 0 0 0 3px rgba(10, 132, 255, 0.25));
 }
 
+.settings-input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  min-width: 200px;
+}
+.settings-input:hover {
+  border-color: var(--accent);
+}
+.settings-input:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring, 0 0 0 3px rgba(10, 132, 255, 0.25));
+}
+.settings-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
 .sidebar-agent-status {
   display: flex;
   align-items: center;
@@ -1187,6 +1210,33 @@ body {
 
 .message-bubble.assistant {
   background: var(--assistant-bubble);
+}
+
+.user-image-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.user-image-card {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: opacity 0.15s;
+  max-width: 280px;
+}
+
+.user-image-card:hover {
+  opacity: 0.85;
+}
+
+.user-image-card-img {
+  display: block;
+  max-width: 100%;
+  max-height: 240px;
+  object-fit: contain;
 }
 
 .system-message {
@@ -2120,6 +2170,26 @@ body {
 .todo-item-pending .todo-content {
   color: var(--text-secondary);
 }
+.todo-total-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.todo-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.todo-time-in_progress {
+  color: var(--accent);
+}
+.todo-time-completed {
+  color: var(--text-muted);
+}
 
 /* ===== Plan Mode Block ===== */
 .plan-mode-block {
@@ -2566,6 +2636,20 @@ body {
 .model-picker-option.active {
   color: var(--accent-text, var(--accent));
   font-weight: 600;
+}
+.model-picker-group-label {
+  padding: 5px 10px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  user-select: none;
+}
+.model-picker-group-label:not(:first-child) {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 7px;
 }
 
 /* Mode toggle (plan/execute) */
@@ -4013,6 +4097,7 @@ body {
 }
 .project-tree-header.current {
   color: var(--text-primary);
+  background: var(--sidebar-active);
 }
 
 .project-tree-chevron {
