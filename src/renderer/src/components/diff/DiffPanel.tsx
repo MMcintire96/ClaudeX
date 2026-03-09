@@ -199,6 +199,26 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     }
   }, [fileTree])
 
+  // Filter turns to only include those whose files actually appear in the current diff
+  const visibleTurns = useMemo(() => {
+    if (!diff) return []
+    const diffFileNames = new Set<string>()
+    for (const section of diff.split(/(?=^diff --git )/m)) {
+      const match = section.match(/^diff --git a\/(.*?) b\//)
+      if (match) {
+        const filePath = match[1]
+        diffFileNames.add(filePath)
+        diffFileNames.add(filePath.split('/').pop() || filePath)
+      }
+    }
+    return turns.filter(turn =>
+      turn.filesModified.some(f => {
+        const fileName = f.split('/').pop() || f
+        return diffFileNames.has(fileName) || diffFileNames.has(f)
+      })
+    )
+  }, [turns, diff])
+
   // Files modified in the selected turn (for filtering)
   const turnFiles = useMemo(() => {
     if (selectedTurn === null) return null
@@ -467,7 +487,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
       </div>
 
       {/* Turn-based tabs */}
-      {turns.length > 0 && (
+      {visibleTurns.length > 0 && (
         <div className="diff-turn-tabs">
           <button
             className={`diff-turn-tab${selectedTurn === null ? ' active' : ''}`}
@@ -475,7 +495,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
           >
             All turns
           </button>
-          {turns.slice().reverse().map(turn => (
+          {visibleTurns.slice().reverse().map(turn => (
             <button
               key={turn.turnNumber}
               className={`diff-turn-tab${selectedTurn === turn.turnNumber ? ' active' : ''}`}
