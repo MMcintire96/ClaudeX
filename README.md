@@ -113,10 +113,11 @@ Command Palette (commands, files, sessions, projects, branches, themes):
 - **Prevent sleep toggle** while working
 
 ### Appearance and UX
-- **18 built-in themes** with xterm theme synchronization:
-  - `dark`, `light`, `monokai`, `solarized-dark`, `solarized-light`, `nord`,
-  - `dracula`, `catppuccin-mocha`, `catppuccin-latte`, `tokyo-night`, `gruvbox-dark`, `one-dark`,
-  - `rose-pine`, `everforest-dark`, `kanagawa`, `ayu-dark`, `github-dark`, `synthwave`
+- **22 built-in themes** with xterm theme synchronization:
+  - `dark`, `light`, `monokai`, `solarized-dark`, `solarized-light`, `nord`
+  - `dracula`, `catppuccin-mocha`, `catppuccin-latte`, `tokyo-night`, `gruvbox-dark`, `gruvbox-light`
+  - `one-dark`, `one-light`, `rose-pine`, `rose-pine-dawn`, `everforest-dark`, `kanagawa`
+  - `ayu-dark`, `github-dark`, `github-light`, `synthwave`
 - **Customizable modifier key** for app shortcuts
 - **Vim mode options**:
   - legacy input behavior toggle

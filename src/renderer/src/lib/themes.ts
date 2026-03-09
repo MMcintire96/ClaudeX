@@ -9,6 +9,7 @@ export const THEME_LIST = [
   'catppuccin-mocha',
   'tokyo-night',
   'gruvbox-dark',
+  'gruvbox-light',
   'one-dark',
   'rose-pine',
   'catppuccin-latte',
@@ -44,6 +45,7 @@ export const THEME_META: ThemeMeta[] = [
   { id: 'catppuccin-mocha', label: 'Catppuccin Mocha', isDark: true, previewColors: { bg: '#1e1e2e', fg: '#cdd6f4', accent: '#cba6f7' } },
   { id: 'tokyo-night', label: 'Tokyo Night', isDark: true, previewColors: { bg: '#1a1b26', fg: '#a9b1d6', accent: '#7aa2f7' } },
   { id: 'gruvbox-dark', label: 'Gruvbox Dark', isDark: true, previewColors: { bg: '#282828', fg: '#ebdbb2', accent: '#fabd2f' } },
+  { id: 'gruvbox-light', label: 'Gruvbox Light', isDark: false, previewColors: { bg: '#fbf1c7', fg: '#3c3836', accent: '#076678' } },
   { id: 'one-dark', label: 'One Dark', isDark: true, previewColors: { bg: '#282c34', fg: '#abb2bf', accent: '#61afef' } },
   { id: 'rose-pine', label: 'Rose Pine', isDark: true, previewColors: { bg: '#191724', fg: '#e0def4', accent: '#c4a7e7' } },
   { id: 'catppuccin-latte', label: 'Catppuccin Latte', isDark: false, previewColors: { bg: '#eff1f5', fg: '#4c4f69', accent: '#8839ef' } },
@@ -65,4 +67,3 @@ export function validateTheme(value: unknown): ThemeName {
   }
   return DEFAULT_THEME
 }
-

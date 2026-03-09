@@ -59,7 +59,7 @@ Zustand stores in `src/renderer/src/stores/`:
 
 ### Theming
 
-Three themes (dark, light, monokai) via CSS variables in `styles/themes.css`, applied via `data-theme` attribute. Theme colors synchronize with xterm.js terminal colors.
+Twenty-two built-in themes via CSS variables in `styles/themes.css`, applied via `data-theme` attribute. Theme colors synchronize with xterm.js terminal colors.
 
 ## Key Entry Points
 

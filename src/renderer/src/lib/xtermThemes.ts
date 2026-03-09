@@ -221,6 +221,28 @@ export const XTERM_THEMES: Record<ThemeName, Record<string, string>> = {
     brightCyan: '#8ec07c',
     brightWhite: '#ebdbb2'
   },
+  'gruvbox-light': {
+    background: '#fbf1c7',
+    foreground: '#3c3836',
+    cursor: '#3c3836',
+    selectionBackground: '#ebdbb2',
+    black: '#3c3836',
+    red: '#9d0006',
+    green: '#79740e',
+    yellow: '#b57614',
+    blue: '#076678',
+    magenta: '#8f3f71',
+    cyan: '#427b58',
+    white: '#7c6f64',
+    brightBlack: '#928374',
+    brightRed: '#cc241d',
+    brightGreen: '#98971a',
+    brightYellow: '#d79921',
+    brightBlue: '#458588',
+    brightMagenta: '#b16286',
+    brightCyan: '#689d6a',
+    brightWhite: '#f9f5d7'
+  },
   'one-dark': {
     background: '#282c34',
     foreground: '#abb2bf',
