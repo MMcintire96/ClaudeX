@@ -183,24 +183,7 @@ export default function MainPanel() {
             </button>
           )}
           <div style={{ flex: 1 }} />
-          {activeSessionId && !chatDetached && (
-            <button
-              className={`main-panel-tab split-toggle${splitView ? ' active' : ''}`}
-              onClick={() => {
-                // When explicitly closing split view, clear the pair memory
-                if (splitView && chatProjectPath) {
-                  useUIStore.getState().clearProjectPair(chatProjectPath)
-                }
-                toggleSplitView()
-              }}
-              title={splitView ? 'Exit split view (Mod+E)' : 'Split view — run two agents side-by-side (Mod+E)'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="8" height="18" rx="1" />
-                <rect x="13" y="3" width="8" height="18" rx="1" />
-              </svg>
-            </button>
-          )}
+          {/* Split view button hidden */}
         </div>
       )}
 

@@ -1,9 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import DiffView from './DiffView'
 import CommitModal from '../git/CommitModal'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore, type UIToolUseMessage, type UITextMessage } from '../../stores/sessionStore'
 import { useEditorStore } from '../../stores/editorStore'
 import { createPortal } from 'react-dom'
+
+interface TurnInfo {
+  turnNumber: number
+  timestamp: number
+  filesModified: string[]
+}
+
+function formatTurnTime(ts: number): string {
+  const d = new Date(ts)
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
 
 
 interface FileStatus {
@@ -78,6 +89,47 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   const [showCommitModal, setShowCommitModal] = useState(false)
 
   const toggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
+  const [selectedTurn, setSelectedTurn] = useState<number | null>(null) // null = All turns
+
+  // Read messages from the active session (stable reference via zustand)
+  const activeMessages = useSessionStore(s => {
+    const sessionId = s.activeSessionId
+    if (!sessionId) return null
+    return s.sessions[sessionId]?.messages ?? null
+  })
+
+  // Compute turns from messages in a memo (avoids creating new objects in the selector)
+  const turns = useMemo(() => {
+    if (!activeMessages) return [] as TurnInfo[]
+    const result: TurnInfo[] = []
+    let turnNumber = 0
+    for (let i = 0; i < activeMessages.length; i++) {
+      const msg = activeMessages[i]
+      if (msg.type === 'text' && (msg as UITextMessage).role === 'user') {
+        turnNumber++
+        const timestamp = (msg as UITextMessage).timestamp
+        const filesModified: string[] = []
+        for (let j = i + 1; j < activeMessages.length; j++) {
+          const next = activeMessages[j]
+          if (next.type === 'text' && (next as UITextMessage).role === 'user') break
+          if (next.type === 'tool_use') {
+            const toolMsg = next as UIToolUseMessage
+            const name = toolMsg.toolName
+            if (name === 'Edit' || name === 'Write' || name === 'NotebookEdit') {
+              const filePath = toolMsg.input?.file_path as string || toolMsg.input?.notebook_path as string || ''
+              if (filePath && !filesModified.includes(filePath)) {
+                filesModified.push(filePath)
+              }
+            }
+          }
+        }
+        if (filesModified.length > 0) {
+          result.push({ turnNumber, timestamp, filesModified })
+        }
+      }
+    }
+    return result
+  }, [activeMessages])
 
   // If the active session runs in a worktree, show that worktree's diff
   const diffPath = useSessionStore(s => {
@@ -147,18 +199,49 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     }
   }, [fileTree])
 
-  // Filter the diff content to match the file filter (when no specific file is selected)
+  // Files modified in the selected turn (for filtering)
+  const turnFiles = useMemo(() => {
+    if (selectedTurn === null) return null
+    const turn = turns.find(t => t.turnNumber === selectedTurn)
+    if (!turn) return null
+    // Extract just the filename from full paths for matching
+    return new Set(turn.filesModified.map(f => {
+      // Strip project path prefix if present
+      const parts = f.split('/')
+      return parts[parts.length - 1]
+    }))
+  }, [selectedTurn, turns])
+
+  // Filter the diff content to match the file filter and turn selection
   const displayDiff = useMemo(() => {
-    if (selectedFile || !searchFilter.trim() || !diff) return diff
-    const filteredPaths = new Set(filteredFiles.map(f => f.path))
-    // Split unified diff into per-file sections and keep only matching ones
-    const sections = diff.split(/(?=^diff --git )/m)
-    return sections.filter(section => {
-      const match = section.match(/^diff --git a\/(.*?) b\//)
-      if (!match) return false
-      return filteredPaths.has(match[1])
-    }).join('')
-  }, [diff, selectedFile, searchFilter, filteredFiles])
+    let result = diff
+    if (!result) return result
+
+    // Filter by selected turn
+    if (selectedTurn !== null && turnFiles && !selectedFile) {
+      const sections = result.split(/(?=^diff --git )/m)
+      result = sections.filter(section => {
+        const match = section.match(/^diff --git a\/(.*?) b\//)
+        if (!match) return false
+        const filePath = match[1]
+        const fileName = filePath.split('/').pop() || filePath
+        return turnFiles.has(fileName) || turnFiles.has(filePath)
+      }).join('')
+    }
+
+    // Filter by search
+    if (!selectedFile && searchFilter.trim()) {
+      const filteredPaths = new Set(filteredFiles.map(f => f.path))
+      const sections = result.split(/(?=^diff --git )/m)
+      result = sections.filter(section => {
+        const match = section.match(/^diff --git a\/(.*?) b\//)
+        if (!match) return false
+        return filteredPaths.has(match[1])
+      }).join('')
+    }
+
+    return result
+  }, [diff, selectedFile, searchFilter, filteredFiles, selectedTurn, turnFiles])
 
   /** Quiet refresh */
   const quietRefresh = useCallback(async () => {
@@ -382,6 +465,29 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
           </svg>
         </button>
       </div>
+
+      {/* Turn-based tabs */}
+      {turns.length > 0 && (
+        <div className="diff-turn-tabs">
+          <button
+            className={`diff-turn-tab${selectedTurn === null ? ' active' : ''}`}
+            onClick={() => setSelectedTurn(null)}
+          >
+            All turns
+          </button>
+          {turns.slice().reverse().map(turn => (
+            <button
+              key={turn.turnNumber}
+              className={`diff-turn-tab${selectedTurn === turn.turnNumber ? ' active' : ''}`}
+              onClick={() => setSelectedTurn(turn.turnNumber)}
+              title={`${turn.filesModified.length} file${turn.filesModified.length !== 1 ? 's' : ''} modified`}
+            >
+              <span className="diff-turn-tab-label">Turn {turn.turnNumber}</span>
+              <span className="diff-turn-tab-time">{formatTurnTime(turn.timestamp)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Sub-header with title and tabs */}
       <div className="diff-panel-sub-header">

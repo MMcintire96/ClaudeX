@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import { parse as diffParse } from 'diff2html'
 import { createPortal } from 'react-dom'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -9,6 +9,9 @@ interface Props {
   onOpenInEditor?: (filePath: string) => void
 }
 
+// Safety cap: truncate per-file lines to prevent DOM explosion
+const MAX_LINES_PER_FILE = 2000
+
 export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props) {
   const sideBySide = useSettingsStore(s => s.sideBySideDiffs)
   const files = useMemo(() => {
@@ -18,30 +21,6 @@ export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props)
     } catch {
       return []
     }
-  }, [diff])
-
-  // Track collapsed state per file index; null = use default (expanded)
-  const [collapsedMap, setCollapsedMap] = useState<Record<number, boolean>>({})
-
-  const toggleFile = useCallback((index: number) => {
-    setCollapsedMap(prev => ({ ...prev, [index]: !prev[index] }))
-  }, [])
-
-  const expandAll = useCallback(() => {
-    const map: Record<number, boolean> = {}
-    files.forEach((_, i) => { map[i] = false })
-    setCollapsedMap(map)
-  }, [files])
-
-  const collapseAll = useCallback(() => {
-    const map: Record<number, boolean> = {}
-    files.forEach((_, i) => { map[i] = true })
-    setCollapsedMap(map)
-  }, [files])
-
-  // Reset collapsed state when diff changes
-  useEffect(() => {
-    setCollapsedMap({})
   }, [diff])
 
   if (!diff.trim()) {
@@ -58,18 +37,10 @@ export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props)
 
   return (
     <div className="gh-diff">
-      {files.length > 1 && (
-        <div className="gh-diff-actions">
-          <button className="btn btn-sm" onClick={expandAll}>Expand all</button>
-          <button className="btn btn-sm" onClick={collapseAll}>Collapse all</button>
-        </div>
-      )}
       {files.map((file, i) => (
         <DiffFileBlock
           key={`${file.newName}-${i}`}
           file={file}
-          collapsed={collapsedMap[i] ?? false}
-          onToggle={() => toggleFile(i)}
           onAddToClaude={onAddToClaude}
           onOpenInEditor={onOpenInEditor}
           sideBySide={sideBySide}
@@ -91,15 +62,11 @@ function getMenuPosition(clientX: number, clientY: number) {
 
 function DiffFileBlock({
   file,
-  collapsed,
-  onToggle,
   onAddToClaude,
   onOpenInEditor,
   sideBySide
 }: {
   file: ReturnType<typeof diffParse>[number]
-  collapsed: boolean
-  onToggle: () => void
   onAddToClaude?: (filePath: string) => void
   onOpenInEditor?: (filePath: string) => void
   sideBySide: boolean
@@ -108,6 +75,34 @@ function DiffFileBlock({
   const isNew = file.oldName === '/dev/null'
   const isDeleted = file.newName === '/dev/null'
   const isRenamed = file.oldName !== file.newName && !isNew && !isDeleted
+
+  // Count total lines in this file
+  const fileLineCount = useMemo(() => {
+    let count = 0
+    for (const b of file.blocks) count += b.lines.length
+    return count
+  }, [file])
+
+  const needsTruncation = fileLineCount > MAX_LINES_PER_FILE
+  const [showAllLines, setShowAllLines] = useState(false)
+
+  // Build truncated blocks if needed
+  const displayBlocks = useMemo(() => {
+    if (!needsTruncation || showAllLines) return file.blocks
+    let remaining = MAX_LINES_PER_FILE
+    const truncated: typeof file.blocks = []
+    for (const block of file.blocks) {
+      if (remaining <= 0) break
+      if (block.lines.length <= remaining) {
+        truncated.push(block)
+        remaining -= block.lines.length
+      } else {
+        truncated.push({ ...block, lines: block.lines.slice(0, remaining) })
+        remaining = 0
+      }
+    }
+    return truncated
+  }, [file.blocks, needsTruncation, showAllLines])
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
 
@@ -119,17 +114,15 @@ function DiffFileBlock({
   }, [contextMenu])
 
   return (
-    <div className={`gh-diff-file ${collapsed ? 'collapsed' : ''}`}>
-      <button
+    <div className="gh-diff-file">
+      <div
         className="gh-diff-file-header"
-        onClick={onToggle}
         onContextMenu={(e) => {
           if (!onAddToClaude && !onOpenInEditor) return
           e.preventDefault()
           setContextMenu(getMenuPosition(e.clientX, e.clientY))
         }}
       >
-        <span className="gh-diff-chevron">{collapsed ? '\u25B8' : '\u25BE'}</span>
         <span className="gh-diff-stats">
           {file.addedLines > 0 && (
             <span className="gh-diff-stat-add">+{file.addedLines}</span>
@@ -147,13 +140,13 @@ function DiffFileBlock({
         {isDeleted && (
           <span className="gh-diff-badge gh-diff-badge-del">Deleted</span>
         )}
-      </button>
+      </div>
 
-      {!collapsed && !sideBySide && (
+      {!sideBySide && (
         <div className="gh-diff-file-body">
           <table className="gh-diff-table">
             <tbody>
-              {file.blocks.map((block, bi) => (
+              {displayBlocks.map((block, bi) => (
                 <React.Fragment key={bi}>
                   <tr className="gh-diff-hunk">
                     <td className="gh-diff-ln gh-diff-ln-old" />
@@ -190,15 +183,22 @@ function DiffFileBlock({
               ))}
             </tbody>
           </table>
+          {needsTruncation && !showAllLines && (
+            <div className="gh-diff-truncated">
+              <button className="btn btn-sm" onClick={() => setShowAllLines(true)}>
+                Show all {fileLineCount.toLocaleString()} lines ({(fileLineCount - MAX_LINES_PER_FILE).toLocaleString()} more)
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {!collapsed && sideBySide && (
+      {sideBySide && (
         <div className="gh-diff-file-body gh-diff-side-by-side">
           <div className="gh-diff-side gh-diff-side-old">
             <table className="gh-diff-table">
               <tbody>
-                {file.blocks.map((block, bi) => (
+                {displayBlocks.map((block, bi) => (
                   <React.Fragment key={bi}>
                     <tr className="gh-diff-hunk">
                       <td className="gh-diff-ln gh-diff-ln-old" />
@@ -234,7 +234,7 @@ function DiffFileBlock({
           <div className="gh-diff-side gh-diff-side-new">
             <table className="gh-diff-table">
               <tbody>
-                {file.blocks.map((block, bi) => (
+                {displayBlocks.map((block, bi) => (
                   <React.Fragment key={bi}>
                     <tr className="gh-diff-hunk">
                       <td className="gh-diff-ln gh-diff-ln-new" />
@@ -267,6 +267,13 @@ function DiffFileBlock({
               </tbody>
             </table>
           </div>
+          {needsTruncation && !showAllLines && (
+            <div className="gh-diff-truncated">
+              <button className="btn btn-sm" onClick={() => setShowAllLines(true)}>
+                Show all {fileLineCount.toLocaleString()} lines ({(fileLineCount - MAX_LINES_PER_FILE).toLocaleString()} more)
+              </button>
+            </div>
+          )}
         </div>
       )}
 

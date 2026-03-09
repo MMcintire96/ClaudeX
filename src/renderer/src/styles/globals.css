@@ -314,11 +314,12 @@ body {
 }
 
 .sidebar-section-label {
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-muted);
   padding: 12px 10px 6px;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 .sidebar-section-actions {
   display: flex;
@@ -2652,6 +2653,34 @@ body {
   padding-top: 7px;
 }
 
+/* Access mode toggle */
+.btn-access-mode {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  transition: all 0.2s var(--transition-smooth, ease);
+}
+.btn-access-mode:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.btn-access-mode.mode-full {
+  background: color-mix(in srgb, #40b080 12%, transparent);
+  border-color: rgba(64, 176, 128, 0.3);
+  color: #40b080;
+}
+.btn-access-mode.mode-full:hover {
+  background: color-mix(in srgb, #40b080 20%, transparent);
+}
+
 /* Mode toggle (plan/execute) */
 .btn-mode-toggle {
   padding: 5px 12px;
@@ -2901,6 +2930,28 @@ body {
 .message-queue-remove:hover {
   color: #ff4444;
   opacity: 1;
+}
+
+/* ===== RESPONSE TIMING BADGE ===== */
+.response-timing-badge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  user-select: none;
+}
+
+.response-timing-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.response-timing-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 
 /* ===== RETRY BUTTON ===== */
@@ -3268,6 +3319,52 @@ body {
   opacity: 1;
 }
 
+/* Turn-based tabs */
+.diff-turn-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.diff-turn-tabs::-webkit-scrollbar {
+  display: none;
+}
+.diff-turn-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.diff-turn-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.diff-turn-tab.active {
+  color: var(--accent-text, var(--accent));
+  border-bottom-color: var(--accent);
+}
+.diff-turn-tab-label {
+  font-weight: 500;
+}
+.diff-turn-tab-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
 .diff-panel-sub-header {
   display: flex;
   align-items: center;
@@ -3341,7 +3438,6 @@ body {
 .diff-content {
   flex: 1;
   overflow: auto;
-  padding: 8px;
   min-width: 0;
 }
 
@@ -3495,15 +3591,14 @@ body {
 .gh-diff {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 4px 0;
+  gap: 0;
 }
 
-.gh-diff-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 4px;
+.gh-diff-truncated {
+  padding: 8px 12px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
 }
 
 .gh-diff-fallback {
@@ -3518,9 +3613,11 @@ body {
 /* --- File block --- */
 .gh-diff-file {
   border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
+  border-top: none;
   background: var(--bg-primary);
+}
+.gh-diff-file:first-of-type {
+  border-top: 1px solid var(--border);
 }
 
 .gh-diff-file-header {
@@ -3535,24 +3632,10 @@ body {
   color: var(--text-primary);
   font-size: 12px;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  cursor: pointer;
   text-align: left;
   position: sticky;
   top: 0;
   z-index: 2;
-}
-.gh-diff-file-header:hover {
-  background: var(--diff-header-hover);
-}
-.gh-diff-file.collapsed .gh-diff-file-header {
-  border-bottom: none;
-}
-
-.gh-diff-chevron {
-  font-size: 10px;
-  color: var(--text-muted);
-  width: 12px;
-  flex-shrink: 0;
 }
 
 .gh-diff-stats {
@@ -3597,11 +3680,9 @@ body {
   color: var(--diff-del-text);
 }
 
-/* --- File body (scrollable) --- */
+/* --- File body --- */
 .gh-diff-file-body {
   overflow-x: auto;
-  overflow-y: auto;
-  max-height: 600px;
 }
 .gh-diff-side-by-side {
   display: grid;
@@ -4125,11 +4206,15 @@ body {
 
 .project-diff-stats {
   display: inline-flex;
-  gap: 4px;
   margin-left: auto;
-  font-size: 11px;
-  font-weight: 600;
   flex-shrink: 0;
+}
+
+.diff-stat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning, #f0a030);
 }
 
 .diff-stat-add {

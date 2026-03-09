@@ -361,19 +361,6 @@ export default function App() {
         return
       }
 
-      // Mod+E — Toggle split view
-      if (key === 'e') {
-        e.preventDefault()
-        const ui = useUIStore.getState()
-        // When explicitly closing split view, clear the pair memory
-        if (ui.splitView) {
-          const activeId = useSessionStore.getState().activeSessionId
-          const session = activeId ? useSessionStore.getState().sessions[activeId] : null
-          if (session) ui.clearProjectPair(session.projectPath)
-        }
-        ui.toggleSplitView()
-        return
-      }
 
       // Mod+V — Voice input
       if (key === 'v') {

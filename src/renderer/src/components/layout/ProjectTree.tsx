@@ -190,16 +190,10 @@ export default function ProjectTree({
             <path d="M3 2 L7 5 L3 8 Z" />
           </svg>
         </span>
-        <span className="project-tree-folder-icon">{'\uD83D\uDCC2'}</span>
         <span className="project-group-name">{projectName}</span>
         {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) && (
-          <span className="project-diff-stats">
-            {diffStats.additions > 0 && (
-              <span className="diff-stat-add">+{diffStats.additions}</span>
-            )}
-            {diffStats.deletions > 0 && (
-              <span className="diff-stat-del">-{diffStats.deletions}</span>
-            )}
+          <span className="project-diff-stats" title={`+${diffStats.additions} -${diffStats.deletions} lines`}>
+            <span className="diff-stat-dot" />
           </span>
         )}
       </button>
@@ -343,7 +337,7 @@ export default function ProjectTree({
                   </svg>
                 </span>
               )}
-              <span className="thread-time"></span>
+              <span className="thread-time">{timeAgo(s.createdAt)}</span>
               {needsInput && (
                 <span className="thread-needs-input-badge" title="Needs your input" />
               )}

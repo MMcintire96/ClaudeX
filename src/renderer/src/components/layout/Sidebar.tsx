@@ -446,32 +446,8 @@ export default function Sidebar() {
 
       {/* Threads */}
       <div className="sidebar-projects">
-        <div className="sidebar-section-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>Threads</span>
-          {projectList.length > 0 && (
-            <span className="sidebar-section-actions">
-              <button
-                className="sidebar-section-action"
-                onClick={expandAllProjects}
-                title="Expand all"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="7 13 12 18 17 13" />
-                  <polyline points="7 6 12 11 17 6" />
-                </svg>
-              </button>
-              <button
-                className="sidebar-section-action"
-                onClick={collapseAllProjects}
-                title="Collapse all"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="17 11 12 6 7 11" />
-                  <polyline points="17 18 12 13 7 18" />
-                </svg>
-              </button>
-            </span>
-          )}
+        <div className="sidebar-section-label">
+          <span>Projects</span>
         </div>
 
         {projectList.map((proj, index) => (

@@ -97,6 +97,18 @@ function VimBlockCursor({ textareaRef, text }: { textareaRef: React.RefObject<HT
 const EMPTY_MESSAGES: UIMessage[] = []
 const MESSAGES_PER_PAGE = 50
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return '<1s'
+  const seconds = Math.floor(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainSec = seconds % 60
+  if (minutes < 60) return remainSec > 0 ? `${minutes}m ${remainSec}s` : `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remainMin = minutes % 60
+  return remainMin > 0 ? `${hours}h ${remainMin}m` : `${hours}h`
+}
+
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg']
 function isImagePath(p: string): boolean {
   const lower = p.toLowerCase()
@@ -437,14 +449,15 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   const renderItems = useMemo<RenderItem[]>(() => {
     const items: RenderItem[] = []
     let i = 0
+    const NON_GROUPABLE = ['AskUserQuestion', 'ExitPlanMode', 'TodoWrite']
     while (i < messages.length) {
       const msg = messages[i]
       if (msg.type === 'tool_use') {
         const toolMsg = msg as UIToolUseMessage
-        const NON_GROUPABLE = ['AskUserQuestion', 'ExitPlanMode', 'TodoWrite']
         const isGroupable = !NON_GROUPABLE.includes(toolMsg.toolName)
         const hasResult = toolResultByToolUseId.has(toolMsg.toolId)
         if (isGroupable && hasResult) {
+          // Greedily collect consecutive tool_use and tool_result messages into a group
           const groupIndices: number[] = []
           const groupMsgs: UIMessage[] = []
           const groupToolNames: string[] = []
@@ -460,11 +473,17 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
                 groupMsgs.push(m)
                 groupToolNames.push(tm.toolName)
                 j++
-                if (j < messages.length && messages[j].type === 'tool_result') {
-                  groupIndices.push(j)
-                  groupMsgs.push(messages[j])
-                  j++
-                }
+                continue
+              }
+            }
+            if (m.type === 'tool_result') {
+              // Consume tool_result messages — they belong to a tool_use already in the group
+              const resultMsg = m as UIToolResultMessage
+              const parentTool = toolUseById.get(resultMsg.toolUseId)
+              if (parentTool && !NON_GROUPABLE.includes(parentTool.toolName)) {
+                groupIndices.push(j)
+                groupMsgs.push(m)
+                j++
                 continue
               }
             }
@@ -493,7 +512,35 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
       i++
     }
     return items
-  }, [messages, toolResultByToolUseId])
+  }, [messages, toolResultByToolUseId, toolUseById])
+
+  // Compute turn boundaries for response timing badges
+  // A "turn" starts with a user message and ends at the last assistant/tool message before the next user message
+  const turnTimings = useMemo(() => {
+    const timings = new Map<number, { duration: number; turnNumber: number }>()
+    let turnNumber = 0
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i]
+      if (msg.type === 'text' && (msg as UITextMessage).role === 'user') {
+        turnNumber++
+        const userTimestamp = (msg as UITextMessage).timestamp
+        // Find the last message in this response (before next user message or end)
+        let lastAssistantIdx = -1
+        let lastTimestamp = userTimestamp
+        for (let j = i + 1; j < messages.length; j++) {
+          const next = messages[j]
+          if (next.type === 'text' && (next as UITextMessage).role === 'user') break
+          lastAssistantIdx = j
+          lastTimestamp = (next as { timestamp: number }).timestamp || lastTimestamp
+        }
+        if (lastAssistantIdx >= 0) {
+          const duration = Math.max(0, lastTimestamp - userTimestamp)
+          timings.set(lastAssistantIdx, { duration, turnNumber })
+        }
+      }
+    }
+    return timings
+  }, [messages])
 
   // Search: compute matching message indices
   const searchMatches = useMemo(() => {
@@ -1170,21 +1217,57 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
               if (item.kind === 'read-group') {
                 const startIdx = Math.max(0, messages.length - visibleCount)
                 if (item.indices[item.indices.length - 1] < startIdx) return null
-                return <ReadGroup key={`rg-${itemIdx}`} toolUses={item.toolUses} results={item.results} />
+                const lastIdx = item.indices[item.indices.length - 1]
+                const timing = turnTimings.get(lastIdx)
+                return (
+                  <React.Fragment key={`rg-${itemIdx}`}>
+                    <ReadGroup toolUses={item.toolUses} results={item.results} />
+                    {timing && timing.duration > 0 && (
+                      <div className="response-timing-badge">
+                        <span className="response-timing-line" />
+                        <span className="response-timing-label">Response &middot; {formatDuration(timing.duration)}</span>
+                        <span className="response-timing-line" />
+                      </div>
+                    )}
+                  </React.Fragment>
+                )
               }
               if (item.kind === 'group') {
                 const startIdx = Math.max(0, messages.length - visibleCount)
                 if (item.indices[item.indices.length - 1] < startIdx) return null
+                const lastIdx = item.indices[item.indices.length - 1]
+                const timing = turnTimings.get(lastIdx)
                 return (
-                  <ToolCallGroup key={`group-${itemIdx}`} toolNames={item.toolNames}>
-                    {item.msgs.map(msg => renderSingleMessage(msg, messages.indexOf(msg)))}
-                  </ToolCallGroup>
+                  <React.Fragment key={`group-${itemIdx}`}>
+                    <ToolCallGroup toolNames={item.toolNames}>
+                      {item.msgs.map(msg => renderSingleMessage(msg, messages.indexOf(msg)))}
+                    </ToolCallGroup>
+                    {timing && timing.duration > 0 && (
+                      <div className="response-timing-badge">
+                        <span className="response-timing-line" />
+                        <span className="response-timing-label">Response &middot; {formatDuration(timing.duration)}</span>
+                        <span className="response-timing-line" />
+                      </div>
+                    )}
+                  </React.Fragment>
                 )
               }
               const { msg, index: absIdx } = item
               const startIdx = Math.max(0, messages.length - visibleCount)
               if (absIdx < startIdx) return null
-              return renderSingleMessage(msg, absIdx)
+              const timing = turnTimings.get(absIdx)
+              return (
+                <React.Fragment key={`single-${itemIdx}`}>
+                  {renderSingleMessage(msg, absIdx)}
+                  {timing && timing.duration > 0 && (
+                    <div className="response-timing-badge">
+                      <span className="response-timing-line" />
+                      <span className="response-timing-label">Response &middot; {formatDuration(timing.duration)}</span>
+                      <span className="response-timing-line" />
+                    </div>
+                  )}
+                </React.Fragment>
+              )
             })
           )}
 
@@ -1453,6 +1536,23 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
                   Fork
                 </button>
               )}
+              <button
+                className={`btn-access-mode${skipPermissions ? ' mode-full' : ''}`}
+                onClick={() => {
+                  const { updateSettings, claude } = useSettingsStore.getState()
+                  updateSettings({ claude: { ...claude, dangerouslySkipPermissions: !skipPermissions } })
+                }}
+                title={skipPermissions ? 'Full access — Claude can run all tools without asking' : 'Ask first — Claude will ask before running tools'}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {skipPermissions ? (
+                    <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>
+                  ) : (
+                    <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></>
+                  )}
+                </svg>
+                {skipPermissions ? 'Full access' : 'Ask first'}
+              </button>
             </div>
             <div className="input-actions">
               {vimChatEnabled && (
