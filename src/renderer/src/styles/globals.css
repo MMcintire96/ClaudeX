@@ -5113,6 +5113,37 @@ body {
   color: var(--danger);
 }
 
+.start-config-default-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.start-config-default-btn:hover {
+  color: var(--accent);
+}
+.start-config-default-btn.active {
+  color: var(--accent);
+}
+
+.start-config-autorun-label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+.start-config-autorun-label input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
 .start-config-actions {
   display: flex;
   justify-content: flex-end;

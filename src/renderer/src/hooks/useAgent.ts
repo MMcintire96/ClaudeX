@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useProjectStore } from '../stores/projectStore'
+import { useTerminalStore } from '../stores/terminalStore'
 import { DEFAULT_MODEL, DEFAULT_EFFORT } from '../constants/models'
 import { SCRATCH_PROJECT_PATH } from '../constants/scratch'
 
@@ -58,6 +59,27 @@ export function useAgent(sessionId: string | null) {
     }
     addUserMessage(newSessionId, prompt, images)
     setProcessing(newSessionId, true)
+
+    // Run auto-run actions for this project
+    if (effectivePath !== SCRATCH_PROJECT_PATH) {
+      window.api.project.getStartConfig(effectivePath).then(config => {
+        const autoActions = (config?.actions || []).filter(a => a.autoRun && a.name && a.command)
+        for (const action of autoActions) {
+          window.api.terminal.create(effectivePath).then(result => {
+            if (result.success && result.id) {
+              useTerminalStore.getState().addTerminal({
+                id: result.id,
+                projectPath: effectivePath,
+                pid: result.pid || 0,
+                name: action.name
+              })
+              window.api.terminal.write(result.id, action.command + '\r')
+            }
+          })
+        }
+      })
+    }
+
     return newSessionId
   }, [currentPath, sessionId, createSession, replaceSessionId, addUserMessage, setProcessing])
 

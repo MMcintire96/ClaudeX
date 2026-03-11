@@ -54,7 +54,8 @@ export default function AppHeader() {
   const runMenuRef = useRef<HTMLDivElement>(null)
   const [startConfigPath, setStartConfigPath] = useState<string | null>(null)
   const [hasStartConfig, setHasStartConfig] = useState(false)
-  const [buildCommand, setBuildCommand] = useState<string | null>(null)
+  const [actions, setActions] = useState<Array<{ name: string; command: string }>>([])
+  const [defaultAction, setDefaultAction] = useState<string | null>(null)
 
   useEffect(() => {
     if (!ctxMenu) return
@@ -81,10 +82,18 @@ export default function AppHeader() {
 
   // Check start config existence for current project
   useEffect(() => {
-    if (!currentPath) { setHasStartConfig(false); setBuildCommand(null); return }
+    if (!currentPath) { setHasStartConfig(false); setActions([]); setDefaultAction(null); return }
     window.api.project.getStartConfig(currentPath).then(config => {
       setHasStartConfig(!!config && config.commands.length > 0)
-      setBuildCommand(config?.buildCommand || null)
+      const configActions = config?.actions || []
+      // Migrate legacy buildCommand
+      if (configActions.length === 0 && config?.buildCommand) {
+        setActions([{ name: 'Build', command: config.buildCommand }])
+        setDefaultAction('Build')
+      } else {
+        setActions(configActions)
+        setDefaultAction(config?.defaultAction || null)
+      }
     })
   }, [currentPath])
 
@@ -122,6 +131,22 @@ const handleRunStart = useCallback(async () => {
     }
     setRunMenuOpen(false)
   }, [currentPath, effectiveCwd, setSidePanelView])
+
+  const handleRunAction = useCallback(async (action: { name: string; command: string }) => {
+    if (!currentPath) return
+    const cwd = effectiveCwd || currentPath
+    const result = await window.api.terminal.create(cwd)
+    if (result.success && result.id) {
+      useTerminalStore.getState().addTerminal({
+        id: result.id,
+        projectPath: currentPath,
+        pid: result.pid || 0,
+        name: action.name
+      })
+      window.api.terminal.write(result.id, action.command + '\r')
+    }
+    setRunMenuOpen(false)
+  }, [currentPath, effectiveCwd])
 
   const handleToggleBrowser = useCallback(() => {
     if (!currentPath) return
@@ -188,8 +213,9 @@ const handleRunStart = useCallback(async () => {
             className={`btn-header-icon ${runMenuOpen ? 'active' : ''}`}
             onClick={() => {
               if (!currentPath) return
-              if (hasStartConfig) {
-                handleRunStart()
+              const defAction = defaultAction ? actions.find(a => a.name === defaultAction) : null
+              if (defAction) {
+                handleRunAction(defAction)
               } else {
                 setRunMenuOpen(o => !o)
               }
@@ -198,7 +224,7 @@ const handleRunStart = useCallback(async () => {
               e.preventDefault()
               if (currentPath) setRunMenuOpen(o => !o)
             }}
-            title={hasStartConfig ? 'Run' : 'Run (right-click for options)'}
+            title={defaultAction ? `Run ${defaultAction}` : 'Run (right-click for options)'}
             disabled={settingsOpen || !currentPath || isScratchSession}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -217,46 +243,17 @@ const handleRunStart = useCallback(async () => {
           </button>
           {runMenuOpen && (
             <div className="run-dropdown-menu">
-              <button
-                className="run-dropdown-item"
-                onClick={() => { handleRunStart(); }}
-                disabled={!hasStartConfig}
-              >
-                Run
-                {!hasStartConfig && <span className="run-dropdown-hint">not configured</span>}
-              </button>
-              <button
-                className="run-dropdown-item"
-                disabled={!buildCommand}
-                onClick={() => {
-                  if (!currentPath || !buildCommand) return
-                  const cwd = effectiveCwd || currentPath
-                  window.api.terminal.create(cwd).then(result => {
-                    if (result.success && result.id) {
-                      useTerminalStore.getState().addTerminal({
-                        id: result.id,
-                        projectPath: currentPath,
-                        pid: result.pid || 0,
-                        name: 'Build'
-                      })
-                      window.api.terminal.write(result.id, buildCommand + '\r')
-                    }
-                  })
-                  setRunMenuOpen(false)
-                }}
-              >
-                Run build
-                {!buildCommand && <span className="run-dropdown-hint">not configured</span>}
-              </button>
-              <button
-                className="run-dropdown-item"
-                onClick={() => { handleRunStart(); }}
-                disabled={!hasStartConfig}
-              >
-                Start
-                {!hasStartConfig && <span className="run-dropdown-hint">not configured</span>}
-              </button>
-              <div className="run-dropdown-separator" />
+              {actions.map((action) => (
+                <button
+                  key={action.name}
+                  className="run-dropdown-item"
+                  onClick={() => handleRunAction(action)}
+                >
+                  {action.name}
+                  {action.name === defaultAction && <span className="run-dropdown-hint">default</span>}
+                </button>
+              ))}
+              {actions.length > 0 && <div className="run-dropdown-separator" />}
               <button
                 className="run-dropdown-item"
                 onClick={() => {
@@ -386,7 +383,14 @@ const handleRunStart = useCallback(async () => {
             setHasStartConfig(true)
             if (currentPath) {
               window.api.project.getStartConfig(currentPath).then(config => {
-                setBuildCommand(config?.buildCommand || null)
+                const configActions = config?.actions || []
+                if (configActions.length === 0 && config?.buildCommand) {
+                  setActions([{ name: 'Build', command: config.buildCommand }])
+                  setDefaultAction('Build')
+                } else {
+                  setActions(configActions)
+                  setDefaultAction(config?.defaultAction || null)
+                }
               })
             }
           }}

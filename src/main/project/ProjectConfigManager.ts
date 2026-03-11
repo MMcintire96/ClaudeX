@@ -9,10 +9,18 @@ interface StartCommand {
   cwd?: string
 }
 
+export interface ProjectAction {
+  name: string
+  command: string
+  autoRun?: boolean
+}
+
 export interface ProjectStartConfig {
   commands: StartCommand[]
   browserUrl?: string
   buildCommand?: string
+  actions?: ProjectAction[]
+  defaultAction?: string
 }
 
 export class ProjectConfigManager {
