@@ -16,6 +16,19 @@ interface WorktreeOptions {
 
 const SCRATCH_PROJECT_PATH = '__scratch__'
 
+/** Match the SDK's project-path hashing (Cx function in cli.js) */
+function sdkPathHash(p: string): string {
+  const hash = p.replace(/[^a-zA-Z0-9]/g, '-')
+  if (hash.length <= 200) return hash
+  // SDK truncates long paths and appends a simple hash
+  let h = 0
+  for (let i = 0; i < p.length; i++) {
+    h = (h << 5) - h + p.charCodeAt(i)
+    h |= 0
+  }
+  return `${hash.slice(0, 200)}-${Math.abs(h).toString(36)}`
+}
+
 export function registerAgentHandlers(agentManager: AgentManager, worktreeManager?: WorktreeManager, sessionPersistence?: SessionPersistence, bridgeServer?: ClaudexBridgeServer): void {
   ipcMain.handle('agent:start', async (_event, projectPath: string, prompt: string, model?: string | null, worktreeOptions?: WorktreeOptions, effort?: string | null) => {
     try {
@@ -116,8 +129,8 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
 
       // 3. Locate the SDK session file
       //    The SDK stores sessions at ~/.claude/projects/{pathHash}/{sessionId}.jsonl
-      //    where pathHash = absolute path with / replaced by -
-      const projectPathHash = projectPath.replace(/\//g, '-')
+      //    where pathHash = every non-alphanumeric char replaced by -
+      const projectPathHash = sdkPathHash(projectPath)
       const sdkProjectDir = join(homedir(), '.claude', 'projects', projectPathHash)
       const sourceSessionFile = join(sdkProjectDir, `${sdkSessionId}.jsonl`)
       console.log(`[agent:fork] Looking for session file: ${sourceSessionFile}, exists=${existsSync(sourceSessionFile)}`)
@@ -154,6 +167,8 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
       // 6. Copy SDK session file for each fork
       //    Each fork runs in its own worktree, so the SDK will look for session
       //    files under the worktree path's hash directory.
+      //    We must rewrite sessionId and cwd in every JSONL line so the SDK
+      //    recognises the file as belonging to the fork session.
       const sessionFileContent = readFileSync(sourceSessionFile, 'utf-8')
 
       // Also check for session subdirectory (subagents, etc.)
@@ -161,12 +176,27 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
       const hasSessionDir = existsSync(sourceSessionDir)
 
       for (const [forkId, worktreeInfo] of [[forkAId, worktreeA], [forkBId, worktreeB]] as const) {
-        const wtPathHash = worktreeInfo.worktreePath.replace(/\//g, '-')
+        const wtPathHash = sdkPathHash(worktreeInfo.worktreePath)
         const wtSdkDir = join(homedir(), '.claude', 'projects', wtPathHash)
         mkdirSync(wtSdkDir, { recursive: true })
 
-        // Write the copied session file with the fork's session ID
-        writeFileSync(join(wtSdkDir, `${forkId}.jsonl`), sessionFileContent, 'utf-8')
+        // Rewrite sessionId and cwd in each JSONL line to match the fork
+        const rewrittenContent = sessionFileContent
+          .split('\n')
+          .map(line => {
+            if (!line.trim()) return line
+            try {
+              const obj = JSON.parse(line)
+              if (obj.sessionId) obj.sessionId = forkId
+              if (obj.cwd) obj.cwd = worktreeInfo.worktreePath
+              return JSON.stringify(obj)
+            } catch {
+              return line
+            }
+          })
+          .join('\n')
+
+        writeFileSync(join(wtSdkDir, `${forkId}.jsonl`), rewrittenContent, 'utf-8')
 
         // Copy session subdirectory if it exists
         if (hasSessionDir) {

@@ -60,8 +60,8 @@ export function useAgent(sessionId: string | null) {
     addUserMessage(newSessionId, prompt, images)
     setProcessing(newSessionId, true)
 
-    // Run auto-run actions for this project
-    if (effectivePath !== SCRATCH_PROJECT_PATH) {
+    // Run auto-run actions only when a worktree is created (fork or worktree mode)
+    if (worktreeOptions?.useWorktree && effectivePath !== SCRATCH_PROJECT_PATH) {
       window.api.project.getStartConfig(effectivePath).then(config => {
         const autoActions = (config?.actions || []).filter(a => a.autoRun && a.name && a.command)
         for (const action of autoActions) {

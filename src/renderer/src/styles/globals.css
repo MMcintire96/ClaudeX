@@ -6770,6 +6770,7 @@ body {
 
 /* ===== TERMINAL TOOLBAR ===== */
 .terminal-toolbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6786,6 +6787,28 @@ body {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.terminal-collapse-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.terminal-collapse-center:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .terminal-toolbar-actions {
