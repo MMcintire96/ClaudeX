@@ -190,9 +190,9 @@ export default function SettingsPanel() {
                         className="settings-range"
                         min={11}
                         max={20}
-                        step={1}
+                        step={0.5}
                         value={fontSize}
-                        onChange={(e) => updateSettings({ fontSize: parseInt(e.target.value, 10) })}
+                        onChange={(e) => updateSettings({ fontSize: parseFloat(e.target.value) })}
                       />
                       <span className="settings-range-value">{fontSize}px</span>
                     </div>

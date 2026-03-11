@@ -346,7 +346,7 @@ export function registerProjectHandlers(
     }
   })
 
-  ipcMain.handle('project:generate-commit-message', async (_event, projectPath: string, includeUnstaged: boolean) => {
+  ipcMain.handle('project:generate-commit-message', async (_event, projectPath: string, includeUnstaged: boolean, sessionContext?: Array<{ name: string; prompt: string; filesModified: string[] }>) => {
     try {
       const git = new GitService(projectPath)
 
@@ -366,7 +366,17 @@ export function registerProjectHandlers(
       // Truncate to avoid blowing up context — 8k chars is plenty for Haiku
       const truncated = diff.length > 8000 ? diff.slice(0, 8000) + '\n... (diff truncated)' : diff
 
-      const prompt = `Write a concise git commit message for the following diff. Use conventional commit style (e.g. "feat:", "fix:", "refactor:"). One line only, no quotes, max 72 characters.\n\n${truncated}`
+      // Build session context section if available
+      let contextSection = ''
+      if (sessionContext && sessionContext.length > 0) {
+        const sessionLines = sessionContext.map(s => {
+          const files = s.filesModified.map(f => f.split('/').pop()).join(', ')
+          return `- "${s.name}": ${s.prompt.slice(0, 120)}${s.prompt.length > 120 ? '...' : ''} (files: ${files})`
+        }).join('\n')
+        contextSection = `\n\nThese changes come from the following work sessions/threads:\n${sessionLines}\n\nUse the session context to write a more meaningful commit message that captures the intent behind the changes, not just the diff.`
+      }
+
+      const prompt = `Write a concise git commit message for the following diff. Use conventional commit style (e.g. "feat:", "fix:", "refactor:"). One line only, no quotes, max 72 characters.${contextSection}\n\n${truncated}`
 
       const sdkOptions: Record<string, any> = {
         model: 'claude-haiku-4-5-20251001',

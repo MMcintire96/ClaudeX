@@ -160,9 +160,9 @@ function renderHighlightedInput(text: string): React.ReactNode[] {
 
 export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatViewProps) {
   const isScratchSession = projectPath === SCRATCH_PROJECT_PATH
-  const [inputText, setInputText] = useState('')
-  const [pastedChunks, setPastedChunks] = useState<PastedChunk[]>([])
-  const [imageAttachments, setImageAttachments] = useState<{ path: string; previewUrl: string }[]>([])
+  const [inputText, setInputText] = useState(() => sessionDrafts.get(sessionId)?.text ?? '')
+  const [pastedChunks, setPastedChunks] = useState<PastedChunk[]>(() => sessionDrafts.get(sessionId)?.chunks ?? [])
+  const [imageAttachments, setImageAttachments] = useState<{ path: string; previewUrl: string }[]>(() => sessionDrafts.get(sessionId)?.images ?? [])
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [effortPickerOpen, setEffortPickerOpen] = useState(false)
   const [planMode, setPlanMode] = useState(false)
@@ -380,27 +380,19 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     }
   }, [worktreeDropdownOpen])
 
-  // Save/restore draft input when switching sessions
+  // Persist draft to module-level Map on every change so it survives
+  // component remounts (ChatView is keyed by sessionId).
   useEffect(() => {
-    // Save draft for the session we're leaving
-    const prevId = prevSessionIdRef.current
-    if (prevId && prevId !== sessionId) {
-      const text = inputTextRef.current
-      const chunks = pastedChunksRef.current
-      const images = imageAttachmentsRef.current
-      if (text || chunks.length > 0 || images.length > 0) {
-        sessionDrafts.set(prevId, { text, chunks, images })
-      } else {
-        sessionDrafts.delete(prevId)
-      }
+    if (inputText || pastedChunks.length > 0 || imageAttachments.length > 0) {
+      sessionDrafts.set(sessionId, { text: inputText, chunks: pastedChunks, images: imageAttachments })
+    } else {
+      sessionDrafts.delete(sessionId)
     }
-    prevSessionIdRef.current = sessionId
+  }, [sessionId, inputText, pastedChunks, imageAttachments])
 
-    // Restore draft for the new session (or clear)
-    const draft = sessionDrafts.get(sessionId)
-    setInputText(draft?.text ?? '')
-    setPastedChunks(draft?.chunks ?? [])
-    setImageAttachments(draft?.images ?? [])
+  // Reset transient UI state on mount & auto-resize textarea for restored draft
+  useEffect(() => {
+    prevSessionIdRef.current = sessionId
     setMessageQueue([])
     sendingQueueRef.current = false
     historyIndexRef.current = -1
@@ -420,6 +412,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     }
     setWorktreeDropdownOpen(false)
     // Auto-focus the input and resize for restored draft
+    const draft = sessionDrafts.get(sessionId)
     setTimeout(() => {
       const ta = textareaRef.current
       if (ta) {
@@ -1221,6 +1214,13 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
         return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><PlanModeBlock message={toolMsg} sessionId={sessionId} answered={hasResult} /></div>
       }
       if (toolMsg.toolName === 'TodoWrite') {
+        // Skip rendering the latest todo inline if it's pinned above the input area
+        // (pinned block hides itself when all tasks are complete, so show inline in that case)
+        if (msg.id === latestTodoId) {
+          const todos = (toolMsg.input?.todos as { status: string }[]) || []
+          const allDone = todos.length > 0 && todos.every(t => t.status === 'completed')
+          if (!allDone) return null
+        }
         return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><TodoBlock message={toolMsg} isLatest={msg.id === latestTodoId} allTodoMessages={allTodoMessages} /></div>
       }
       if (isFileEditTool(toolMsg.toolName)) {

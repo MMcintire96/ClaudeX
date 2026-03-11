@@ -107,8 +107,8 @@ const api = {
       ipcRenderer.invoke('project:git-remotes', projectPath),
     gitDiffSummary: (projectPath: string, staged?: boolean) =>
       ipcRenderer.invoke('project:git-diff-summary', projectPath, staged),
-    generateCommitMessage: (projectPath: string, includeUnstaged: boolean) =>
-      ipcRenderer.invoke('project:generate-commit-message', projectPath, includeUnstaged),
+    generateCommitMessage: (projectPath: string, includeUnstaged: boolean, sessionContext?: Array<{ name: string; prompt: string; filesModified: string[] }>) =>
+      ipcRenderer.invoke('project:generate-commit-message', projectPath, includeUnstaged, sessionContext),
     readFile: (projectPath: string, filePath: string, maxBytes?: number) =>
       ipcRenderer.invoke('project:read-file', projectPath, filePath, maxBytes)
   },

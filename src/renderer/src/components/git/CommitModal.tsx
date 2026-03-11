@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { useSessionStore, UITextMessage, UIToolUseMessage } from '../../stores/sessionStore'
 
 interface CommitModalProps {
   projectPath: string
@@ -39,6 +40,34 @@ export default function CommitModal({ projectPath, onClose, onCommitted }: Commi
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Gather context from ALL sessions for this project (not just the active one)
+  // Read imperatively from the store (only needed when generating) to avoid
+  // infinite re-renders from the selector creating new objects every render.
+  const getSessionContext = useCallback(() => {
+    const state = useSessionStore.getState()
+    const sessions = Object.values(state.sessions).filter(
+      sess => sess.projectPath === projectPath && sess.messages.length > 0
+    )
+    return sessions.map(sess => {
+      const name = sess.name || 'Untitled'
+      const firstUserMsg = sess.messages.find(
+        (m): m is UITextMessage => m.type === 'text' && (m as UITextMessage).role === 'user'
+      )
+      const prompt = firstUserMsg?.content || ''
+      const filesModified = new Set<string>()
+      for (const msg of sess.messages) {
+        if (msg.type === 'tool_use') {
+          const toolMsg = msg as UIToolUseMessage
+          if (toolMsg.toolName === 'Edit' || toolMsg.toolName === 'Write' || toolMsg.toolName === 'NotebookEdit') {
+            const fp = (toolMsg.input?.file_path as string) || (toolMsg.input?.notebook_path as string) || ''
+            if (fp) filesModified.add(fp)
+          }
+        }
+      }
+      return { name, prompt, filesModified: Array.from(filesModified) }
+    }).filter(s => s.filesModified.length > 0)
+  }, [projectPath])
 
   useEffect(() => {
     window.api.project.gitBranch(projectPath).then(r => {
@@ -130,7 +159,7 @@ export default function CommitModal({ projectPath, onClose, onCommitted }: Commi
     setGenerating(true)
     setError(null)
     try {
-      const result = await window.api.project.generateCommitMessage(projectPath, includeUnstaged)
+      const result = await window.api.project.generateCommitMessage(projectPath, includeUnstaged, getSessionContext())
       if (result.success && result.message) {
         setMessage(result.message)
       } else {
@@ -140,7 +169,7 @@ export default function CommitModal({ projectPath, onClose, onCommitted }: Commi
       setError((err as Error).message)
     }
     setGenerating(false)
-  }, [projectPath, includeUnstaged])
+  }, [projectPath, includeUnstaged, getSessionContext])
 
   return (
     <div className="hotkeys-overlay" onClick={onClose}>
