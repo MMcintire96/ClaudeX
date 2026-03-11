@@ -249,6 +249,7 @@ export default function Sidebar() {
       }).catch(() => {})
     }
     window.api.agent.stop(sessionId).catch(() => {})
+    window.api.checkpoint.cleanup(sessionId).catch(() => {})
     removeSession(sessionId)
     fetchHistory()
   }, [removeSession, fetchHistory])

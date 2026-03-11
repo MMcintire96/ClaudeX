@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState, useEffect } from 'react'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 interface Props {
   onTranscript: (text: string) => void
@@ -172,11 +173,13 @@ export default function VoiceButton({ onTranscript, inline = false }: Props) {
     }
   }, [])
 
+  const modKey = useSettingsStore(s => s.modKey)
+  const modLabel = modKey === 'Meta' ? '⌘' : modKey + '+'
   const title = transcribing
     ? (modelStatus === 'loading' ? 'Loading model…' : 'Transcribing…')
     : listening
       ? 'Click to stop recording'
-      : 'Voice input'
+      : `Voice input (${modLabel}V)`
 
   const baseClass = inline ? 'voice-inline' : 'voice-fab'
   const className = `${baseClass} ${listening ? 'voice-active' : ''} ${transcribing ? 'voice-transcribing' : ''}`

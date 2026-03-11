@@ -186,6 +186,7 @@ interface SessionStore {
   setSuggestion: (sessionId: string, suggestion: string | null) => void
   markAsRead: (sessionId: string) => void
   markAsForked: (sessionId: string, childIds: [string, string]) => void
+  truncateToTurn: (sessionId: string, messageCount: number) => void
   getSerializableSessions: () => Array<{ id: string; projectPath: string; name: string; messages: UIMessage[]; model: string | null; totalCostUsd: number; numTurns: number; selectedModel: string | null; createdAt: number; lastActiveAt: number; worktreePath: string | null; isWorktree: boolean; worktreeSessionId: string | null; forkedFrom: string | null; forkChildren: string[] | null; forkLabel: string | null; isForkParent: boolean }>
 }
 
@@ -738,6 +739,28 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             ...s.sessions[sessionId],
             isForkParent: true,
             forkChildren: childIds
+          }
+        }
+      }
+    })
+  },
+
+  truncateToTurn: (sessionId: string, messageCount: number): void => {
+    set(s => {
+      const session = s.sessions[sessionId]
+      if (!session) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: {
+            ...session,
+            messages: messageCount > 0 ? session.messages.slice(0, messageCount) : [],
+            isProcessing: false,
+            isStreaming: false,
+            isRestored: true, // Force resume path for next message
+            error: null,
+            streamingText: '',
+            suggestion: null
           }
         }
       }

@@ -20,6 +20,8 @@ import { NeovimManager } from '../neovim/NeovimManager'
 import { registerNeovimHandlers } from './neovimHandlers'
 import { McpManager } from '../mcp/McpManager'
 import { registerMcpHandlers } from './mcpHandlers'
+import { CheckpointManager } from '../checkpoint/CheckpointManager'
+import { registerCheckpointHandlers } from './checkpointHandlers'
 
 export function registerAllHandlers(
   agentManager: AgentManager,
@@ -33,7 +35,8 @@ export function registerAllHandlers(
   worktreeManager?: WorktreeManager,
   neovimManager?: NeovimManager,
   mcpManager?: McpManager,
-  bridgeServer?: ClaudexBridgeServer
+  bridgeServer?: ClaudexBridgeServer,
+  checkpointManager?: CheckpointManager
 ): void {
   registerAgentHandlers(agentManager, worktreeManager, sessionPersistence, bridgeServer)
   registerProjectHandlers(projectManager, projectConfigManager, terminalManager)
@@ -50,5 +53,8 @@ export function registerAllHandlers(
   }
   if (mcpManager) {
     registerMcpHandlers(mcpManager, settingsManager)
+  }
+  if (checkpointManager) {
+    registerCheckpointHandlers(checkpointManager)
   }
 }

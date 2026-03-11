@@ -324,6 +324,21 @@ const api = {
     readImage: (filePath: string) =>
       ipcRenderer.invoke('utils:read-image', filePath) as Promise<{ success: boolean; dataUrl?: string }>
   },
+  checkpoint: {
+    list: (sessionId: string) =>
+      ipcRenderer.invoke('checkpoint:list', sessionId),
+    create: (opts: { sessionId: string; projectPath: string; filesModified: string[]; messageCount: number; turnNumber: number; sdkSessionId: string | null }) =>
+      ipcRenderer.invoke('checkpoint:create', opts),
+    revert: (sessionId: string, turnNumber: number) =>
+      ipcRenderer.invoke('checkpoint:revert', sessionId, turnNumber),
+    cleanup: (sessionId: string) =>
+      ipcRenderer.invoke('checkpoint:cleanup', sessionId),
+    onFilesModified: (callback: (data: { sessionId: string; projectPath: string; filesModified: string[]; sdkSessionId: string | null }) => void) => {
+      const handler = (_: unknown, data: { sessionId: string; projectPath: string; filesModified: string[]; sdkSessionId: string | null }) => callback(data)
+      ipcRenderer.on('checkpoint:files-modified', handler)
+      return () => ipcRenderer.removeListener('checkpoint:files-modified', handler)
+    }
+  },
   mcp: {
     list: () =>
       ipcRenderer.invoke('mcp:list'),

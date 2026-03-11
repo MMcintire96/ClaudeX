@@ -23,6 +23,8 @@ interface KeyMomentsRailProps {
   listRef: React.RefObject<HTMLDivElement | null>
   visibleCount: number
   setVisibleCount: React.Dispatch<React.SetStateAction<number>>
+  checkpoints?: Set<number>
+  onRevert?: (turnNumber: number) => void
 }
 
 const MESSAGES_PER_PAGE = 50
@@ -35,7 +37,7 @@ function extractFilename(path: string): string {
   return parts[parts.length - 1] || path
 }
 
-export default function KeyMomentsRail({ messages, listRef, visibleCount, setVisibleCount }: KeyMomentsRailProps) {
+export default function KeyMomentsRail({ messages, listRef, visibleCount, setVisibleCount, checkpoints, onRevert }: KeyMomentsRailProps) {
   const [activeMomentId, setActiveMomentId] = useState<string | null>(null)
   const [collapsedTurns, setCollapsedTurns] = useState<Set<number>>(new Set())
   const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH)
@@ -273,12 +275,12 @@ export default function KeyMomentsRail({ messages, listRef, visibleCount, setVis
 
   const kindIcon = (kind: MomentKind): string => {
     switch (kind) {
-      case 'assistant': return '💬'
-      case 'error': return '❌'
-      case 'question': return '❓'
-      case 'todo': return '✅'
-      case 'edit': return '✏️'
-      case 'bash': return '›_'
+      case 'assistant': return '\u{1F4AC}'
+      case 'error': return '\u{274C}'
+      case 'question': return '\u{2753}'
+      case 'todo': return '\u{2705}'
+      case 'edit': return '\u{270F}\u{FE0F}'
+      case 'bash': return '\u{203A}_'
       default: return ''
     }
   }
@@ -293,6 +295,8 @@ export default function KeyMomentsRail({ messages, listRef, visibleCount, setVis
         const hasContent = others.length > 0 || edits.length > 0
         const isActiveTurn = activeMomentId === turn.userMoment.id ||
           turn.moments.some(m => m.id === activeMomentId)
+        const turnNumber = turnIdx + 1
+        const hasCheckpoint = checkpoints?.has(turnNumber) ?? false
 
         return (
           <div key={turn.userMoment.id} className={`km-turn${isActiveTurn ? ' active' : ''}`}>
@@ -302,8 +306,23 @@ export default function KeyMomentsRail({ messages, listRef, visibleCount, setVis
               onClick={() => handleMomentClick(turn.userMoment)}
               title={turn.userLabel}
             >
-              <span className="km-turn-number">{turnIdx + 1}</span>
+              <span className="km-turn-number">
+                {hasCheckpoint && <span className="km-checkpoint-dot" title="Checkpoint saved" />}
+                {turnNumber}
+              </span>
               <span className="km-turn-label">{turn.userLabel}</span>
+              {hasCheckpoint && onRevert && (
+                <span
+                  className="km-revert-btn"
+                  onClick={(e) => { e.stopPropagation(); onRevert(turnNumber) }}
+                  title="Undo this turn's changes"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="1 4 1 10 7 10"/>
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                  </svg>
+                </span>
+              )}
               {hasContent && (
                 <span
                   className={`km-turn-chevron${isCollapsed ? ' collapsed' : ''}`}
@@ -326,7 +345,7 @@ export default function KeyMomentsRail({ messages, listRef, visibleCount, setVis
                         onClick={() => handleMomentClick(m)}
                         title={m.label}
                       >
-                        <span className="km-item-icon">✏️</span>
+                        <span className="km-item-icon">{'\u{270F}\u{FE0F}'}</span>
                         <span className="km-item-label">{m.label}</span>
                       </button>
                     ))}

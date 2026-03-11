@@ -1,6 +1,7 @@
 import simpleGit, { SimpleGit, StatusResult, DiffResult } from 'simple-git'
-import { readFile } from 'fs/promises'
+import { readFile, copyFile, unlink, writeFile } from 'fs/promises'
 import { join, resolve } from 'path'
+import { tmpdir } from 'os'
 
 /**
  * Git operations via simple-git, used from the main process.
@@ -105,5 +106,110 @@ export class GitService {
     if (!untrackedFiles || untrackedFiles.length === 0) return ''
     const diffs = await Promise.all(untrackedFiles.map(f => this.diffUntrackedFile(f)))
     return diffs.filter(Boolean).join('\n')
+  }
+
+  // --- Checkpoint plumbing ---
+
+  /**
+   * Create a snapshot commit of the full working directory state using a temporary
+   * index file so the user's real staging area is never touched.
+   * Returns the commit SHA and tree SHA.
+   */
+  async createSnapshot(message: string): Promise<{ commitSha: string; treeSha: string }> {
+    const tempIndex = join(tmpdir(), `claudex-index-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    const realIndex = join(this.projectPath, '.git', 'index')
+
+    try {
+      // Copy the real index so we have a baseline
+      try {
+        await copyFile(realIndex, tempIndex)
+      } catch {
+        // If no index exists (fresh repo), write an empty one
+        await writeFile(tempIndex, '')
+      }
+
+      const env = { GIT_INDEX_FILE: tempIndex }
+
+      // Stage everything (including untracked) into temp index
+      await this.git.env(env).raw(['add', '-A'])
+
+      // Write the temp index as a tree object
+      const treeSha = (await this.git.env(env).raw(['write-tree'])).trim()
+
+      // Create a commit object from the tree (no parent needed for snapshot)
+      // Provide explicit author/committer identity so this works even without git config
+      const commitEnv = {
+        GIT_AUTHOR_NAME: 'ClaudeX',
+        GIT_AUTHOR_EMAIL: 'checkpoint@claudex.local',
+        GIT_COMMITTER_NAME: 'ClaudeX',
+        GIT_COMMITTER_EMAIL: 'checkpoint@claudex.local'
+      }
+      const commitSha = (await this.git.env(commitEnv).raw([
+        'commit-tree', treeSha, '-m', message
+      ])).trim()
+
+      return { commitSha, treeSha }
+    } finally {
+      await unlink(tempIndex).catch(() => {})
+    }
+  }
+
+  /** Get the current HEAD commit SHA, or null if no commits exist */
+  async getHeadCommit(): Promise<string | null> {
+    try {
+      return (await this.git.raw(['rev-parse', 'HEAD'])).trim()
+    } catch {
+      return null
+    }
+  }
+
+  /** Store a git ref to prevent garbage collection of a commit */
+  async updateRef(refName: string, commitSha: string): Promise<void> {
+    await this.git.raw(['update-ref', refName, commitSha])
+  }
+
+  /** Delete a git ref */
+  async deleteRef(refName: string): Promise<void> {
+    await this.git.raw(['update-ref', '-d', refName]).catch(() => {})
+  }
+
+  /** List files in a commit's tree */
+  async lsTree(commitSha: string): Promise<string[]> {
+    const output = await this.git.raw(['ls-tree', '-r', '--name-only', commitSha])
+    return output.trim().split('\n').filter(Boolean)
+  }
+
+  /**
+   * Restore the working directory to match a checkpoint commit's tree.
+   * Handles additions, modifications, and deletions.
+   */
+  async restoreFromCommit(commitSha: string): Promise<void> {
+    // Get files in the checkpoint
+    const checkpointFiles = new Set(await this.lsTree(commitSha))
+
+    // Get current tracked + untracked files
+    const trackedOutput = await this.git.raw(['ls-files', '--cached']).catch(() => '')
+    const untrackedOutput = await this.git.raw(['ls-files', '--others', '--exclude-standard']).catch(() => '')
+    const currentFiles = new Set([
+      ...trackedOutput.trim().split('\n').filter(Boolean),
+      ...untrackedOutput.trim().split('\n').filter(Boolean)
+    ])
+
+    // Restore all files from the checkpoint
+    await this.git.raw(['checkout', commitSha, '--', '.'])
+
+    // Remove files that exist now but didn't at checkpoint time
+    const toRemove = [...currentFiles].filter(f => !checkpointFiles.has(f))
+    for (const f of toRemove) {
+      const absPath = resolve(this.projectPath, f)
+      await unlink(absPath).catch(() => {})
+    }
+    // Clean up index entries for removed files
+    if (toRemove.length > 0) {
+      await this.git.raw(['rm', '--cached', '--ignore-unmatch', '--force', ...toRemove]).catch(() => {})
+    }
+
+    // Unstage everything to restore a clean working directory
+    await this.git.raw(['reset']).catch(() => {})
   }
 }

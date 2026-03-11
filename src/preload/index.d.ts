@@ -8,6 +8,20 @@ export interface WorktreeInfo {
   branchName: string | null
 }
 
+export interface CheckpointInfo {
+  sessionId: string
+  turnNumber: number
+  commitSha: string
+  treeSha: string
+  ref: string
+  projectPath: string
+  createdAt: number
+  messageCount: number
+  filesModified: string[]
+  sdkJsonlLineCount: number
+  sdkSessionId: string | null
+}
+
 export interface ElectronAPI {
   agent: {
     start: (projectPath: string, prompt: string, model?: string | null, worktreeOptions?: { useWorktree: boolean; baseBranch?: string; includeChanges?: boolean }, effort?: string | null) => Promise<{ success: boolean; sessionId?: string; worktreePath?: string; worktreeSessionId?: string; error?: string }>
@@ -152,6 +166,13 @@ export interface ElectronAPI {
   utils: {
     getPathForFile: (file: File) => string
     readImage: (filePath: string) => Promise<{ success: boolean; dataUrl?: string }>
+  }
+  checkpoint: {
+    list: (sessionId: string) => Promise<CheckpointInfo[]>
+    create: (opts: { sessionId: string; projectPath: string; filesModified: string[]; messageCount: number; turnNumber: number; sdkSessionId: string | null }) => Promise<{ success: boolean; checkpoint?: CheckpointInfo; error?: string }>
+    revert: (sessionId: string, turnNumber: number) => Promise<{ success: boolean; error?: string; messageCount?: number }>
+    cleanup: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+    onFilesModified: (callback: (data: { sessionId: string; projectPath: string; filesModified: string[]; sdkSessionId: string | null }) => void) => () => void
   }
   mcp: {
     list: () => Promise<Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; claudeReported?: boolean; source?: string; tools?: string[] }>>

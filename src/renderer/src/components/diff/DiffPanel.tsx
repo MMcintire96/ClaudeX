@@ -142,13 +142,14 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null)
+  const [turnContextMenu, setTurnContextMenu] = useState<{ x: number; y: number; turnNumber: number } | null>(null)
 
   useEffect(() => {
-    if (!contextMenu) return
-    const close = () => setContextMenu(null)
+    if (!contextMenu && !turnContextMenu) return
+    const close = () => { setContextMenu(null); setTurnContextMenu(null) }
     window.addEventListener('click', close)
     return () => window.removeEventListener('click', close)
-  }, [contextMenu])
+  }, [contextMenu, turnContextMenu])
 
   const handleAddToClaude = useCallback((filePath: string) => {
     const cleanPath = filePath.replace(/^[ab]\//, '')
@@ -343,12 +344,15 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     })
   }, [sidePanelFile])
 
-  // Auto-refresh when agent session completes
+  // Auto-refresh when agent session completes or checkpoint is reverted
   useEffect(() => {
     const unsubClosed = window.api.agent.onClosed(quietRefresh)
+    const onReverted = () => { setSelectedTurn(null); quietRefresh() }
+    window.addEventListener('checkpoint-reverted', onReverted)
 
     return () => {
       unsubClosed()
+      window.removeEventListener('checkpoint-reverted', onReverted)
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [projectPath, quietRefresh])
@@ -516,6 +520,10 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
               key={turn.turnNumber}
               className={`diff-turn-tab${selectedTurn === turn.turnNumber ? ' active' : ''}`}
               onClick={() => setSelectedTurn(turn.turnNumber)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setTurnContextMenu({ ...getMenuPosition(e.clientX, e.clientY), turnNumber: turn.turnNumber })
+              }}
               title={`${turn.filesModified.length} file${turn.filesModified.length !== 1 ? 's' : ''} modified`}
             >
               <span className="diff-turn-tab-label">Turn {turn.turnNumber}</span>
@@ -613,6 +621,29 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
             onClick={() => handleAddToClaude(contextMenu.filePath)}
           >
             Add to Claude
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {turnContextMenu && createPortal(
+        <div
+          className="context-menu"
+          style={{
+            left: Math.min(turnContextMenu.x, window.innerWidth - 160),
+            ...(turnContextMenu.y + 120 > window.innerHeight
+              ? { bottom: window.innerHeight - turnContextMenu.y }
+              : { top: turnContextMenu.y })
+          }}
+        >
+          <button
+            className="context-menu-item context-menu-item-danger"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('checkpoint-undo-turn', { detail: { turnNumber: turnContextMenu.turnNumber } }))
+              setTurnContextMenu(null)
+            }}
+          >
+            Undo turn {turnContextMenu.turnNumber}
           </button>
         </div>,
         document.body

@@ -374,6 +374,13 @@ export default function App() {
         return
       }
 
+      // Mod+Y — Screenshot
+      if (key === 'y') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('screenshot-trigger'))
+        return
+      }
+
       // Mod+W — Close active SDK session
       if (key === 'w' && currentPath) {
         e.preventDefault()

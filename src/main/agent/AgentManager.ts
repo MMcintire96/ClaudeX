@@ -13,6 +13,7 @@ import type { SettingsManager } from '../settings/SettingsManager'
 import type { NeovimManager } from '../neovim/NeovimManager'
 import type { McpManager } from '../mcp/McpManager'
 import type { ClaudexBridgeServer } from '../bridge/ClaudexBridgeServer'
+import type { CheckpointManager } from '../checkpoint/CheckpointManager'
 
 const SYSTEM_PROMPT_APPEND =
   'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
@@ -41,6 +42,7 @@ export class AgentManager {
   private neovimManager: NeovimManager | null = null
   private mcpManager: McpManager | null = null
   private bridgeServer: ClaudexBridgeServer | null = null
+  private checkpointManager: CheckpointManager | null = null
 
   // Session pairing for split-view collaboration
   private sessionPartners: Map<string, string> = new Map()
@@ -67,6 +69,10 @@ export class AgentManager {
 
   setBridgeServer(server: ClaudexBridgeServer): void {
     this.bridgeServer = server
+  }
+
+  setCheckpointManager(manager: CheckpointManager): void {
+    this.checkpointManager = manager
   }
 
   pairSessions(a: string, b: string): void {
@@ -230,6 +236,20 @@ export class AgentManager {
 
     agent.on('close', (code: number | null) => {
       this.flushDeltas(sessionId)
+
+      // Notify renderer of modified files so it can create a checkpoint with the correct turn number
+      const modifiedFiles = this.pendingModifiedFiles.get(sessionId)
+      if (modifiedFiles && modifiedFiles.size > 0 && this.checkpointManager) {
+        const agentRef = this.agents.get(sessionId)
+        if (agentRef?.projectPath) {
+          broadcastSend(this.mainWindow, 'checkpoint:files-modified', {
+            sessionId,
+            projectPath: agentRef.projectPath,
+            filesModified: [...modifiedFiles],
+            sdkSessionId: agentRef.sessionId
+          })
+        }
+      }
 
       // Forward file changes to paired session
       this.forwardChangesToPartner(sessionId).catch(err => {

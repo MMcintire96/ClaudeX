@@ -163,8 +163,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   const [inputText, setInputText] = useState(() => sessionDrafts.get(sessionId)?.text ?? '')
   const [pastedChunks, setPastedChunks] = useState<PastedChunk[]>(() => sessionDrafts.get(sessionId)?.chunks ?? [])
   const [imageAttachments, setImageAttachments] = useState<{ path: string; previewUrl: string }[]>(() => sessionDrafts.get(sessionId)?.images ?? [])
-  const [modelPickerOpen, setModelPickerOpen] = useState(false)
-  const [effortPickerOpen, setEffortPickerOpen] = useState(false)
+  const [configPickerOpen, setConfigPickerOpen] = useState(false)
   const [planMode, setPlanMode] = useState(false)
   const [filePickerOpen, setFilePickerOpen] = useState(false)
   const [filePickerFilter, setFilePickerFilter] = useState('')
@@ -187,6 +186,8 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   const fontFamily = useSettingsStore(s => s.fontFamily)
   const lineHeight = useSettingsStore(s => s.lineHeight)
   const compactMessages = useSettingsStore(s => s.compactMessages)
+  const modKey = useSettingsStore(s => s.modKey)
+  const modLabel = modKey === 'Meta' ? '⌘' : modKey + '+'
   const [zoomVisible, setZoomVisible] = useState(false)
   const zoomTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -209,6 +210,12 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   // Key moments rail state
   const [keyMomentsOpen, setKeyMomentsOpen] = useState(false)
 
+  // Checkpoint state for revert-to-turn
+  const [checkpointTurns, setCheckpointTurns] = useState<number[]>([]) // sorted turn numbers
+  const checkpoints = useMemo(() => new Set(checkpointTurns.filter(t => t > 0)), [checkpointTurns])
+  const addSystemMessage = useSessionStore(s => s.addSystemMessage)
+  const truncateToTurn = useSessionStore(s => s.truncateToTurn)
+
   // Search state
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -230,6 +237,83 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   inputTextRef.current = inputText
   const getInputText = useCallback(() => inputTextRef.current, [])
   const vim = useVimMode(textareaRef, getInputText, setInputText, vimChatEnabled)
+
+  const refreshCheckpoints = useCallback(() => {
+    if (isScratchSession) return
+    window.api.checkpoint.list(sessionId).then(cps => {
+      setCheckpointTurns(cps.map(c => c.turnNumber).sort((a, b) => a - b))
+    })
+  }, [sessionId, isScratchSession])
+
+  // Load checkpoints on mount
+  useEffect(() => { refreshCheckpoints() }, [refreshCheckpoints])
+
+  // Listen for file-modification events from the main process, then create checkpoint with correct turn number
+  useEffect(() => {
+    if (isScratchSession) return
+    const unsub = window.api.checkpoint.onFilesModified((data) => {
+      if (data.sessionId !== sessionId) return
+      const currentMessages = useSessionStore.getState().sessions[sessionId]?.messages
+      if (!currentMessages) return
+      const uiTurnNumber = currentMessages.filter(m => m.type === 'text' && m.role === 'user').length
+      window.api.checkpoint.create({
+        sessionId,
+        projectPath: data.projectPath,
+        filesModified: data.filesModified,
+        messageCount: currentMessages.length,
+        turnNumber: uiTurnNumber,
+        sdkSessionId: data.sdkSessionId
+      }).then(() => refreshCheckpoints()).catch(() => {})
+    })
+    return unsub
+  }, [sessionId, isScratchSession, refreshCheckpoints])
+
+  const handleRevert = useCallback(async (turnNumber: number) => {
+    if (!sessionId) return
+
+    // "Undo this turn" = revert to the checkpoint BEFORE this turn
+    const prevTurn = checkpointTurns.filter(t => t < turnNumber).pop()
+    if (prevTurn === undefined) {
+      useSessionStore.getState().setError(sessionId, 'No earlier checkpoint to revert to')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Undo turn ${turnNumber}? File changes and messages from this turn will be reverted.`
+    )
+    if (!confirmed) return
+
+    // Stop agent if running
+    await window.api.agent.stop(sessionId)
+
+    const result = await window.api.checkpoint.revert(sessionId, prevTurn)
+    if (!result.success) {
+      useSessionStore.getState().setError(sessionId, result.error ?? 'Failed to revert')
+      return
+    }
+
+    // Truncate messages to the checkpoint's message count
+    truncateToTurn(sessionId, result.messageCount ?? 0)
+
+    if (prevTurn > 0) {
+      addSystemMessage(sessionId, `Undid turn ${turnNumber} — reverted to turn ${prevTurn}`)
+    }
+
+    refreshCheckpoints()
+
+    // Trigger diff panel refresh
+    window.dispatchEvent(new CustomEvent('checkpoint-reverted'))
+  }, [sessionId, checkpointTurns, truncateToTurn, addSystemMessage, refreshCheckpoints])
+
+  // Listen for undo-turn events from DiffPanel
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { turnNumber: number }
+      if (detail?.turnNumber) handleRevert(detail.turnNumber)
+    }
+    window.addEventListener('checkpoint-undo-turn', handler)
+    return () => window.removeEventListener('checkpoint-undo-turn', handler)
+  }, [handleRevert])
 
   // SDK agent hook
   const { sendMessage, startNewSession, stopAgent, forkSession, isProcessing, isStreaming } = useAgent(sessionId)
@@ -347,27 +431,16 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     return scored.slice(0, 20).map(s => s.f)
   }, [filePickerFiles, filePickerFilter])
 
-  // Close model picker on outside click
+  // Close config picker on outside click
   useEffect(() => {
-    if (!modelPickerOpen) return
-    const handler = () => setModelPickerOpen(false)
+    if (!configPickerOpen) return
+    const handler = () => setConfigPickerOpen(false)
     const id = setTimeout(() => document.addEventListener('click', handler), 0)
     return () => {
       clearTimeout(id)
       document.removeEventListener('click', handler)
     }
-  }, [modelPickerOpen])
-
-  // Close effort picker on outside click
-  useEffect(() => {
-    if (!effortPickerOpen) return
-    const handler = () => setEffortPickerOpen(false)
-    const id = setTimeout(() => document.addEventListener('click', handler), 0)
-    return () => {
-      clearTimeout(id)
-      document.removeEventListener('click', handler)
-    }
-  }, [effortPickerOpen])
+  }, [configPickerOpen])
 
   // Close worktree dropdown on outside click
   useEffect(() => {
@@ -851,13 +924,11 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   }, [pastedChunks, handleSend])
 
   const handleModelChange = useCallback((modelId: string) => {
-    setModelPickerOpen(false)
     useSessionStore.getState().setSelectedModel(sessionId, modelId)
     window.api.agent.setModel(sessionId, modelId)
   }, [sessionId])
 
   const handleEffortChange = useCallback((effort: EffortLevel) => {
-    setEffortPickerOpen(false)
     useSessionStore.getState().setSelectedEffort(sessionId, effort)
     window.api.agent.setEffort(sessionId, effort)
   }, [sessionId])
@@ -1031,6 +1102,13 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
       setScreenshotCapturing(false)
     }
   }, [])
+
+  // Listen for screenshot-trigger custom event (from hotkey)
+  useEffect(() => {
+    const handler = () => handleScreenshot()
+    window.addEventListener('screenshot-trigger', handler)
+    return () => window.removeEventListener('screenshot-trigger', handler)
+  }, [handleScreenshot])
 
   const handleTextareaChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
@@ -1453,6 +1531,8 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
             listRef={listRef}
             visibleCount={visibleCount}
             setVisibleCount={setVisibleCount}
+            checkpoints={checkpoints}
+            onRevert={handleRevert}
           />
         )}
       </div>
@@ -1609,73 +1689,66 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
           </div>
           <div className="input-bar-toolbar">
             <div className="input-bar-toolbar-left">
-              <div className="model-picker-wrapper">
+              <div className="config-picker-wrapper">
                 <button
-                  className="btn-model-picker"
-                  onClick={() => setModelPickerOpen(!modelPickerOpen)}
-                  title="Change model"
+                  className="btn-config-picker"
+                  onClick={() => setConfigPickerOpen(!configPickerOpen)}
+                  title="Model & reasoning settings"
                 >
                   {getModelLabel(displayModel)}
+                  {effortLevels && (
+                    <>
+                      <span className="config-picker-dot">&middot;</span>
+                      <span className="config-picker-effort">{selectedEffort}</span>
+                    </>
+                  )}
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
                 </button>
-                {modelPickerOpen && (
-                  <div className="model-picker-dropdown">
-                    <div className="model-picker-group-label">Anthropic</div>
-                    {AVAILABLE_MODELS.filter(m => m.provider === 'anthropic').map(m => (
-                      <button
-                        key={m.id}
-                        className={`model-picker-option ${m.id === displayModel ? 'active' : ''}`}
-                        onClick={() => handleModelChange(m.id)}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                    <div className="model-picker-group-label">OpenAI</div>
-                    {AVAILABLE_MODELS.filter(m => m.provider === 'openai').map(m => (
-                      <button
-                        key={m.id}
-                        className={`model-picker-option ${m.id === displayModel ? 'active' : ''}`}
-                        onClick={() => handleModelChange(m.id)}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {effortLevels && (
-                <div className="effort-picker-wrapper">
-                  <button
-                    className="btn-effort-picker"
-                    onClick={() => setEffortPickerOpen(!effortPickerOpen)}
-                    title="Set reasoning effort"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/>
-                      <line x1="10" y1="22" x2="14" y2="22"/>
-                    </svg>
-                    {selectedEffort}
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </button>
-                  {effortPickerOpen && (
-                    <div className="effort-picker-dropdown">
-                      {effortLevels.map(level => (
+                {configPickerOpen && (
+                  <div className="config-picker-dropdown">
+                    <div className="config-picker-section">
+                      <div className="config-picker-section-label">Model</div>
+                      <div className="model-picker-group-label">Anthropic</div>
+                      {AVAILABLE_MODELS.filter(m => m.provider === 'anthropic').map(m => (
                         <button
-                          key={level}
-                          className={`effort-picker-option ${level === selectedEffort ? 'active' : ''}`}
-                          onClick={() => handleEffortChange(level)}
+                          key={m.id}
+                          className={`model-picker-option ${m.id === displayModel ? 'active' : ''}`}
+                          onClick={() => handleModelChange(m.id)}
                         >
-                          {level}
+                          {m.label}
+                        </button>
+                      ))}
+                      <div className="model-picker-group-label">OpenAI</div>
+                      {AVAILABLE_MODELS.filter(m => m.provider === 'openai').map(m => (
+                        <button
+                          key={m.id}
+                          className={`model-picker-option ${m.id === displayModel ? 'active' : ''}`}
+                          onClick={() => handleModelChange(m.id)}
+                        >
+                          {m.label}
                         </button>
                       ))}
                     </div>
-                  )}
-                </div>
-              )}
+                    {effortLevels && (
+                      <div className="config-picker-section">
+                        <div className="config-picker-section-label">Reasoning Effort</div>
+                        {effortLevels.map(level => (
+                          <button
+                            key={level}
+                            className={`effort-picker-option ${level === selectedEffort ? 'active' : ''}`}
+                            onClick={() => handleEffortChange(level)}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <span className="toolbar-separator">|</span>
               <button
                 className={`btn-plan-mode${planMode ? ' active' : ''}`}
                 onClick={() => setPlanMode(p => !p)}
@@ -1687,54 +1760,58 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
                   <line x1="16" y1="13" x2="8" y2="13" />
                   <line x1="16" y1="17" x2="8" y2="17" />
                 </svg>
-                Plan
+                {planMode ? 'Plan' : 'Chat'}
               </button>
-              {messages.length > 0 && !isForkParent && !isScratchSession && (
-                <button
-                  className={`btn-fork`}
-                  onClick={() => forkSession()}
-                  disabled={isProcessing || messages.length === 0}
-                  title="Fork conversation into two parallel worktree sessions"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="18" r="3"/>
-                    <circle cx="6" cy="6" r="3"/>
-                    <circle cx="18" cy="6" r="3"/>
-                    <path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9"/>
-                    <line x1="12" y1="12" x2="12" y2="15"/>
-                  </svg>
-                  Fork
-                </button>
-              )}
+              <span className="toolbar-separator">|</span>
               <button
-                className={`btn-access-mode${skipPermissions ? ' mode-full' : ''}`}
+                className="btn-access-mode"
                 onClick={() => {
                   const { updateSettings, claude } = useSettingsStore.getState()
                   updateSettings({ claude: { ...claude, dangerouslySkipPermissions: !skipPermissions } })
                 }}
-                title={skipPermissions ? 'Full access — Claude can run all tools without asking' : 'Ask first — Claude will ask before running tools'}
+                title={skipPermissions ? 'YOLO — Claude can run all tools without asking' : 'Supervised — Claude will ask before running tools'}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {skipPermissions ? (
-                    <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>
-                  ) : (
                     <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></>
+                  ) : (
+                    <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>
                   )}
                 </svg>
-                {skipPermissions ? 'Full access' : 'Ask first'}
+                {skipPermissions ? 'YOLO' : 'Supervised'}
               </button>
+              {messages.length > 0 && !isForkParent && !isScratchSession && (
+                <>
+                  <span className="toolbar-separator">|</span>
+                  <button
+                    className={`btn-fork`}
+                    onClick={() => forkSession()}
+                    disabled={isProcessing || messages.length === 0}
+                    title="Fork conversation into two parallel worktree sessions"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="18" r="3"/>
+                      <circle cx="6" cy="6" r="3"/>
+                      <circle cx="18" cy="6" r="3"/>
+                      <path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9"/>
+                      <line x1="12" y1="12" x2="12" y2="15"/>
+                    </svg>
+                    Fork
+                  </button>
+                </>
+              )}
             </div>
             <div className="input-actions">
-              {vimChatEnabled && (
+              {vimChatEnabled && vim.mode !== 'insert' && (
                 <div className="vim-mode-indicator">
-                  {vim.mode === 'normal' ? 'NORMAL' : vim.mode === 'visual' ? 'VISUAL' : 'INSERT'}
+                  {vim.mode === 'normal' ? 'NORMAL' : 'VISUAL'}
                 </div>
               )}
               <button
                 className="btn-screenshot"
                 onClick={handleScreenshot}
                 disabled={screenshotCapturing}
-                title="Take screenshot"
+                title={`Take screenshot (${modLabel}Y)`}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>

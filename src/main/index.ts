@@ -13,6 +13,7 @@ import { registerAllHandlers } from './ipc'
 import { WorktreeManager } from './worktree/WorktreeManager'
 import { NeovimManager } from './neovim/NeovimManager'
 import { McpManager } from './mcp/McpManager'
+import { CheckpointManager } from './checkpoint/CheckpointManager'
 import { addBroadcastWindow, removeBroadcastWindow, markWindowReady } from './broadcast'
 
 // Auto-grant media permissions (Electron has no native permission dialog)
@@ -42,6 +43,7 @@ const projectConfigManager = new ProjectConfigManager()
 const worktreeManager = new WorktreeManager()
 const neovimManager = new NeovimManager()
 const mcpManager = new McpManager()
+const checkpointManager = new CheckpointManager()
 const bridgeServer = new ClaudexBridgeServer(terminalManager, browserManager)
 
 let mainWindow: BrowserWindow | null = null
@@ -364,7 +366,8 @@ app.whenReady().then(async () => {
   agentManager.setSettingsManager(settingsManager)
   agentManager.setNeovimManager(neovimManager)
   agentManager.setMcpManager(mcpManager)
-  registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager, bridgeServer)
+  agentManager.setCheckpointManager(checkpointManager)
+  registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager, bridgeServer, checkpointManager)
 
   createWindow()
 
