@@ -19,6 +19,7 @@ interface TerminalState {
   shellSplitIds: string[]
   splitRatio: number
   poppedOut: Record<string, boolean>
+  terminalListWidth: number
 
   addTerminal: (tab: TerminalTab) => void
   removeTerminal: (id: string) => void
@@ -33,6 +34,7 @@ interface TerminalState {
   unsplitShell: () => void
   setSplitRatio: (ratio: number) => void
   setPoppedOut: (id: string, value: boolean) => void
+  setTerminalListWidth: (w: number) => void
 }
 
 export const useTerminalStore = create<TerminalState>((set) => ({
@@ -45,6 +47,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   shellSplitIds: [],
   splitRatio: 0.5,
   poppedOut: {},
+  terminalListWidth: 160,
 
   addTerminal: (tab: TerminalTab): void => {
     set(state => ({
@@ -170,5 +173,9 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       }
       return { poppedOut }
     })
+  },
+
+  setTerminalListWidth: (w: number): void => {
+    set({ terminalListWidth: Math.max(100, Math.min(300, w)) })
   }
 }))

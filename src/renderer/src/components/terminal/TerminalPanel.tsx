@@ -3,7 +3,8 @@ import { useTerminalStore } from '../../stores/terminalStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
-import TerminalTabs from './TerminalTabs'
+import TerminalToolbar from './TerminalToolbar'
+import TerminalListSidebar from './TerminalListSidebar'
 import TerminalView from './TerminalView'
 
 export default function TerminalPanel() {
@@ -18,12 +19,16 @@ export default function TerminalPanel() {
   const shellSplitIds = useTerminalStore(s => s.shellSplitIds)
   const splitRatio = useTerminalStore(s => s.splitRatio)
   const setSplitRatio = useTerminalStore(s => s.setSplitRatio)
+  const terminalListWidth = useTerminalStore(s => s.terminalListWidth)
+  const setTerminalListWidth = useTerminalStore(s => s.setTerminalListWidth)
+
   const isShellSplit = shellSplitIds.length === 2
 
   const dragging = useRef(false)
   const startY = useRef(0)
   const startHeight = useRef(0)
   const splitContainerRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
 
   const onResizeMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -83,41 +88,76 @@ export default function TerminalPanel() {
     [setSplitRatio]
   )
 
+  const onListResizeMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      const body = bodyRef.current
+      if (!body) return
+
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+
+      const onMouseMove = (ev: MouseEvent) => {
+        const rect = body.getBoundingClientRect()
+        const width = rect.right - ev.clientX
+        setTerminalListWidth(width)
+      }
+
+      const onMouseUp = () => {
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+        window.removeEventListener('mousemove', onMouseMove)
+        window.removeEventListener('mouseup', onMouseUp)
+      }
+
+      window.addEventListener('mousemove', onMouseMove)
+      window.addEventListener('mouseup', onMouseUp)
+    },
+    [setTerminalListWidth]
+  )
+
   return (
     <div className="terminal-panel" style={{ height: panelHeight }}>
       <div className="terminal-resize-handle" onMouseDown={onResizeMouseDown} />
-      <TerminalTabs />
-      <div className="terminal-views">
-        {isShellSplit ? (
-          <div className="terminal-split-container" ref={splitContainerRef}>
-            <div className="terminal-split-pane" style={{ flex: `0 0 calc(${splitRatio * 100}% - 3px)` }}>
-              <TerminalView
-                key={shellSplitIds[0]}
-                terminalId={shellSplitIds[0]}
-                visible={true}
+      <TerminalToolbar />
+      <div className="terminal-body" ref={bodyRef}>
+        <div className="terminal-views">
+          {isShellSplit ? (
+            <div className="terminal-split-container" ref={splitContainerRef}>
+              <div className="terminal-split-pane" style={{ flex: `0 0 calc(${splitRatio * 100}% - 3px)` }}>
+                <TerminalView
+                  key={shellSplitIds[0]}
+                  terminalId={shellSplitIds[0]}
+                  visible={true}
+                />
+              </div>
+              <div
+                className="terminal-split-divider"
+                onMouseDown={onSplitDividerMouseDown}
               />
+              <div className="terminal-split-pane" style={{ flex: 1 }}>
+                <TerminalView
+                  key={shellSplitIds[1]}
+                  terminalId={shellSplitIds[1]}
+                  visible={true}
+                />
+              </div>
             </div>
-            <div
-              className="terminal-split-divider"
-              onMouseDown={onSplitDividerMouseDown}
-            />
-            <div className="terminal-split-pane" style={{ flex: 1 }}>
+          ) : (
+            terminals.map(t => (
               <TerminalView
-                key={shellSplitIds[1]}
-                terminalId={shellSplitIds[1]}
-                visible={true}
+                key={t.id}
+                terminalId={t.id}
+                visible={t.id === activeTerminalId && t.projectPath === terminalFilterPath}
               />
-            </div>
-          </div>
-        ) : (
-          terminals.map(t => (
-            <TerminalView
-              key={t.id}
-              terminalId={t.id}
-              visible={t.id === activeTerminalId && t.projectPath === terminalFilterPath}
-            />
-          ))
-        )}
+            ))
+          )}
+        </div>
+        <div
+          className="terminal-list-resize-handle"
+          onMouseDown={onListResizeMouseDown}
+        />
+        <TerminalListSidebar />
       </div>
     </div>
   )

@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { useUIStore } from '../../stores/uiStore'
+import { useTerminalStore } from '../../stores/terminalStore'
 import { XTERM_THEMES } from '../../lib/xtermThemes'
 
 interface Props {
@@ -227,7 +228,7 @@ export default function TerminalView({ terminalId, visible, active, background }
     }
   }, [theme, background])
 
-  // Re-fit when visibility or active tab changes
+  // Re-fit and focus when visibility or active tab changes
   useEffect(() => {
     if (visible && fitAddonRef.current && termRef.current) {
       const refit = () => {
@@ -237,6 +238,7 @@ export default function TerminalView({ terminalId, visible, active, background }
             window.api.terminal.resize(terminalId, termRef.current.cols, termRef.current.rows)
             termRef.current.scrollToBottom()
             termRef.current.refresh(0, termRef.current.rows - 1)
+            termRef.current.focus()
           }
         } catch {
           // Ignore
@@ -249,6 +251,14 @@ export default function TerminalView({ terminalId, visible, active, background }
       return () => clearTimeout(timer)
     }
   }, [visible, active, terminalId])
+
+  // Focus xterm when this terminal becomes the active one
+  const activeTerminalId = useTerminalStore(s => s.activeTerminalId)
+  useEffect(() => {
+    if (activeTerminalId === terminalId && visible && termRef.current) {
+      requestAnimationFrame(() => termRef.current?.focus())
+    }
+  }, [activeTerminalId, terminalId, visible])
 
   // Focus search input when search opens
   useEffect(() => {
@@ -348,6 +358,17 @@ export default function TerminalView({ terminalId, visible, active, background }
             onClick={() => { handleSendToClaude(true); setContextMenu(null) }}
           >
             Send to Claude (Run)
+          </button>
+          <div className="context-menu-separator" />
+          <button
+            className="context-menu-item context-menu-item-danger"
+            onClick={() => {
+              window.api.terminal.close(terminalId)
+              useTerminalStore.getState().removeTerminal(terminalId)
+              setContextMenu(null)
+            }}
+          >
+            Kill
           </button>
         </div>
       )}
