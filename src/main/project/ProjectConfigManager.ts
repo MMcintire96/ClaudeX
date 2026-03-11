@@ -3,12 +3,6 @@ import { join } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { createHash } from 'crypto'
 
-interface StartCommand {
-  name: string
-  command: string
-  cwd?: string
-}
-
 export interface ProjectAction {
   name: string
   command: string
@@ -16,9 +10,7 @@ export interface ProjectAction {
 }
 
 export interface ProjectStartConfig {
-  commands: StartCommand[]
   browserUrl?: string
-  buildCommand?: string
   actions?: ProjectAction[]
   defaultAction?: string
 }

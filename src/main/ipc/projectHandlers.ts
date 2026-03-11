@@ -156,17 +156,15 @@ export function registerProjectHandlers(
   ipcMain.handle('project:run-start', (_event, projectPath: string, cwdOverride?: string) => {
     if (!projectConfigManager || !terminalManager) return { success: false, error: 'Not configured' }
     const config = projectConfigManager.getConfig(projectPath)
-    if (!config || config.commands.length === 0) return { success: false, error: 'No start config' }
+    if (!config || !config.actions || config.actions.length === 0) return { success: false, error: 'No start config' }
 
     const baseCwd = cwdOverride || projectPath
     const terminals: Array<{ id: string; projectPath: string; pid: number; name: string }> = []
-    for (const cmd of config.commands) {
-      const cwd = cmd.cwd ? resolve(baseCwd, cmd.cwd) : baseCwd
-      const info = terminalManager.create(cwd)
-      terminalManager.setTerminalName(info.id, cmd.name)
-      // Write the command to the terminal
-      terminalManager.write(info.id, cmd.command + '\n')
-      terminals.push({ id: info.id, projectPath: info.projectPath, pid: info.pid, name: cmd.name })
+    for (const action of config.actions) {
+      const info = terminalManager.create(baseCwd)
+      terminalManager.setTerminalName(info.id, action.name)
+      terminalManager.write(info.id, action.command + '\n')
+      terminals.push({ id: info.id, projectPath: info.projectPath, pid: info.pid, name: action.name })
     }
 
     return { success: true, terminals, terminalIds: terminals.map(t => t.id), browserUrl: config.browserUrl || null }

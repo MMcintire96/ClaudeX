@@ -1825,7 +1825,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
                   onClick={stopAgent}
                   title="Stop (Esc x3)"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="none">
                     <rect x="6" y="6" width="12" height="12" rx="2" />
                   </svg>
                 </button>

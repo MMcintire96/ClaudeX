@@ -54,8 +54,8 @@ export interface ElectronAPI {
     gitStatus: (projectPath: string) => Promise<{ success: boolean; status?: unknown; error?: string }>
     diffFile: (projectPath: string, filePath: string, untracked?: boolean) => Promise<{ success: boolean; diff?: string; error?: string }>
     gitBranch: (projectPath: string) => Promise<{ success: boolean; branch?: string | null; error?: string }>
-    getStartConfig: (projectPath: string) => Promise<{ commands: Array<{ name: string; command: string; cwd?: string }>; browserUrl?: string; buildCommand?: string; actions?: Array<{ name: string; command: string; autoRun?: boolean }>; defaultAction?: string } | null>
-    saveStartConfig: (projectPath: string, config: { commands: Array<{ name: string; command: string; cwd?: string }>; browserUrl?: string; buildCommand?: string; actions?: Array<{ name: string; command: string; autoRun?: boolean }>; defaultAction?: string }) => Promise<{ success: boolean }>
+    getStartConfig: (projectPath: string) => Promise<{ browserUrl?: string; actions?: Array<{ name: string; command: string; autoRun?: boolean }>; defaultAction?: string } | null>
+    saveStartConfig: (projectPath: string, config: { browserUrl?: string; actions?: Array<{ name: string; command: string; autoRun?: boolean }>; defaultAction?: string }) => Promise<{ success: boolean }>
     hasStartConfig: (projectPath: string) => Promise<boolean>
     runStart: (projectPath: string, cwdOverride?: string) => Promise<{ success: boolean; terminalIds?: string[]; browserUrl?: string | null; error?: string }>
     listFiles: (projectPath: string) => Promise<{ success: boolean; files: string[]; error?: string }>

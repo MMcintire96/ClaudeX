@@ -84,16 +84,9 @@ export default function AppHeader() {
   useEffect(() => {
     if (!currentPath) { setHasStartConfig(false); setActions([]); setDefaultAction(null); return }
     window.api.project.getStartConfig(currentPath).then(config => {
-      setHasStartConfig(!!config && config.commands.length > 0)
-      const configActions = config?.actions || []
-      // Migrate legacy buildCommand
-      if (configActions.length === 0 && config?.buildCommand) {
-        setActions([{ name: 'Build', command: config.buildCommand }])
-        setDefaultAction('Build')
-      } else {
-        setActions(configActions)
-        setDefaultAction(config?.defaultAction || null)
-      }
+      setHasStartConfig(!!config && !!config.actions && config.actions.length > 0)
+      setActions(config?.actions || [])
+      setDefaultAction(config?.defaultAction || null)
     })
   }, [currentPath])
 

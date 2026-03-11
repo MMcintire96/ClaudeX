@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
-interface StartCommand {
-  name: string
-  command: string
-  cwd?: string
-}
-
 interface ProjectAction {
   name: string
   command: string
@@ -14,9 +8,7 @@ interface ProjectAction {
 }
 
 interface StartConfig {
-  commands: StartCommand[]
   browserUrl?: string
-  buildCommand?: string
   actions?: ProjectAction[]
   defaultAction?: string
 }
@@ -28,7 +20,6 @@ interface StartConfigModalProps {
 }
 
 export default function StartConfigModal({ projectPath, onClose, onSaved }: StartConfigModalProps) {
-  const [commands, setCommands] = useState<StartCommand[]>([{ name: '', command: '' }])
   const [browserUrl, setBrowserUrl] = useState('')
   const [actions, setActions] = useState<ProjectAction[]>([{ name: '', command: '' }])
   const [defaultAction, setDefaultAction] = useState('')
@@ -36,27 +27,20 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
 
   useEffect(() => {
     window.api.project.getStartConfig(projectPath).then(config => {
-      if (config && config.commands.length > 0) {
-        setCommands(config.commands)
+      if (config) {
         setBrowserUrl(config.browserUrl || '')
-      }
-      if (config?.actions && config.actions.length > 0) {
-        setActions(config.actions)
-        setDefaultAction(config.defaultAction || '')
-      } else if (config?.buildCommand) {
-        // Migrate legacy buildCommand
-        setActions([{ name: 'Build', command: config.buildCommand }])
-        setDefaultAction('Build')
+        if (config.actions && config.actions.length > 0) {
+          setActions(config.actions)
+          setDefaultAction(config.defaultAction || '')
+        }
       }
       setLoading(false)
     })
   }, [projectPath])
 
   const handleSave = async () => {
-    const validCommands = commands.filter(c => c.name.trim() && c.command.trim())
     const validActions = actions.filter(a => a.name.trim() && a.command.trim())
     const config: StartConfig = {
-      commands: validCommands,
       browserUrl: browserUrl.trim() || undefined,
       actions: validActions.length > 0 ? validActions : undefined,
       defaultAction: defaultAction && validActions.some(a => a.name === defaultAction) ? defaultAction : undefined
@@ -64,18 +48,6 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
     await window.api.project.saveStartConfig(projectPath, config)
     onSaved()
     onClose()
-  }
-
-  const updateCommand = (index: number, field: keyof StartCommand, value: string) => {
-    setCommands(prev => prev.map((c, i) => i === index ? { ...c, [field]: value } : c))
-  }
-
-  const addCommand = () => {
-    setCommands(prev => [...prev, { name: '', command: '' }])
-  }
-
-  const removeCommand = (index: number) => {
-    setCommands(prev => prev.filter((_, i) => i !== index))
   }
 
   const updateAction = (index: number, field: keyof ProjectAction, value: string) => {
@@ -109,37 +81,6 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
           <button className="hotkeys-close" onClick={onClose}>&times;</button>
         </div>
         <div className="start-config-body">
-          <div className="start-config-section">
-            <label className="start-config-label">Commands</label>
-            {commands.map((cmd, i) => (
-              <div key={i} className="start-config-command-row">
-                <input
-                  className="start-config-input start-config-input-name"
-                  placeholder="Name (e.g. Dev Server)"
-                  value={cmd.name}
-                  onChange={e => updateCommand(i, 'name', e.target.value)}
-                />
-                <input
-                  className="start-config-input start-config-input-cmd"
-                  placeholder="Command (e.g. npm run dev)"
-                  value={cmd.command}
-                  onChange={e => updateCommand(i, 'command', e.target.value)}
-                />
-                <input
-                  className="start-config-input start-config-input-cwd"
-                  placeholder="cwd (optional)"
-                  value={cmd.cwd || ''}
-                  onChange={e => updateCommand(i, 'cwd', e.target.value)}
-                />
-                {commands.length > 1 && (
-                  <button className="start-config-remove-btn" onClick={() => removeCommand(i)}>&times;</button>
-                )}
-              </div>
-            ))}
-            <button className="btn btn-sm" onClick={addCommand} style={{ marginTop: '4px' }}>
-              + Add command
-            </button>
-          </div>
           <div className="start-config-section">
             <label className="start-config-label">Actions</label>
             {actions.map((action, i) => (
