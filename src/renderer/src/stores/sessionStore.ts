@@ -1,6 +1,8 @@
 import { create } from 'zustand'
-import { DEFAULT_MODEL } from '../constants/models'
+import { DEFAULT_MODEL, DEFAULT_EFFORT } from '../constants/models'
+import type { EffortLevel } from '../constants/models'
 import { useUIStore } from './uiStore'
+import { useSettingsStore } from './settingsStore'
 
 /** Check if a session's last pending tool_use needs user input (question, plan, or permission). */
 export function sessionNeedsInput(session: SessionState): boolean {
@@ -18,8 +20,10 @@ export function sessionNeedsInput(session: SessionState): boolean {
 
   // Walk from end: skip non-tool_use messages (text can appear after tool_use in same turn),
   // stop at the first answered tool_use (everything before is old).
+  // Also stop if we encounter a user message — the user has moved on past the question.
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i]
+    if (m.role === 'user' && m.type === 'text') return false
     if (m.type !== 'tool_use') continue
     const tu = m as UIToolUseMessage
     if (answeredToolIds.has(tu.toolId)) return false
@@ -97,6 +101,7 @@ export interface SessionState {
   claudeVersion: string | null
   error: string | null
   selectedModel: string | null
+  selectedEffort: EffortLevel
   createdAt: number
   worktreePath: string | null
   isWorktree: boolean
@@ -117,6 +122,7 @@ export interface SessionState {
 }
 
 function createSessionState(sessionId: string, projectPath: string, worktreeOpts?: { worktreePath?: string; worktreeSessionId?: string }): SessionState {
+  const settings = useSettingsStore.getState()
   return {
     sessionId,
     projectPath,
@@ -131,7 +137,8 @@ function createSessionState(sessionId: string, projectPath: string, worktreeOpts
     model: null,
     claudeVersion: null,
     error: null,
-    selectedModel: DEFAULT_MODEL,
+    selectedModel: settings.defaultModel || DEFAULT_MODEL,
+    selectedEffort: (settings.defaultEffort as EffortLevel) || DEFAULT_EFFORT,
     createdAt: Date.now(),
     worktreePath: worktreeOpts?.worktreePath ?? null,
     isWorktree: !!worktreeOpts?.worktreePath,
@@ -170,6 +177,7 @@ interface SessionStore {
   setProcessing: (sessionId: string, processing: boolean) => void
   setError: (sessionId: string, error: string | null) => void
   setSelectedModel: (sessionId: string, model: string | null) => void
+  setSelectedEffort: (sessionId: string, effort: EffortLevel) => void
   renameSession: (sessionId: string, name: string) => void
   getSessionsForProject: (projectPath: string) => SessionState[]
   addSystemMessage: (sessionId: string, content: string) => void
@@ -442,18 +450,24 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
         const model = msg.model as string | undefined
 
-        set(s => ({
-          sessions: {
-            ...s.sessions,
-            [sessionId]: {
-              ...s.sessions[sessionId],
-              messages: [...s.sessions[sessionId].messages, ...newMessages],
-              streamingText: '',
-              isStreaming: false,
-              model: model ?? s.sessions[sessionId].model
+        set(s => {
+          const existing = s.sessions[sessionId].messages
+          // Deduplicate: if a message with the same id already exists, replace it
+          const newIds = new Set(newMessages.map(m => m.id))
+          const filtered = existing.filter(m => !newIds.has(m.id))
+          return {
+            sessions: {
+              ...s.sessions,
+              [sessionId]: {
+                ...s.sessions[sessionId],
+                messages: [...filtered, ...newMessages],
+                streamingText: '',
+                isStreaming: false,
+                model: model ?? s.sessions[sessionId].model
+              }
             }
           }
-        }))
+        })
         break
       }
 
@@ -602,6 +616,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     })
   },
 
+  setSelectedEffort: (sessionId: string, effort: EffortLevel): void => {
+    set(s => {
+      if (!s.sessions[sessionId]) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: { ...s.sessions[sessionId], selectedEffort: effort }
+        }
+      }
+    })
+  },
+
   renameSession: (sessionId: string, name: string): void => {
     set(s => {
       if (!s.sessions[sessionId]) return s
@@ -657,6 +683,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       claudeVersion: null,
       error: null,
       selectedModel: data.selectedModel ?? DEFAULT_MODEL,
+      selectedEffort: DEFAULT_EFFORT,
       createdAt: data.createdAt,
       worktreePath: data.worktreePath ?? null,
       isWorktree: data.isWorktree ?? false,

@@ -17,7 +17,7 @@ interface WorktreeOptions {
 const SCRATCH_PROJECT_PATH = '__scratch__'
 
 export function registerAgentHandlers(agentManager: AgentManager, worktreeManager?: WorktreeManager, sessionPersistence?: SessionPersistence, bridgeServer?: ClaudexBridgeServer): void {
-  ipcMain.handle('agent:start', async (_event, projectPath: string, prompt: string, model?: string | null, worktreeOptions?: WorktreeOptions) => {
+  ipcMain.handle('agent:start', async (_event, projectPath: string, prompt: string, model?: string | null, worktreeOptions?: WorktreeOptions, effort?: string | null) => {
     try {
       let effectivePath = projectPath
       let worktreePath: string | undefined
@@ -25,7 +25,7 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
       // Quick chats: resolve sentinel to home directory, skip worktrees
       if (projectPath === SCRATCH_PROJECT_PATH) {
         effectivePath = homedir()
-        const sessionId = await agentManager.startAgent({ projectPath: effectivePath, model: model ?? 'claude-opus-4-6' }, prompt)
+        const sessionId = await agentManager.startAgent({ projectPath: effectivePath, model: model ?? 'claude-opus-4-6', effort }, prompt)
         return { success: true, sessionId }
       }
 
@@ -40,11 +40,11 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
         effectivePath = info.worktreePath
         worktreePath = info.worktreePath
 
-        const agentSessionId = await agentManager.startAgent({ projectPath: effectivePath, model: model ?? 'claude-opus-4-6' }, prompt)
+        const agentSessionId = await agentManager.startAgent({ projectPath: effectivePath, model: model ?? 'claude-opus-4-6', effort }, prompt)
         return { success: true, sessionId: agentSessionId, worktreePath, worktreeSessionId: sessionId }
       }
 
-      const sessionId = await agentManager.startAgent({ projectPath: effectivePath, model: model ?? 'claude-opus-4-6' }, prompt)
+      const sessionId = await agentManager.startAgent({ projectPath: effectivePath, model: model ?? 'claude-opus-4-6', effort }, prompt)
       return { success: true, sessionId }
     } catch (err) {
       return { success: false, error: (err as Error).message }
@@ -74,10 +74,15 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
     return { success: true }
   })
 
-  ipcMain.handle('agent:resume', async (_event, sessionId: string, projectPath: string, message: string, model?: string | null) => {
+  ipcMain.handle('agent:set-effort', (_event, sessionId: string, effort: string | null) => {
+    agentManager.setEffort(sessionId, effort)
+    return { success: true }
+  })
+
+  ipcMain.handle('agent:resume', async (_event, sessionId: string, projectPath: string, message: string, model?: string | null, effort?: string | null) => {
     try {
       const effectivePath = projectPath === SCRATCH_PROJECT_PATH ? homedir() : projectPath
-      await agentManager.resumeAgent(sessionId, effectivePath, model ?? null, message)
+      await agentManager.resumeAgent(sessionId, effectivePath, model ?? null, message, effort ?? null)
       return { success: true, sessionId }
     } catch (err) {
       return { success: false, error: (err as Error).message }

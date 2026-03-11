@@ -9,6 +9,7 @@ export interface AgentProcessOptions {
   projectPath: string
   sessionId?: string
   model?: string | null
+  effort?: string | null
   mcpServers?: Record<string, any> | null
   systemPromptAppend?: string | null
   disallowedTools?: string[] | null
@@ -29,6 +30,7 @@ export class AgentProcess extends EventEmitter {
   private _mcpServers: Record<string, any> | null
   private _systemPromptAppend: string | null
   private _disallowedTools: string[] | null
+  private _effort: string | null
   private _isRunning = false
   private _hasCompletedFirstTurn = false
 
@@ -56,10 +58,15 @@ export class AgentProcess extends EventEmitter {
     this._mcpServers = options.mcpServers ?? null
     this._systemPromptAppend = options.systemPromptAppend ?? null
     this._disallowedTools = options.disallowedTools ?? null
+    this._effort = options.effort ?? null
   }
 
   setModel(model: string | null): void {
     this._model = model
+  }
+
+  setEffort(effort: string | null): void {
+    this._effort = effort
   }
 
   updateDisallowedTools(tools: string[] | null): void {
@@ -122,6 +129,10 @@ export class AgentProcess extends EventEmitter {
 
     if (this._model) {
       options.model = this._model
+    }
+
+    if (this._effort) {
+      options.effort = this._effort
     }
 
     if (this._mcpServers) {

@@ -73,6 +73,10 @@ export class CodexProcess extends EventEmitter {
     this._model = model
   }
 
+  setEffort(_effort: string | null): void {
+    // No-op: Codex does not support effort levels
+  }
+
   updateDisallowedTools(_tools: string[] | null): void {
     // No-op: Codex manages its own tool permissions
   }

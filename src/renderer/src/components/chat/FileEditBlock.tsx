@@ -3,6 +3,8 @@ import hljs, { detectLanguage } from '../../lib/hljs'
 import { sendNotification } from '../../lib/notificationSound'
 import type { UIToolUseMessage, UIToolResultMessage } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useEditorStore } from '../../stores/editorStore'
+import { useUIStore } from '../../stores/uiStore'
 
 interface Props {
   message: UIToolUseMessage
@@ -10,6 +12,7 @@ interface Props {
   awaitingPermission?: boolean
   terminalId?: string
   isInProgress?: boolean
+  projectPath?: string
 }
 
 // Tool icons as simple SVG components
@@ -160,7 +163,7 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-export default function FileEditBlock({ message, result, awaitingPermission, terminalId, isInProgress }: Props) {
+export default function FileEditBlock({ message, result, awaitingPermission, terminalId, isInProgress, projectPath }: Props) {
   const autoExpand = useSettingsStore(s => s.autoExpandEdits)
   const isEditTool = message.toolName === 'Edit' || message.toolName === 'Write'
   const isExpandable = message.toolName !== 'Read'
@@ -203,6 +206,25 @@ export default function FileEditBlock({ message, result, awaitingPermission, ter
   const fullPath = filePath
 
   const hasError = result?.isError || false
+
+  const handleOpenInEditor = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!projectPath || !filePath) return
+    const editorState = useEditorStore.getState()
+    if (editorState.activeEditors[projectPath]) {
+      await window.api.neovim.openFile(projectPath, filePath)
+    } else {
+      await window.api.neovim.create(projectPath, filePath)
+    }
+    useEditorStore.getState().setMainPanelTab('editor')
+  }, [projectPath, filePath])
+
+  const handleViewDiff = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!projectPath) return
+    const fileName = filePath ? (filePath.split('/').pop() || filePath) : undefined
+    useUIStore.getState().setSidePanelView({ type: 'diff', projectPath, file: fileName })
+  }, [projectPath, filePath])
 
   // Build a summary line
   const summary = useMemo(() => {
@@ -254,6 +276,25 @@ export default function FileEditBlock({ message, result, awaitingPermission, ter
             <span className="file-edit-summary">{summary}</span>
           )}
           {hasError && <span className="file-edit-error-badge">error</span>}
+          {projectPath && filePath && (
+            <span className="file-edit-actions">
+              {isEditTool && (
+                <span className="file-edit-action" title="View in Diff Panel" onClick={handleViewDiff}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="12" y1="3" x2="12" y2="21"/>
+                  </svg>
+                </span>
+              )}
+              <span className="file-edit-action" title="Open in Editor" onClick={handleOpenInEditor}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+              </span>
+            </span>
+          )}
           {isInProgress ? (
             <span className="tool-spinner" />
           ) : (
@@ -268,7 +309,22 @@ export default function FileEditBlock({ message, result, awaitingPermission, ter
             <span className="file-edit-path" title={fullPath}>{displayPath}</span>
           )}
           {hasError && <span className="file-edit-error-badge">error</span>}
-          {isInProgress && <span className="tool-spinner" />}
+          {projectPath && filePath && (
+            <span className="file-edit-actions">
+              <span className="file-edit-action" title="Open in Editor" onClick={handleOpenInEditor}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+              </span>
+            </span>
+          )}
+          {isInProgress ? (
+            <span className="tool-spinner" />
+          ) : (
+            <svg className="tool-check" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 6.5L5 9L9.5 3" /></svg>
+          )}
         </div>
       )}
 

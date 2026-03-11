@@ -4,7 +4,6 @@ import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
-import SettingsPanel from '../settings/SettingsPanel'
 import StartConfigModal from './StartConfigModal'
 import iconUrl from '../../assets/icon.png'
 
@@ -45,8 +44,8 @@ export default function AppHeader() {
     }
   }, [isScratchSession]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const settingsAnchorRef = useRef<HTMLDivElement>(null)
+  const settingsOpen = useUIStore(s => s.settingsOpen)
+  const setSettingsOpen = useUIStore(s => s.setSettingsOpen)
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
   const ctxMenuRef = useRef<HTMLDivElement>(null)
@@ -56,17 +55,6 @@ export default function AppHeader() {
   const [startConfigPath, setStartConfigPath] = useState<string | null>(null)
   const [hasStartConfig, setHasStartConfig] = useState(false)
   const [buildCommand, setBuildCommand] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!settingsOpen) return
-    const close = (e: MouseEvent) => {
-      if (settingsAnchorRef.current && !settingsAnchorRef.current.contains(e.target as Node)) {
-        setSettingsOpen(false)
-      }
-    }
-    window.addEventListener('mousedown', close)
-    return () => window.removeEventListener('mousedown', close)
-  }, [settingsOpen])
 
   useEffect(() => {
     if (!ctxMenu) return
@@ -174,7 +162,7 @@ const handleRunStart = useCallback(async () => {
       </div>
       <div className="main-header-center">
         <span className="main-header-title">
-          {projectName ?? 'No project'}
+          {isScratchSession ? 'Quick Chat' : (projectName ?? 'No project')}
         </span>
         {activeSession?.name && (
           <span className="main-header-thread">{activeSession.name}</span>
@@ -336,23 +324,16 @@ const handleRunStart = useCallback(async () => {
         <div className="header-separator" />
 
         {/* Settings */}
-        <div className="settings-dropdown-anchor" ref={settingsAnchorRef}>
-          <button
-            className={`btn-header-icon ${settingsOpen ? 'active' : ''}`}
-            onClick={() => setSettingsOpen(o => !o)}
-            title="Settings"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-          </button>
-          {settingsOpen && (
-            <div className="settings-dropdown">
-              <SettingsPanel />
-            </div>
-          )}
-        </div>
+        <button
+          className={`btn-header-icon ${settingsOpen ? 'active' : ''}`}
+          onClick={() => setSettingsOpen(!settingsOpen)}
+          title="Settings"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
 
         {!isMac && (
           <>

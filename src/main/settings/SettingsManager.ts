@@ -16,6 +16,13 @@ export interface AppSettings {
   preventSleep: boolean
   suggestNextMessage: boolean
   sideBySideDiffs: boolean
+  defaultModel: string
+  defaultEffort: string
+  fontSize: number
+  fontFamily: string
+  lineHeight: number
+  showTimestamps: boolean
+  compactMessages: boolean
   mcpServers: McpServerConfig[]
   disabledRemoteMcpServers: string[] // Remote MCP server names that are disabled
   knownRemoteMcpServers: Record<string, string[]> // Persisted tool names per remote server
@@ -33,6 +40,13 @@ const DEFAULT_SETTINGS: AppSettings = {
   preventSleep: true,
   suggestNextMessage: true,
   sideBySideDiffs: false,
+  defaultModel: 'claude-opus-4-6',
+  defaultEffort: 'high',
+  fontSize: 14,
+  fontFamily: 'system',
+  lineHeight: 1.6,
+  showTimestamps: false,
+  compactMessages: false,
   mcpServers: [],
   disabledRemoteMcpServers: [],
   knownRemoteMcpServers: {},
@@ -64,6 +78,13 @@ export class SettingsManager {
         preventSleep: loaded.preventSleep ?? DEFAULT_SETTINGS.preventSleep,
         suggestNextMessage: loaded.suggestNextMessage ?? DEFAULT_SETTINGS.suggestNextMessage,
         sideBySideDiffs: loaded.sideBySideDiffs ?? DEFAULT_SETTINGS.sideBySideDiffs,
+        defaultModel: loaded.defaultModel ?? DEFAULT_SETTINGS.defaultModel,
+        defaultEffort: loaded.defaultEffort ?? DEFAULT_SETTINGS.defaultEffort,
+        fontSize: loaded.fontSize ?? DEFAULT_SETTINGS.fontSize,
+        fontFamily: loaded.fontFamily ?? DEFAULT_SETTINGS.fontFamily,
+        lineHeight: loaded.lineHeight ?? DEFAULT_SETTINGS.lineHeight,
+        showTimestamps: loaded.showTimestamps ?? DEFAULT_SETTINGS.showTimestamps,
+        compactMessages: loaded.compactMessages ?? DEFAULT_SETTINGS.compactMessages,
         mcpServers: Array.isArray(loaded.mcpServers) ? loaded.mcpServers : [],
         disabledRemoteMcpServers: Array.isArray(loaded.disabledRemoteMcpServers) ? loaded.disabledRemoteMcpServers : [],
         knownRemoteMcpServers: (loaded.knownRemoteMcpServers && typeof loaded.knownRemoteMcpServers === 'object') ? loaded.knownRemoteMcpServers : {},
@@ -104,6 +125,27 @@ export class SettingsManager {
     }
     if (partial.sideBySideDiffs !== undefined) {
       this.settings.sideBySideDiffs = partial.sideBySideDiffs
+    }
+    if (partial.defaultModel !== undefined) {
+      this.settings.defaultModel = partial.defaultModel
+    }
+    if (partial.defaultEffort !== undefined) {
+      this.settings.defaultEffort = partial.defaultEffort
+    }
+    if (partial.fontSize !== undefined) {
+      this.settings.fontSize = partial.fontSize
+    }
+    if (partial.fontFamily !== undefined) {
+      this.settings.fontFamily = partial.fontFamily
+    }
+    if (partial.lineHeight !== undefined) {
+      this.settings.lineHeight = partial.lineHeight
+    }
+    if (partial.showTimestamps !== undefined) {
+      this.settings.showTimestamps = partial.showTimestamps
+    }
+    if (partial.compactMessages !== undefined) {
+      this.settings.compactMessages = partial.compactMessages
     }
     if (partial.mcpServers !== undefined) {
       this.settings.mcpServers = partial.mcpServers

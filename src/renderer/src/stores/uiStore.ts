@@ -4,6 +4,7 @@ import { ThemeName, THEME_LIST, DEFAULT_THEME } from '../lib/themes'
 interface SidePanelView {
   type: 'browser' | 'diff'
   projectPath: string
+  file?: string
 }
 
 interface UIState {
@@ -45,6 +46,12 @@ interface UIState {
   setFocusedSplitPane: (pane: 'left' | 'right') => void
   setProjectPair: (projectPath: string, writerId: string, reviewerId: string) => void
   clearProjectPair: (projectPath: string) => void
+  chatZoom: number
+  setChatZoom: (zoom: number) => void
+
+  settingsOpen: boolean
+  setSettingsOpen: (open: boolean) => void
+
   suspendSplitView: () => void
   restoreSplitView: (splitSessionId: string) => void
 }
@@ -63,6 +70,16 @@ export const useUIStore = create<UIState>((set) => ({
   splitRatio: 0.5,
   focusedSplitPane: 'left',
   projectPairMemory: {},
+  chatZoom: 1,
+  settingsOpen: false,
+
+  setChatZoom: (zoom: number): void => {
+    set({ chatZoom: Math.max(0.5, Math.min(2, zoom)) })
+  },
+
+  setSettingsOpen: (open: boolean): void => {
+    set({ settingsOpen: open })
+  },
 
   setPendingBrowserUrl: (url: string | null): void => {
     set({ pendingBrowserUrl: url })
@@ -74,12 +91,13 @@ export const useUIStore = create<UIState>((set) => ({
 
   setSidePanelView: (view: SidePanelView | null): void => {
     set(state => {
-      // Toggle off if clicking the same view for the same project
+      // Toggle off if clicking the same view for the same project (but not when navigating to a specific file)
       if (
         view &&
         state.sidePanelView &&
         state.sidePanelView.type === view.type &&
-        state.sidePanelView.projectPath === view.projectPath
+        state.sidePanelView.projectPath === view.projectPath &&
+        !view.file
       ) {
         return { sidePanelView: null }
       }

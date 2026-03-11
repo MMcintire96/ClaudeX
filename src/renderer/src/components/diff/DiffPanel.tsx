@@ -3,6 +3,7 @@ import DiffView from './DiffView'
 import CommitModal from '../git/CommitModal'
 import { useSessionStore, type UIToolUseMessage, type UITextMessage } from '../../stores/sessionStore'
 import { useEditorStore } from '../../stores/editorStore'
+import { useUIStore } from '../../stores/uiStore'
 import { createPortal } from 'react-dom'
 
 interface TurnInfo {
@@ -326,6 +327,21 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     loadDiff()
     setSelectedFile(null)
   }, [loadStatus, loadDiff, diffPath])
+
+  // When side panel view includes a target file, set search filter to find it
+  const sidePanelFile = useUIStore(s => s.sidePanelView?.file ?? null)
+  useEffect(() => {
+    if (!sidePanelFile) return
+    const fileName = sidePanelFile.split('/').pop() || sidePanelFile
+    setSearchFilter(fileName)
+    setSelectedFile(null)
+    // Clear the file field directly to avoid triggering toggle-off logic
+    useUIStore.setState(state => {
+      if (!state.sidePanelView?.file) return state
+      const { file: _, ...rest } = state.sidePanelView
+      return { sidePanelView: { ...rest } }
+    })
+  }, [sidePanelFile])
 
   // Auto-refresh when agent session completes
   useEffect(() => {

@@ -14,8 +14,10 @@ import ThinkingBlock from './ThinkingBlock'
 import VoiceButton from '../common/VoiceButton'
 import WorktreeBar from './WorktreeBar'
 import KeyMomentsRail from './KeyMomentsRail'
+import { useUIStore } from '../../stores/uiStore'
 import { useProjectStore } from '../../stores/projectStore'
-import { AVAILABLE_MODELS, DEFAULT_MODEL, getModelLabel } from '../../constants/models'
+import { AVAILABLE_MODELS, DEFAULT_MODEL, getModelLabel, getModelEffortLevels } from '../../constants/models'
+import type { EffortLevel } from '../../constants/models'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useVimMode } from '../../hooks/useVimMode'
 import { useAgent } from '../../hooks/useAgent'
@@ -116,19 +118,38 @@ function isImagePath(p: string): boolean {
 }
 
 // Ephemeral per-session draft storage — survives session switches but not app restarts
-const sessionDrafts = new Map<string, { text: string; chunks: { text: string; lineCount: number; charCount: number; source?: 'terminal' }[]; images?: { path: string; previewUrl: string }[] }>()
+type PastedChunk = { id: number; text: string; lineCount: number; charCount: number; source?: 'terminal' }
+const sessionDrafts = new Map<string, { text: string; chunks: PastedChunk[]; images?: { path: string; previewUrl: string }[] }>()
+let nextChunkId = 1
 
-/** Render input text with @file references highlighted */
+/** Generate the inline placeholder label for a pasted chunk */
+function chunkLabel(c: { lineCount: number; charCount: number; source?: string }): string {
+  return c.source === 'terminal'
+    ? `[TERMINAL: ${c.lineCount}L, ${c.charCount}C]`
+    : `[PASTED TEXT: ${c.lineCount}:${c.charCount}]`
+}
+
+// Regex to match paste placeholder labels in input text
+const PASTE_LABEL_RE = /\[PASTED TEXT: \d+:\d+\]|\[TERMINAL: \d+L, \d+C\]/g
+
+/** Render input text with @file references and paste placeholders highlighted */
 function renderHighlightedInput(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = []
-  const regex = /@([\w./_-]+\.\w+)/g
+  // Match @file references and paste placeholder labels
+  const regex = /@([\w./_-]+\.\w+)|\[PASTED TEXT: \d+:\d+\]|\[TERMINAL: \d+L, \d+C\]/g
   let lastIndex = 0
   let match: RegExpExecArray | null
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index))
     }
-    parts.push(<span key={match.index} className="input-file-ref">{match[0]}</span>)
+    if (match[1]) {
+      // @file reference
+      parts.push(<span key={match.index} className="input-file-ref">{match[0]}</span>)
+    } else {
+      // Paste placeholder label — same text as textarea for cursor alignment
+      parts.push(<span key={match.index} className="input-paste-placeholder">{match[0]}</span>)
+    }
     lastIndex = match.index + match[0].length
   }
   if (lastIndex < text.length) {
@@ -140,9 +161,10 @@ function renderHighlightedInput(text: string): React.ReactNode[] {
 export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatViewProps) {
   const isScratchSession = projectPath === SCRATCH_PROJECT_PATH
   const [inputText, setInputText] = useState('')
-  const [pastedChunks, setPastedChunks] = useState<{ text: string; lineCount: number; charCount: number; source?: 'terminal' }[]>([])
+  const [pastedChunks, setPastedChunks] = useState<PastedChunk[]>([])
   const [imageAttachments, setImageAttachments] = useState<{ path: string; previewUrl: string }[]>([])
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
+  const [effortPickerOpen, setEffortPickerOpen] = useState(false)
   const [planMode, setPlanMode] = useState(false)
   const [filePickerOpen, setFilePickerOpen] = useState(false)
   const [filePickerFilter, setFilePickerFilter] = useState('')
@@ -155,6 +177,34 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   const listRef = useRef<HTMLDivElement>(null)
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PER_PAGE)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Chat zoom (Ctrl+Scroll)
+  const chatZoom = useUIStore(s => s.chatZoom)
+  const setChatZoom = useUIStore(s => s.setChatZoom)
+
+  // Font & layout settings
+  const fontSize = useSettingsStore(s => s.fontSize)
+  const fontFamily = useSettingsStore(s => s.fontFamily)
+  const lineHeight = useSettingsStore(s => s.lineHeight)
+  const compactMessages = useSettingsStore(s => s.compactMessages)
+  const [zoomVisible, setZoomVisible] = useState(false)
+  const zoomTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    const handleWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? -0.05 : 0.05
+      setChatZoom(useUIStore.getState().chatZoom + delta)
+      setZoomVisible(true)
+      if (zoomTimerRef.current) clearTimeout(zoomTimerRef.current)
+      zoomTimerRef.current = setTimeout(() => setZoomVisible(false), 1200)
+    }
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  }, [setChatZoom])
 
   // Key moments rail state
   const [keyMomentsOpen, setKeyMomentsOpen] = useState(false)
@@ -192,6 +242,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   const setSuggestion = useSessionStore(s => s.setSuggestion)
   const detectedModel = session?.model ?? null
   const selectedModel = session?.selectedModel ?? DEFAULT_MODEL
+  const selectedEffort = session?.selectedEffort ?? 'high'
   const streamingThinkingText = useSessionStore(s => s.streamingThinkingText[sessionId] ?? null)
   const streamingThinkingComplete = useSessionStore(s => s.streamingThinkingComplete[sessionId] ?? false)
 
@@ -211,6 +262,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   // Resolve the display model: selected > detected > fallback
   const displayModel = selectedModel || detectedModel || DEFAULT_MODEL
   const isCodexModel = displayModel.startsWith('codex-') || displayModel.startsWith('gpt-')
+  const effortLevels = getModelEffortLevels(displayModel)
   const assistantLabel = isCodexModel ? 'Codex' : 'Claude'
 
   // Show thinking only when processing
@@ -306,6 +358,17 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     }
   }, [modelPickerOpen])
 
+  // Close effort picker on outside click
+  useEffect(() => {
+    if (!effortPickerOpen) return
+    const handler = () => setEffortPickerOpen(false)
+    const id = setTimeout(() => document.addEventListener('click', handler), 0)
+    return () => {
+      clearTimeout(id)
+      document.removeEventListener('click', handler)
+    }
+  }, [effortPickerOpen])
+
   // Close worktree dropdown on outside click
   useEffect(() => {
     if (!worktreeDropdownOpen) return
@@ -389,7 +452,15 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   useEffect(() => {
     const handler = (e: Event) => {
       const { text, lineCount, charCount, autoRun } = (e as CustomEvent).detail
-      setPastedChunks(prev => [...prev, { text, lineCount, charCount, source: 'terminal' as const }])
+      const id = nextChunkId++
+      const chunk: PastedChunk = { id, text, lineCount, charCount, source: 'terminal' as const }
+      const placeholder = chunkLabel(chunk)
+      setPastedChunks(prev => [...prev, chunk])
+      // Append placeholder at end of current input
+      setInputText(prev => {
+        const prefix = prev.length > 0 && !prev.endsWith('\n') ? prev + '\n' : prev
+        return prefix + placeholder
+      })
       if (autoRun) {
         autoRunPendingRef.current = true
       } else {
@@ -432,6 +503,23 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     messages.forEach(m => { if (m.type === 'tool_result') map.set((m as UIToolResultMessage).toolUseId, m as UIToolResultMessage) })
     return map
   }, [messages])
+
+  // Set of tool IDs that are genuinely still in-progress. Only the trailing batch
+  // of consecutive tool_use messages at the END of the messages array can be in-progress.
+  // If the agent is already streaming the next response, all tools are complete.
+  const inProgressToolIds = useMemo(() => {
+    if (isStreaming) return new Set<string>()
+    const ids = new Set<string>()
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.type === 'tool_use') {
+        ids.add((m as UIToolUseMessage).toolId)
+      } else {
+        break
+      }
+    }
+    return ids
+  }, [messages, isStreaming])
 
   // Collect all TodoWrite messages for timestamp/duration tracking + find latest
   const allTodoMessages = useMemo(() => {
@@ -664,17 +752,20 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     // Capture images before they get cleared
     const currentImages = hasImages ? [...imageAttachments] : undefined
 
-    // Build full message: image refs + pasted chunks + typed text
+    // Build full message: resolve paste placeholders inline, then prepend image refs
+    // Replace [PASTED TEXT: ...] / [TERMINAL: ...] labels with actual pasted content
+    let resolved = inputText
+    for (const chunk of pastedChunks) {
+      resolved = resolved.replace(chunkLabel(chunk), chunk.text)
+    }
+    resolved = resolved.trim()
     const parts: string[] = []
     if (hasImages) {
       const imageRefs = imageAttachments.map(img => '@' + img.path).join(' ')
       parts.push(imageRefs)
     }
-    for (const chunk of pastedChunks) {
-      parts.push(chunk.text)
-    }
-    if (trimmed) {
-      parts.push(trimmed)
+    if (resolved) {
+      parts.push(resolved)
     }
     let text = parts.join('\n\n')
     if (!text) return
@@ -769,8 +860,13 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   const handleModelChange = useCallback((modelId: string) => {
     setModelPickerOpen(false)
     useSessionStore.getState().setSelectedModel(sessionId, modelId)
-    // Also tell the backend
     window.api.agent.setModel(sessionId, modelId)
+  }, [sessionId])
+
+  const handleEffortChange = useCallback((effort: EffortLevel) => {
+    setEffortPickerOpen(false)
+    useSessionStore.getState().setSelectedEffort(sessionId, effort)
+    window.api.agent.setEffort(sessionId, effort)
   }, [sessionId])
 
   const handleFilePickerSelect = useCallback((filePath: string) => {
@@ -949,6 +1045,12 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     historyIndexRef.current = -1
     if (suggestion) setSuggestion(sessionId, null)
 
+    // Remove chunks whose placeholder label was deleted from the text
+    setPastedChunks(prev => {
+      const next = prev.filter(c => val.includes(chunkLabel(c)))
+      return next.length === prev.length ? prev : next
+    })
+
     // @ file picker detection
     const cursor = e.target.selectionStart
     let atPos = -1
@@ -980,12 +1082,39 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     const lineCount = pastedText.split('\n').length
     if (lineCount >= PASTE_LINE_THRESHOLD || pastedText.length >= PASTE_CHAR_THRESHOLD) {
       e.preventDefault()
-      setPastedChunks(prev => [...prev, { text: pastedText, lineCount, charCount: pastedText.length }])
+      const id = nextChunkId++
+      const chunk: PastedChunk = { id, text: pastedText, lineCount, charCount: pastedText.length }
+      const placeholder = chunkLabel(chunk)
+      setPastedChunks(prev => [...prev, chunk])
+      // Insert placeholder at cursor position in the textarea
+      const ta = textareaRef.current
+      if (ta) {
+        const currentText = inputTextRef.current
+        const start = ta.selectionStart
+        const end = ta.selectionEnd
+        const before = currentText.slice(0, start)
+        const after = currentText.slice(end)
+        const newText = before + placeholder + after
+        setInputText(newText)
+        // Move cursor after the placeholder
+        requestAnimationFrame(() => {
+          ta.selectionStart = ta.selectionEnd = before.length + placeholder.length
+          ta.style.height = 'auto'
+          ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
+        })
+      }
     }
   }, [])
 
   const removePastedChunk = useCallback((index: number) => {
-    setPastedChunks(prev => prev.filter((_, i) => i !== index))
+    setPastedChunks(prev => {
+      const chunk = prev[index]
+      if (chunk) {
+        // Remove the placeholder label from the input text
+        setInputText(text => text.replace(chunkLabel(chunk), ''))
+      }
+      return prev.filter((_, i) => i !== index)
+    })
   }, [])
 
   // Drag-and-drop file handling
@@ -1099,13 +1228,15 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
         const hasResult = !!pairedResult
         const isLast = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
         const needsPermission = !skipPermissions && !hasResult && isLast
-        const toolInProgress = isProcessing && !hasResult && !needsPermission
-        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult ?? null} awaitingPermission={needsPermission} terminalId={sessionId} isInProgress={toolInProgress} /></div>
+        const effectivelyComplete = hasResult || !inProgressToolIds.has(toolMsg.toolId)
+        const toolInProgress = isProcessing && !effectivelyComplete && !needsPermission
+        return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><FileEditBlock message={toolMsg} result={pairedResult ?? null} awaitingPermission={needsPermission} terminalId={sessionId} isInProgress={toolInProgress} projectPath={projectPath} /></div>
       }
       const hasToolResult = toolResultByToolUseId.has(toolMsg.toolId)
       const isLastToolUse = absIdx === messages.length - 1 || !messages.slice(absIdx + 1).some(m => m.type === 'tool_use' || m.type === 'tool_result')
       const awaitingPermission = !skipPermissions && !hasToolResult && isLastToolUse
-      const toolInProgress = isProcessing && !hasToolResult && !awaitingPermission
+      const effectivelyComplete = hasToolResult || !inProgressToolIds.has(toolMsg.toolId)
+      const toolInProgress = isProcessing && !effectivelyComplete && !awaitingPermission
       return <div key={msg.id} data-msg-id={msg.id} className={matchClass}><ToolUseBlock message={toolMsg} awaitingPermission={awaitingPermission} terminalId={sessionId} isInProgress={toolInProgress} /></div>
     } else if (msg.type === 'tool_result') {
       const resultMsg = msg as UIToolResultMessage
@@ -1134,7 +1265,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
       )
     }
     return null
-  }, [messages, searchMatchIds, currentMatchMsgId, searchOpen, searchQuery, toolResultByToolUseId, toolUseById, skipPermissions, sessionId, isProcessing])
+  }, [messages, searchMatchIds, currentMatchMsgId, searchOpen, searchQuery, toolResultByToolUseId, toolUseById, skipPermissions, sessionId, isProcessing, inProgressToolIds])
 
   return (
     <div
@@ -1194,7 +1325,15 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
           </button>
         )}
         <div className="chat-view-messages" ref={listRef}>
-          <div className="messages-container">
+          <div
+            className={`messages-container${compactMessages ? ' compact' : ''}`}
+            style={{
+              ...(chatZoom !== 1 ? { zoom: chatZoom } : {}),
+              '--chat-font-size': `${fontSize}px`,
+              '--chat-line-height': String(lineHeight),
+              ...(fontFamily && fontFamily !== 'system' ? { fontFamily: fontFamily === 'mono' ? "'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace" : fontFamily === 'inter' ? "'Inter', system-ui, sans-serif" : fontFamily === 'fira-code' ? "'Fira Code', monospace" : fontFamily === 'jetbrains' ? "'JetBrains Mono', monospace" : fontFamily === 'cascadia' ? "'Cascadia Code', monospace" : undefined } : {}),
+            } as React.CSSProperties}
+          >
           {messages.length > visibleCount && (
             <button
               className="btn-load-more"
@@ -1221,7 +1360,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
                 const timing = turnTimings.get(lastIdx)
                 return (
                   <React.Fragment key={`rg-${itemIdx}`}>
-                    <ReadGroup toolUses={item.toolUses} results={item.results} />
+                    <ReadGroup toolUses={item.toolUses} results={item.results} projectPath={projectPath} />
                     {timing && timing.duration > 0 && (
                       <div className="response-timing-badge">
                         <span className="response-timing-line" />
@@ -1506,6 +1645,37 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
                   </div>
                 )}
               </div>
+              {effortLevels && (
+                <div className="effort-picker-wrapper">
+                  <button
+                    className="btn-effort-picker"
+                    onClick={() => setEffortPickerOpen(!effortPickerOpen)}
+                    title="Set reasoning effort"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/>
+                      <line x1="10" y1="22" x2="14" y2="22"/>
+                    </svg>
+                    {selectedEffort}
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
+                  {effortPickerOpen && (
+                    <div className="effort-picker-dropdown">
+                      {effortLevels.map(level => (
+                        <button
+                          key={level}
+                          className={`effort-picker-option ${level === selectedEffort ? 'active' : ''}`}
+                          onClick={() => handleEffortChange(level)}
+                        >
+                          {level}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <button
                 className={`btn-plan-mode${planMode ? ' active' : ''}`}
                 onClick={() => setPlanMode(p => !p)}
@@ -1716,6 +1886,19 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
           <div className="input-footer-right">
           </div>
         </div>
+      </div>
+      {/* Zoom level indicator */}
+      <div className={`zoom-indicator${zoomVisible ? ' visible' : ''}`}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          {chatZoom >= 1 ? <><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></> : <line x1="8" y1="11" x2="14" y2="11"/>}
+        </svg>
+        <span className="zoom-indicator-value">{Math.round(chatZoom * 100)}%</span>
+        {chatZoom !== 1 && (
+          <button className="zoom-indicator-reset" onClick={() => { setChatZoom(1); setZoomVisible(true); if (zoomTimerRef.current) clearTimeout(zoomTimerRef.current); zoomTimerRef.current = setTimeout(() => setZoomVisible(false), 800) }} title="Reset zoom">
+            Reset
+          </button>
+        )}
       </div>
       {lightboxImage && (
         <div className="image-lightbox-overlay" onClick={() => setLightboxImage(null)}>

@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useProjectStore } from '../stores/projectStore'
-import { DEFAULT_MODEL } from '../constants/models'
+import { DEFAULT_MODEL, DEFAULT_EFFORT } from '../constants/models'
 import { SCRATCH_PROJECT_PATH } from '../constants/scratch'
 
 export interface WorktreeOptions {
@@ -32,10 +32,11 @@ export function useAgent(sessionId: string | null) {
       return null
     }
 
-    // Use the session's selected model (which may be a Codex model) or fall back to default
+    // Use the session's selected model and effort, or fall back to defaults
     const currentSession = sessionId ? useSessionStore.getState().sessions[sessionId] : null
     const model = currentSession?.selectedModel || DEFAULT_MODEL
-    const result = await window.api.agent.start(effectivePath, prompt, model, worktreeOptions)
+    const effort = currentSession?.selectedEffort || DEFAULT_EFFORT
+    const result = await window.api.agent.start(effectivePath, prompt, model, worktreeOptions, effort)
     if (!result.success || !result.sessionId) {
       return null
     }
@@ -71,7 +72,7 @@ export function useAgent(sessionId: string | null) {
       // Use worktree path as CWD so the SDK finds the session file in the correct hash directory
       const effectivePath = currentSession.worktreePath || currentSession.projectPath
       const result = await window.api.agent.resume(
-        sessionId, effectivePath, content, currentSession.selectedModel
+        sessionId, effectivePath, content, currentSession.selectedModel, currentSession.selectedEffort
       )
       if (result.success) {
         useSessionStore.getState().clearRestored(sessionId)

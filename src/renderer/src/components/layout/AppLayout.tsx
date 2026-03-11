@@ -9,6 +9,7 @@ import MainPanel from './MainPanel'
 import SidePanel from './SidePanel'
 import AppHeader from './AppHeader'
 import TerminalPanel from '../terminal/TerminalPanel'
+import SettingsPanel from '../settings/SettingsPanel'
 
 function ResizeHandle({
   side,
@@ -55,6 +56,7 @@ function ResizeHandle({
 }
 
 export default function AppLayout() {
+  const settingsOpen = useUIStore(s => s.settingsOpen)
   const sidebarVisible = useUIStore(s => s.sidebarVisible)
   const sidePanelView = useUIStore(s => s.sidePanelView)
   const sidebarWidth = useUIStore(s => s.sidebarWidth)
@@ -93,33 +95,41 @@ export default function AppLayout() {
   return (
     <div className="app-layout">
       <AppHeader />
-      <div className="app-layout-top" style={{ gridTemplateColumns: cols }}>
-        {sidebarVisible && (
-          <div className="panel-wrapper">
-            <Sidebar />
-            <ResizeHandle side="left" onResize={handleSidebarResize} />
-          </div>
-        )}
-        <MainPanel />
-        {sidePanelView && (
-          <div className="panel-wrapper">
-            <ResizeHandle side="right" onResize={handleSidePanelResize} />
-            <SidePanel />
-          </div>
-        )}
-      </div>
-      {hasAnyTerminals && (
-        <div style={{ display: showTerminal ? undefined : 'none' }}>
-          <TerminalPanel />
+      {settingsOpen ? (
+        <div className="settings-page-container">
+          <SettingsPanel />
         </div>
-      )}
-      {!terminalPanelVisible && hasShellTerminals && (
-        <button className="terminal-collapsed-bar" onClick={togglePanel} title="Show terminal">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 15 12 9 18 15"/>
-          </svg>
-          <span>Terminal</span>
-        </button>
+      ) : (
+        <>
+          <div className="app-layout-top" style={{ gridTemplateColumns: cols }}>
+            {sidebarVisible && (
+              <div className="panel-wrapper">
+                <Sidebar />
+                <ResizeHandle side="left" onResize={handleSidebarResize} />
+              </div>
+            )}
+            <MainPanel />
+            {sidePanelView && (
+              <div className="panel-wrapper">
+                <ResizeHandle side="right" onResize={handleSidePanelResize} />
+                <SidePanel />
+              </div>
+            )}
+          </div>
+          {hasAnyTerminals && (
+            <div style={{ display: showTerminal ? undefined : 'none' }}>
+              <TerminalPanel />
+            </div>
+          )}
+          {!terminalPanelVisible && hasShellTerminals && (
+            <button className="terminal-collapsed-bar" onClick={togglePanel} title="Show terminal">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 15 12 9 18 15"/>
+              </svg>
+              <span>Terminal</span>
+            </button>
+          )}
+        </>
       )}
     </div>
   )

@@ -10,18 +10,19 @@ export interface WorktreeInfo {
 
 export interface ElectronAPI {
   agent: {
-    start: (projectPath: string, prompt: string, model?: string | null, worktreeOptions?: { useWorktree: boolean; baseBranch?: string; includeChanges?: boolean }) => Promise<{ success: boolean; sessionId?: string; worktreePath?: string; worktreeSessionId?: string; error?: string }>
+    start: (projectPath: string, prompt: string, model?: string | null, worktreeOptions?: { useWorktree: boolean; baseBranch?: string; includeChanges?: boolean }, effort?: string | null) => Promise<{ success: boolean; sessionId?: string; worktreePath?: string; worktreeSessionId?: string; error?: string }>
     send: (sessionId: string, content: string) => Promise<{ success: boolean; error?: string }>
     stop: (sessionId: string) => Promise<{ success: boolean }>
     status: (sessionId: string) => Promise<{ isRunning: boolean; sessionId: string | null; projectPath: string | null; hasSession: boolean }>
     setModel: (sessionId: string, model: string | null) => Promise<{ success: boolean }>
+    setEffort: (sessionId: string, effort: string | null) => Promise<{ success: boolean }>
     onEvent: (callback: (data: { sessionId: string; event: unknown }) => void) => () => void
     onEvents: (callback: (data: { sessionId: string; events: unknown[] }) => void) => () => void
     onClosed: (callback: (data: { sessionId: string; code: number | null }) => void) => () => void
     onError: (callback: (data: { sessionId: string; error: string }) => void) => () => void
     onTitle: (callback: (data: { sessionId: string; title: string }) => void) => () => void
     onSuggestion: (callback: (data: { sessionId: string; suggestion: string }) => void) => () => void
-    resume: (sessionId: string, projectPath: string, message: string, model?: string | null) => Promise<{ success: boolean; sessionId?: string; error?: string }>
+    resume: (sessionId: string, projectPath: string, message: string, model?: string | null, effort?: string | null) => Promise<{ success: boolean; sessionId?: string; error?: string }>
     fork: (sourceSessionId: string, projectPath: string, sourceSdkSessionId: string | null) => Promise<{
       success: boolean
       forkA?: { sessionId: string; worktreePath: string; worktreeSessionId: string }

@@ -1,9 +1,11 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import type { UIToolUseMessage, UIToolResultMessage } from '../../stores/sessionStore'
+import { useEditorStore } from '../../stores/editorStore'
 
 interface Props {
   toolUses: UIToolUseMessage[]
   results: (UIToolResultMessage | null)[]
+  projectPath?: string
 }
 
 function shortPath(filePath: string): string {
@@ -12,11 +14,23 @@ function shortPath(filePath: string): string {
   return parts.slice(-2).join('/')
 }
 
-export default function ReadGroup({ toolUses, results }: Props) {
+export default function ReadGroup({ toolUses, results, projectPath }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [hasBeenExpanded, setHasBeenExpanded] = useState(false)
   const [expandedIdx, setExpandedIdx] = useState<Set<number>>(new Set())
   const [everExpandedIdx, setEverExpandedIdx] = useState<Set<number>>(new Set())
+
+  const handleOpenInEditor = useCallback(async (e: React.MouseEvent, filePath: string) => {
+    e.stopPropagation()
+    if (!projectPath || !filePath) return
+    const editorState = useEditorStore.getState()
+    if (editorState.activeEditors[projectPath]) {
+      await window.api.neovim.openFile(projectPath, filePath)
+    } else {
+      await window.api.neovim.create(projectPath, filePath)
+    }
+    useEditorStore.getState().setMainPanelTab('editor')
+  }, [projectPath])
 
   const files = useMemo(() =>
     toolUses.map((tu, i) => {
@@ -79,6 +93,15 @@ export default function ReadGroup({ toolUses, results }: Props) {
                     <svg className={`tool-chevron${expandedIdx.has(i) ? ' open' : ''}`} width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 0 }}><path d="M3.5 2L7 5L3.5 8" /></svg>
                     <span className="read-group-file-path" title={file.filePath}>{file.shortPath}</span>
                     {file.hasError && <span className="read-group-file-error-dot" />}
+                    {projectPath && file.filePath && (
+                      <span className="file-edit-action" title="Open in Editor" onClick={(e) => handleOpenInEditor(e, file.filePath)}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                          <polyline points="15 3 21 3 21 9"/>
+                          <line x1="10" y1="14" x2="21" y2="3"/>
+                        </svg>
+                      </span>
+                    )}
                   </button>
                   <div className={`tool-collapsible${expandedIdx.has(i) ? ' open' : ''}`}>
                     <div className="tool-collapsible-inner">

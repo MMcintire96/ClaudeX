@@ -2,8 +2,8 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 const api = {
   agent: {
-    start: (projectPath: string, prompt: string, model?: string | null, worktreeOptions?: { useWorktree: boolean; baseBranch?: string; includeChanges?: boolean }) =>
-      ipcRenderer.invoke('agent:start', projectPath, prompt, model, worktreeOptions),
+    start: (projectPath: string, prompt: string, model?: string | null, worktreeOptions?: { useWorktree: boolean; baseBranch?: string; includeChanges?: boolean }, effort?: string | null) =>
+      ipcRenderer.invoke('agent:start', projectPath, prompt, model, worktreeOptions, effort),
     send: (sessionId: string, content: string) =>
       ipcRenderer.invoke('agent:send', sessionId, content),
     stop: (sessionId: string) =>
@@ -12,6 +12,8 @@ const api = {
       ipcRenderer.invoke('agent:status', sessionId),
     setModel: (sessionId: string, model: string | null) =>
       ipcRenderer.invoke('agent:set-model', sessionId, model),
+    setEffort: (sessionId: string, effort: string | null) =>
+      ipcRenderer.invoke('agent:set-effort', sessionId, effort),
     onEvent: (callback: (data: { sessionId: string; event: unknown }) => void) => {
       const handler = (_: unknown, data: { sessionId: string; event: unknown }) => callback(data)
       ipcRenderer.on('agent:event', handler)
@@ -42,8 +44,8 @@ const api = {
       ipcRenderer.on('agent:suggestion', handler)
       return () => ipcRenderer.removeListener('agent:suggestion', handler)
     },
-    resume: (sessionId: string, projectPath: string, message: string, model?: string | null) =>
-      ipcRenderer.invoke('agent:resume', sessionId, projectPath, message, model),
+    resume: (sessionId: string, projectPath: string, message: string, model?: string | null, effort?: string | null) =>
+      ipcRenderer.invoke('agent:resume', sessionId, projectPath, message, model, effort),
     fork: (sourceSessionId: string, projectPath: string, sourceSdkSessionId: string | null) =>
       ipcRenderer.invoke('agent:fork', sourceSessionId, projectPath, sourceSdkSessionId),
     linkSessions: (sessionA: { id: string; name: string }, sessionB: { id: string; name: string }) =>

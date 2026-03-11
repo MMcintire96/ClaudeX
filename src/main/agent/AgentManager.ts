@@ -374,7 +374,7 @@ export class AgentManager {
    * Resume a session that was restored from disk.
    * Creates a new AgentProcess with the saved sessionId and calls resume().
    */
-  async resumeAgent(sessionId: string, projectPath: string, model: string | null, message: string): Promise<string> {
+  async resumeAgent(sessionId: string, projectPath: string, model: string | null, message: string, effort?: string | null): Promise<string> {
     if (this.isCodexModel(model)) {
       const agent = new CodexProcess({
         projectPath,
@@ -401,6 +401,7 @@ export class AgentManager {
       projectPath,
       sessionId,
       model,
+      effort,
       mcpServers,
       systemPromptAppend,
       disallowedTools: disallowedTools && disallowedTools.length > 0 ? disallowedTools : null
@@ -447,6 +448,13 @@ export class AgentManager {
     const agent = this.agents.get(sessionId)
     if (agent) {
       agent.setModel(model)
+    }
+  }
+
+  setEffort(sessionId: string, effort: string | null): void {
+    const agent = this.agents.get(sessionId)
+    if (agent) {
+      agent.setEffort(effort)
     }
   }
 

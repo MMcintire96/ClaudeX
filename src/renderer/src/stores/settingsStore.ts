@@ -12,6 +12,13 @@ interface AppSettings {
   preventSleep: boolean
   suggestNextMessage: boolean
   sideBySideDiffs: boolean
+  defaultModel: string
+  defaultEffort: string
+  fontSize: number
+  fontFamily: string
+  lineHeight: number
+  showTimestamps: boolean
+  compactMessages: boolean
 }
 
 interface SettingsState extends AppSettings {
@@ -32,6 +39,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   preventSleep: true,
   suggestNextMessage: true,
   sideBySideDiffs: false,
+  defaultModel: 'claude-opus-4-6',
+  defaultEffort: 'high',
+  fontSize: 14,
+  fontFamily: 'system',
+  lineHeight: 1.6,
+  showTimestamps: false,
+  compactMessages: false,
   loaded: false,
 
   loadSettings: async (): Promise<void> => {
