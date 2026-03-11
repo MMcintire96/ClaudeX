@@ -174,7 +174,7 @@ const handleRunStart = useCallback(async () => {
           className="btn-header-icon"
           onClick={handleOpenTerminal}
           title="Terminal"
-          disabled={!currentPath && !isScratchSession}
+          disabled={settingsOpen || (!currentPath && !isScratchSession)}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="4 17 10 11 4 5"/>
@@ -199,7 +199,7 @@ const handleRunStart = useCallback(async () => {
               if (currentPath) setRunMenuOpen(o => !o)
             }}
             title={hasStartConfig ? 'Run' : 'Run (right-click for options)'}
-            disabled={!currentPath || isScratchSession}
+            disabled={settingsOpen || !currentPath || isScratchSession}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="5 3 19 12 5 21 5 3"/>
@@ -208,7 +208,7 @@ const handleRunStart = useCallback(async () => {
           <button
             className="btn-header-caret"
             onClick={() => currentPath && setRunMenuOpen(o => !o)}
-            disabled={!currentPath || isScratchSession}
+            disabled={settingsOpen || !currentPath || isScratchSession}
             title="Run options"
           >
             <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -276,7 +276,7 @@ const handleRunStart = useCallback(async () => {
           className={`btn-header-icon ${isBrowserActive ? 'active' : ''}`}
           onClick={handleToggleBrowser}
           title="Browser"
-          disabled={!currentPath}
+          disabled={settingsOpen || !currentPath}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"/>
@@ -288,7 +288,7 @@ const handleRunStart = useCallback(async () => {
           className={`btn-header-icon ${isDiffActive ? 'active' : ''}`}
           onClick={handleToggleDiff}
           title="Diff"
-          disabled={!currentPath || isScratchSession}
+          disabled={settingsOpen || !currentPath || isScratchSession}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 3v18"/>
@@ -300,7 +300,7 @@ const handleRunStart = useCallback(async () => {
             className={`btn-header-icon ${chatDetached ? 'active' : ''}`}
             onClick={toggleChatDetached}
             title={chatDetached ? 'Dock chat' : 'Pop out chat'}
-            disabled={splitView}
+            disabled={settingsOpen || splitView}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               {chatDetached ? (

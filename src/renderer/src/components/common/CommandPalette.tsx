@@ -459,7 +459,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         category: 'command',
         label: 'Toggle Terminal',
         shortcut: 'Ctrl+`',
-        action: () => useTerminalStore.getState().togglePanel()
+        action: () => { if (!useUIStore.getState().settingsOpen) useTerminalStore.getState().togglePanel() }
       },
       {
         id: 'cmd:new-session',
@@ -495,7 +495,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         label: 'New Shell Terminal',
         shortcut: `${modLabel}+T`,
         action: () => {
-          if (!currentPath) return
+          if (!currentPath || useUIStore.getState().settingsOpen) return
           window.api.terminal.create(currentPath).then(r => {
             if (r.success && r.id) {
               useTerminalStore.getState().addTerminal({ id: r.id, projectPath: r.projectPath!, pid: r.pid! })
@@ -522,7 +522,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         label: 'Toggle Browser Panel',
         shortcut: `${modLabel}+B`,
         action: () => {
-          if (!currentPath) return
+          if (!currentPath || useUIStore.getState().settingsOpen) return
           const { sidePanelView, setSidePanelView } = useUIStore.getState()
           if (sidePanelView?.type === 'browser' && sidePanelView.projectPath === currentPath) {
             setSidePanelView(null)
@@ -537,7 +537,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         label: 'Toggle Diff Panel',
         shortcut: `${modLabel}+D`,
         action: () => {
-          if (!currentPath) return
+          if (!currentPath || useUIStore.getState().settingsOpen) return
           const { sidePanelView, setSidePanelView } = useUIStore.getState()
           if (sidePanelView?.type === 'diff' && sidePanelView.projectPath === currentPath) {
             setSidePanelView(null)
@@ -581,6 +581,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         label: 'Toggle Editor',
         shortcut: `${modLabel}+E`,
         action: () => {
+          if (useUIStore.getState().settingsOpen) return
           const { mainPanelTab, setMainPanelTab } = useEditorStore.getState()
           setMainPanelTab(mainPanelTab === 'editor' ? 'chat' : 'editor')
         }
@@ -590,7 +591,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         category: 'command',
         label: 'Toggle Chat Pop-out',
         shortcut: `${modLabel}+P`,
-        action: () => useUIStore.getState().toggleChatDetached()
+        action: () => { if (!useUIStore.getState().settingsOpen) useUIStore.getState().toggleChatDetached() }
       },
       {
         id: 'cmd:reload-window',

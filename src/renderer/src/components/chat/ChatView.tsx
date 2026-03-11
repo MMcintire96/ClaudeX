@@ -225,7 +225,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
 
   // Vim mode for chat input
   const skipPermissions = useSettingsStore(s => s.claude.dangerouslySkipPermissions)
-  const vimChatEnabled = useSettingsStore(s => s.vimChatMode)
+  const vimChatEnabled = useSettingsStore(s => s.vimMode)
   const inputTextRef = useRef(inputText)
   inputTextRef.current = inputText
   const getInputText = useCallback(() => inputTextRef.current, [])

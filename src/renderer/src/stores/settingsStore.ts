@@ -8,7 +8,6 @@ interface AppSettings {
   vimMode: boolean
   autoExpandEdits: boolean
   notificationSounds: boolean
-  vimChatMode: boolean
   preventSleep: boolean
   suggestNextMessage: boolean
   sideBySideDiffs: boolean
@@ -32,10 +31,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     dangerouslySkipPermissions: false
   },
   modKey: 'Alt',
-  vimMode: true,
+  vimMode: false,
   autoExpandEdits: false,
   notificationSounds: true,
-  vimChatMode: false,
   preventSleep: true,
   suggestNextMessage: true,
   sideBySideDiffs: false,

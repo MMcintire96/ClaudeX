@@ -235,6 +235,7 @@ export default function App() {
       // Ctrl+` to toggle terminal
       if ((e.ctrlKey || e.metaKey) && e.key === '`') {
         e.preventDefault()
+        if (useUIStore.getState().settingsOpen) return
         if (terminalTerminals.length === 0 && currentPath) {
           window.api.terminal.create(currentPath).then((result: { success: boolean; id: string; projectPath: string; pid: number }) => {
             if (result.success) {
@@ -293,6 +294,7 @@ export default function App() {
       // Mod+T — New shell terminal
       if (key === 't' && currentPath) {
         e.preventDefault()
+        if (useUIStore.getState().settingsOpen) return
         window.api.terminal.create(currentPath).then((result) => {
           if (result.success && result.id) {
             terminalAddTerminal({
@@ -319,6 +321,7 @@ export default function App() {
       // Mod+B — Toggle browser
       if (key === 'b' && currentPath) {
         e.preventDefault()
+        if (useUIStore.getState().settingsOpen) return
         const { sidePanelView, setSidePanelView } = useUIStore.getState()
         if (sidePanelView?.type === 'browser' && sidePanelView.projectPath === currentPath) {
           setSidePanelView(null)
@@ -331,6 +334,7 @@ export default function App() {
       // Mod+D — Toggle diff
       if (key === 'd' && currentPath) {
         e.preventDefault()
+        if (useUIStore.getState().settingsOpen) return
         const { sidePanelView, setSidePanelView } = useUIStore.getState()
         if (sidePanelView?.type === 'diff' && sidePanelView.projectPath === currentPath) {
           setSidePanelView(null)
@@ -357,6 +361,7 @@ export default function App() {
       // Mod+P — Toggle chat pop-out
       if (key === 'p' && !e.shiftKey) {
         e.preventDefault()
+        if (useUIStore.getState().settingsOpen) return
         useUIStore.getState().toggleChatDetached()
         return
       }

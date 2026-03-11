@@ -12,7 +12,6 @@ export interface AppSettings {
   vimMode: boolean
   autoExpandEdits: boolean
   notificationSounds: boolean
-  vimChatMode: boolean
   preventSleep: boolean
   suggestNextMessage: boolean
   sideBySideDiffs: boolean
@@ -33,10 +32,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     dangerouslySkipPermissions: false
   },
   modKey: 'Alt',
-  vimMode: true,
+  vimMode: false,
   autoExpandEdits: false,
   notificationSounds: true,
-  vimChatMode: false,
   preventSleep: true,
   suggestNextMessage: true,
   sideBySideDiffs: false,
@@ -74,7 +72,6 @@ export class SettingsManager {
         vimMode: loaded.vimMode ?? DEFAULT_SETTINGS.vimMode,
         autoExpandEdits: loaded.autoExpandEdits ?? DEFAULT_SETTINGS.autoExpandEdits,
         notificationSounds: loaded.notificationSounds ?? DEFAULT_SETTINGS.notificationSounds,
-        vimChatMode: loaded.vimChatMode ?? DEFAULT_SETTINGS.vimChatMode,
         preventSleep: loaded.preventSleep ?? DEFAULT_SETTINGS.preventSleep,
         suggestNextMessage: loaded.suggestNextMessage ?? DEFAULT_SETTINGS.suggestNextMessage,
         sideBySideDiffs: loaded.sideBySideDiffs ?? DEFAULT_SETTINGS.sideBySideDiffs,
@@ -113,9 +110,6 @@ export class SettingsManager {
     }
     if (partial.notificationSounds !== undefined) {
       this.settings.notificationSounds = partial.notificationSounds
-    }
-    if (partial.vimChatMode !== undefined) {
-      this.settings.vimChatMode = partial.vimChatMode
     }
     if (partial.preventSleep !== undefined) {
       this.settings.preventSleep = partial.preventSleep

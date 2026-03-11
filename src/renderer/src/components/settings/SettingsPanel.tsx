@@ -35,7 +35,7 @@ type SettingsTab = 'general' | 'mcp'
 
 export default function SettingsPanel() {
   const {
-    claude, modKey, vimMode, autoExpandEdits, notificationSounds, vimChatMode,
+    claude, modKey, vimMode, autoExpandEdits, notificationSounds,
     preventSleep, suggestNextMessage, sideBySideDiffs,
     defaultModel, defaultEffort, fontSize, fontFamily, lineHeight,
     showTimestamps, compactMessages,
@@ -354,32 +354,18 @@ export default function SettingsPanel() {
                     >
                       {capturing ? 'Press any key...' : (MOD_KEY_LABELS[modKey] || modKey)}
                     </button>
-                    <span className="settings-field-hint">Modifier key used for keyboard shortcuts</span>
+                    <span className="settings-field-hint">Modifier key used for keyboard shortcuts. Press <kbd>{MOD_KEY_LABELS[modKey] || modKey}+?</kbd> to view all keybindings.</span>
                   </div>
                   <div className="settings-row">
                     <div className="settings-label">
                       <span>Vim mode</span>
-                      <span className="settings-description">Send ESC then i before input</span>
+                      <span className="settings-description">Vim keybindings in the chat input</span>
                     </div>
                     <label className="settings-toggle">
                       <input
                         type="checkbox"
                         checked={vimMode}
                         onChange={(e) => updateSettings({ vimMode: e.target.checked })}
-                      />
-                      <span className="settings-toggle-slider" />
-                    </label>
-                  </div>
-                  <div className="settings-row">
-                    <div className="settings-label">
-                      <span>Vim chat input</span>
-                      <span className="settings-description">Vim keybindings in the chat textarea</span>
-                    </div>
-                    <label className="settings-toggle">
-                      <input
-                        type="checkbox"
-                        checked={vimChatMode}
-                        onChange={(e) => updateSettings({ vimChatMode: e.target.checked })}
                       />
                       <span className="settings-toggle-slider" />
                     </label>
