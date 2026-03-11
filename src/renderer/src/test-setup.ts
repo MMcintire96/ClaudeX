@@ -10,8 +10,13 @@ const windowApi = {
     stop: vi.fn(),
     fork: vi.fn()
   },
+  project: {
+    getStartConfig: vi.fn().mockResolvedValue(null)
+  },
   terminal: {
-    rename: vi.fn()
+    rename: vi.fn(),
+    create: vi.fn().mockResolvedValue({ success: false }),
+    write: vi.fn().mockResolvedValue({ success: true })
   },
   mcp: {
     getServers: vi.fn(),
