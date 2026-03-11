@@ -176,6 +176,17 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
       const hasSessionDir = existsSync(sourceSessionDir)
 
       for (const [forkId, worktreeInfo] of [[forkAId, worktreeA], [forkBId, worktreeB]] as const) {
+        // Create per-worktree plansDirectory so forked sessions don't share
+        // the global ~/.claude/plans/ directory. The SDK's module-level
+        // session state can cause concurrent forks to resolve the same plan
+        // file slug, leading to plan overwrites.
+        const wtClaudeDir = join(worktreeInfo.worktreePath, '.claude')
+        mkdirSync(wtClaudeDir, { recursive: true })
+        const localSettingsPath = join(wtClaudeDir, 'settings.local.json')
+        if (!existsSync(localSettingsPath)) {
+          writeFileSync(localSettingsPath, JSON.stringify({ plansDirectory: '.claude/plans' }, null, 2), 'utf-8')
+        }
+
         const wtPathHash = sdkPathHash(worktreeInfo.worktreePath)
         const wtSdkDir = join(homedir(), '.claude', 'projects', wtPathHash)
         mkdirSync(wtSdkDir, { recursive: true })
