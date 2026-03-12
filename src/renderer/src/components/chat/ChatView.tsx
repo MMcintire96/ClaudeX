@@ -21,6 +21,7 @@ import type { EffortLevel } from '../../constants/models'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useVimMode } from '../../hooks/useVimMode'
 import { useAgent } from '../../hooks/useAgent'
+import { useAutomationStore } from '../../stores/automationStore'
 import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 
 interface ChatViewProps {
@@ -159,7 +160,10 @@ function renderHighlightedInput(text: string): React.ReactNode[] {
 }
 
 export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatViewProps) {
-  const isScratchSession = projectPath === SCRATCH_PROJECT_PATH
+  const isAutomationSession = sessionId.startsWith('automation-')
+  const currentProjectPath = useProjectStore(s => s.currentPath)
+  const effectiveProjectPath = isAutomationSession && currentProjectPath ? currentProjectPath : projectPath
+  const isScratchSession = projectPath === SCRATCH_PROJECT_PATH && !isAutomationSession
   const [inputText, setInputText] = useState(() => sessionDrafts.get(sessionId)?.text ?? '')
   const [pastedChunks, setPastedChunks] = useState<PastedChunk[]>(() => sessionDrafts.get(sessionId)?.chunks ?? [])
   const [imageAttachments, setImageAttachments] = useState<{ path: string; previewUrl: string }[]>(() => sessionDrafts.get(sessionId)?.images ?? [])
@@ -330,7 +334,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
   const streamingThinkingText = useSessionStore(s => s.streamingThinkingText[sessionId] ?? null)
   const streamingThinkingComplete = useSessionStore(s => s.streamingThinkingComplete[sessionId] ?? false)
 
-  const gitBranch = useProjectStore(s => s.gitBranches[projectPath] ?? null)
+  const gitBranch = useProjectStore(s => s.gitBranches[effectiveProjectPath] ?? null)
   const isWorktreeThread = session?.isWorktree ?? false
   const [worktreeMode, setWorktreeMode] = useState<'local' | 'worktree'>('local')
   const [worktreeDropdownOpen, setWorktreeDropdownOpen] = useState(false)
@@ -484,6 +488,18 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
       setWorktreeLocked(false)
     }
     setWorktreeDropdownOpen(false)
+    // Prefill automation prompt if this is a new automation session with no messages and no run in progress
+    if (isAutomationSession && !sessionDrafts.get(sessionId)?.text) {
+      const autoId = sessionId.replace('automation-', '')
+      const automation = useAutomationStore.getState().automations.find(a => a.id === autoId)
+      const sessionState = useSessionStore.getState().sessions[sessionId]
+      const sessionMessages = sessionState?.messages ?? []
+      const hasRunInProgress = (useAutomationStore.getState().runs[autoId] ?? []).some(r => r.status === 'running' || r.status === 'pending')
+      if (automation?.prompt && sessionMessages.length === 0 && !sessionState?.isProcessing && !hasRunInProgress) {
+        setInputText(automation.prompt)
+        sessionDrafts.set(sessionId, { text: automation.prompt, chunks: [] })
+      }
+    }
     // Auto-focus the input and resize for restored draft
     const draft = sessionDrafts.get(sessionId)
     setTimeout(() => {
@@ -900,6 +916,20 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
       // Agent is busy — queue the message
       setMessageQueue(q => [...q, text])
       return
+    }
+
+    // Automation sessions: trigger via the automation backend instead of starting a regular agent
+    if (isAutomationSession) {
+      const autoId = sessionId.replace('automation-', '')
+      const automation = useAutomationStore.getState().automations.find(a => a.id === autoId)
+      if (automation) {
+        // Add the prompt as a user message
+        useSessionStore.getState().addUserMessage(sessionId, text)
+        useSessionStore.getState().setProcessing(sessionId, true)
+        // Trigger the automation run on the backend
+        await window.api.automation.trigger(autoId, automation.projectPaths[0] ?? null)
+        return
+      }
     }
 
     // Check if session has had a first turn — if not, start new; else send follow-up
@@ -1558,7 +1588,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
               <span className="thinking-dot" />
               <span className="thinking-dot" />
             </div>
-            <span className="thinking-label">Processing...</span>
+            <span className="thinking-label">{isAutomationSession ? 'Running automation...' : 'Processing...'}</span>
           </div>
         )}
 
@@ -1692,7 +1722,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
               <div className="config-picker-wrapper">
                 <button
                   className="btn-config-picker"
-                  onClick={() => setConfigPickerOpen(!configPickerOpen)}
+                  onClick={(e) => { e.stopPropagation(); setConfigPickerOpen(!configPickerOpen) }}
                   title="Model & reasoning settings"
                 >
                   {getModelLabel(displayModel)}
@@ -1896,15 +1926,17 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
                     )}
                   </div>
                 ) : (
-                  <span className="input-footer-project" title={projectPath}>
+                  <span className="input-footer-project" title={effectiveProjectPath}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                     </svg>
-                    {projectPath.split('/').pop()}
+                    {effectiveProjectPath.split('/').pop()}
                   </span>
                 )}
               </>
             )}
+          </div>
+          <div className="input-footer-right">
             {gitBranch && !isScratchSession && (
               <div className="branch-picker">
                 <button
@@ -1959,8 +1991,6 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
                 )}
               </div>
             )}
-          </div>
-          <div className="input-footer-right">
           </div>
         </div>
       </div>

@@ -14,6 +14,7 @@ import { WorktreeManager } from './worktree/WorktreeManager'
 import { NeovimManager } from './neovim/NeovimManager'
 import { McpManager } from './mcp/McpManager'
 import { CheckpointManager } from './checkpoint/CheckpointManager'
+import { AutomationManager } from './automation/AutomationManager'
 import { addBroadcastWindow, removeBroadcastWindow, markWindowReady } from './broadcast'
 
 // Auto-grant media permissions (Electron has no native permission dialog)
@@ -44,6 +45,7 @@ const worktreeManager = new WorktreeManager()
 const neovimManager = new NeovimManager()
 const mcpManager = new McpManager()
 const checkpointManager = new CheckpointManager()
+const automationManager = new AutomationManager()
 const bridgeServer = new ClaudexBridgeServer(terminalManager, browserManager)
 
 let mainWindow: BrowserWindow | null = null
@@ -367,9 +369,18 @@ app.whenReady().then(async () => {
   agentManager.setNeovimManager(neovimManager)
   agentManager.setMcpManager(mcpManager)
   agentManager.setCheckpointManager(checkpointManager)
-  registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager, bridgeServer, checkpointManager)
+
+  automationManager.setWorktreeManager(worktreeManager)
+  automationManager.setSettingsManager(settingsManager)
+  automationManager.setMcpManager(mcpManager)
+  automationManager.setBridgeServer(bridgeServer)
+
+  registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager, bridgeServer, checkpointManager, automationManager)
 
   createWindow()
+
+  automationManager.setMainWindow(mainWindow!)
+  automationManager.startScheduler()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -390,6 +401,7 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   agentManager.stopAgent()
+  automationManager.destroy()
   terminalManager.destroy()
   neovimManager.destroy()
   voiceManager.destroy()

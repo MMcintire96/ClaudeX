@@ -8,9 +8,14 @@ import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import ProjectTree from './ProjectTree'
 import { useSessionPreview } from '../../hooks/useSessionPreview'
 import SessionPreviewCard from './SessionPreviewCard'
+import AutomationSidebarSection from '../automation/AutomationSidebarSection'
 
 export default function Sidebar() {
   const [creatingThread, setCreatingThread] = useState(false)
+  const [sectionsCollapsed, setSectionsCollapsed] = useState<Record<string, boolean>>({})
+  const toggleSection = useCallback((section: string) => {
+    setSectionsCollapsed(prev => ({ ...prev, [section]: !prev[section] }))
+  }, [])
   const {
     currentPath, isGitRepo, recentProjects,
     setProject, setRecent, removeProject, reorderProjects,
@@ -236,7 +241,7 @@ export default function Sidebar() {
 
   const handleCloseSession = useCallback((sessionId: string) => {
     const session = useSessionStore.getState().sessions[sessionId]
-    if (session && session.messages.length > 0) {
+    if (session && session.messages.length > 0 && session.projectPath !== SCRATCH_PROJECT_PATH) {
       window.api.session.addHistory({
         id: sessionId,
         claudeSessionId: sessionId,
@@ -412,17 +417,6 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <div className="sidebar-header-drag" />
-      </div>
-
-      {/* Open project button */}
-      <div className="sidebar-new-thread">
-        <button className="btn" onClick={handleOpenProject} style={{ width: '100%' }}>
-          Open project
-        </button>
-      </div>
-
       {/* New Thread + Quick Chat buttons */}
       <div className="sidebar-new-thread" style={{ display: 'flex', gap: '4px' }}>
         <button
@@ -447,11 +441,26 @@ export default function Sidebar() {
 
       {/* Threads */}
       <div className="sidebar-projects">
-        <div className="sidebar-section-label">
-          <span>Projects</span>
+        <div className="sidebar-section-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span className="sidebar-section-toggle" onClick={() => toggleSection('projects')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: sectionsCollapsed.projects ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+            Projects
+          </span>
+          <button
+            className="sidebar-section-action"
+            onClick={handleOpenProject}
+            title="Open project"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
         </div>
 
-        {projectList.map((proj, index) => (
+        {!sectionsCollapsed.projects && projectList.map((proj, index) => (
           <div
             key={proj.path}
             className={`sidebar-project-drag-wrapper${dragOverIndex === index && dragIndex !== index ? ' drag-over' : ''}${dragIndex === index ? ' dragging' : ''}`}
@@ -489,7 +498,7 @@ export default function Sidebar() {
           </div>
         ))}
 
-        {projectList.length === 0 && (
+        {!sectionsCollapsed.projects && projectList.length === 0 && (
           <div style={{ padding: '8px 10px', fontSize: '12px', color: 'var(--text-muted)' }}>
             No projects yet
           </div>
@@ -498,26 +507,30 @@ export default function Sidebar() {
         {/* Quick Chat sessions */}
         {(() => {
           const scratchSessions = Object.values(sessions)
-            .filter(s => s.projectPath === SCRATCH_PROJECT_PATH)
+            .filter(s => s.projectPath === SCRATCH_PROJECT_PATH && !s.sessionId.startsWith('automation-'))
             .sort((a, b) => b.createdAt - a.createdAt)
           const scratchHistory = historyByProject[SCRATCH_PROJECT_PATH] || []
-          if (scratchSessions.length === 0 && scratchHistory.length === 0) return null
           return (
             <div className="sidebar-scratch-section">
               <div className="sidebar-section-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Quick Chats</span>
+                <span className="sidebar-section-toggle" onClick={() => toggleSection('chats')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: sectionsCollapsed.chats ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                  Quick Chats
+                </span>
                 <button
                   className="sidebar-section-action"
-                  onClick={handleClearQuickChats}
-                  title="Clear all quick chats"
+                  onClick={handleNewQuickChat}
+                  title="New quick chat"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
                   </svg>
                 </button>
               </div>
-              {scratchSessions.map(s => {
+              {!sectionsCollapsed.chats && scratchSessions.map(s => {
                 const isActive = activeSessionId === s.sessionId
                 const displayName = s.name || 'Quick Chat'
                 const isRunning = s.isProcessing
@@ -553,28 +566,15 @@ export default function Sidebar() {
                   </div>
                 )
               })}
-              {scratchHistory.map(entry => (
-                <div
-                  key={entry.id}
-                  className="tree-item tree-item-thread tree-item-history"
-                  onMouseEnter={(e) => sessionPreview.onSessionMouseEnter(e, null, { name: entry.name, createdAt: entry.createdAt, endedAt: entry.endedAt })}
-                  onMouseLeave={() => sessionPreview.onSessionMouseLeave()}
-                >
-                  <button
-                    className="tree-item-btn"
-                    onClick={() => handleResumeHistory(entry)}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 0', textAlign: 'left', fontSize: 'inherit', fontFamily: 'inherit' }}
-                  >
-                    <span style={{ fontSize: '8px' }}>{'\u25CB'}</span>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {entry.name.replace(/^[^\w\s]+\s*/, '') || entry.name}
-                    </span>
-                  </button>
-                </div>
-              ))}
             </div>
           )
         })()}
+
+        {/* Automations section */}
+        <AutomationSidebarSection
+          collapsed={!!sectionsCollapsed.automations}
+          onToggleCollapse={() => toggleSection('automations')}
+        />
       </div>
 
       {sessionPreview.previewTarget && (

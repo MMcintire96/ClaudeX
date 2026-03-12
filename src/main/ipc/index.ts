@@ -22,6 +22,8 @@ import { McpManager } from '../mcp/McpManager'
 import { registerMcpHandlers } from './mcpHandlers'
 import { CheckpointManager } from '../checkpoint/CheckpointManager'
 import { registerCheckpointHandlers } from './checkpointHandlers'
+import { AutomationManager } from '../automation/AutomationManager'
+import { registerAutomationHandlers } from './automationHandlers'
 
 export function registerAllHandlers(
   agentManager: AgentManager,
@@ -36,7 +38,8 @@ export function registerAllHandlers(
   neovimManager?: NeovimManager,
   mcpManager?: McpManager,
   bridgeServer?: ClaudexBridgeServer,
-  checkpointManager?: CheckpointManager
+  checkpointManager?: CheckpointManager,
+  automationManager?: AutomationManager
 ): void {
   registerAgentHandlers(agentManager, worktreeManager, sessionPersistence, bridgeServer)
   registerProjectHandlers(projectManager, projectConfigManager, terminalManager)
@@ -56,5 +59,8 @@ export function registerAllHandlers(
   }
   if (checkpointManager) {
     registerCheckpointHandlers(checkpointManager)
+  }
+  if (automationManager) {
+    registerAutomationHandlers(automationManager)
   }
 }

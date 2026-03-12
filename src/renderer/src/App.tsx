@@ -8,6 +8,8 @@ import { useUIStore } from './stores/uiStore'
 import { useTerminalStore } from './stores/terminalStore'
 import { useProjectStore } from './stores/projectStore'
 import { useSettingsStore } from './stores/settingsStore'
+import { useAutomationStore } from './stores/automationStore'
+import { convertRunToMessages } from './components/automation/AutomationSidebarSection'
 import { validateTheme } from './lib/themes'
 import { sendNotification } from './lib/notificationSound'
 
@@ -78,6 +80,81 @@ export default function App() {
       unsubForwarded()
     }
   }, [processEvent, setProcessing, setError, renameSession, setSuggestion, addUserMessage])
+
+  // Wire up automation event listeners
+  useEffect(() => {
+    const store = useAutomationStore.getState()
+    store.loadAutomations()
+    store.loadTriageRuns()
+
+    const unsub1 = window.api.automation.onRunStarted((data: any) => {
+      useAutomationStore.getState().handleRunStarted(data)
+      // Set processing on the automation session if it exists
+      const chatSessionId = `automation-${data.automationId}`
+      const session = useSessionStore.getState().sessions[chatSessionId]
+      if (session) {
+        useSessionStore.getState().setProcessing(chatSessionId, true)
+      }
+    })
+    const unsub2 = window.api.automation.onRunCompleted((data: any) => {
+      useAutomationStore.getState().handleRunCompleted(data)
+      // Update the automation session with run results
+      const chatSessionId = `automation-${data.automationId}`
+      const session = useSessionStore.getState().sessions[chatSessionId]
+      if (session) {
+        const automation = useAutomationStore.getState().automations.find(a => a.id === data.automationId)
+        const messages = convertRunToMessages(data, automation?.prompt ?? '')
+        useSessionStore.setState(s => ({
+          sessions: {
+            ...s.sessions,
+            [chatSessionId]: {
+              ...s.sessions[chatSessionId],
+              messages,
+              isProcessing: false,
+              totalCostUsd: data.costUsd ?? 0,
+              numTurns: data.numTurns ?? 0,
+            }
+          }
+        }))
+      }
+    })
+    const unsub3 = window.api.automation.onRunFailed((data: any) => {
+      useAutomationStore.getState().handleRunFailed(data)
+      // Update the automation session with error
+      const chatSessionId = `automation-${data.automationId}`
+      const session = useSessionStore.getState().sessions[chatSessionId]
+      if (session) {
+        const automation = useAutomationStore.getState().automations.find(a => a.id === data.automationId)
+        const messages = convertRunToMessages(data, automation?.prompt ?? '')
+        useSessionStore.setState(s => ({
+          sessions: {
+            ...s.sessions,
+            [chatSessionId]: {
+              ...s.sessions[chatSessionId],
+              messages,
+              isProcessing: false,
+            }
+          }
+        }))
+      }
+    })
+    const unsub4 = window.api.automation.onRunUpdated((data: any) => {
+      useAutomationStore.getState().handleRunUpdated(data)
+    })
+    const unsub5 = window.api.automation.onCreated((data: any) => {
+      useAutomationStore.getState().handleAutomationCreated(data)
+    })
+    const unsub6 = window.api.automation.onUpdated((data: any) => {
+      useAutomationStore.getState().handleAutomationUpdated(data)
+    })
+    const unsub7 = window.api.automation.onDeleted((data: any) => {
+      useAutomationStore.getState().handleAutomationDeleted(data)
+    })
+
+    return () => {
+      unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); unsub6(); unsub7()
+    }
+  }, [])
 
   // Centralized notification: fire when any non-active session transitions to needsInput
   const sessions = useSessionStore(s => s.sessions)
