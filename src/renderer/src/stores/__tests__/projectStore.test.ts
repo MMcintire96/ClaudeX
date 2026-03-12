@@ -64,25 +64,6 @@ describe('setProjectExpanded', () => {
   })
 })
 
-describe('expandAllProjects / collapseAllProjects', () => {
-  it('expands all recent projects', () => {
-    store.setState({
-      recentProjects: [
-        { path: '/p1', name: 'p1', lastOpened: 1 },
-        { path: '/p2', name: 'p2', lastOpened: 2 }
-      ]
-    })
-    store.getState().expandAllProjects()
-    expect(store.getState().expandedProjects).toEqual(['/p1', '/p2'])
-  })
-
-  it('collapses all', () => {
-    store.setState({ expandedProjects: ['/p1', '/p2'] })
-    store.getState().collapseAllProjects()
-    expect(store.getState().expandedProjects).toEqual([])
-  })
-})
-
 describe('reorderProjects', () => {
   it('reorders by given path order', () => {
     store.setState({
@@ -154,12 +135,3 @@ describe('setGitBranch', () => {
   })
 })
 
-describe('clear', () => {
-  it('resets current project', () => {
-    store.getState().setProject('/project', true)
-    store.getState().clear()
-    expect(store.getState().currentPath).toBeNull()
-    expect(store.getState().currentName).toBeNull()
-    expect(store.getState().isGitRepo).toBe(false)
-  })
-})

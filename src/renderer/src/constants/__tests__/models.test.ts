@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getModelLabel, getModelEffortLevels, AVAILABLE_MODELS, MODEL_IDS, DEFAULT_MODEL, DEFAULT_EFFORT } from '../models'
+import { getModelLabel, getModelEffortLevels, AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_EFFORT } from '../models'
 
 describe('getModelLabel', () => {
   it('returns label for known model', () => {
@@ -30,12 +30,8 @@ describe('getModelEffortLevels', () => {
 })
 
 describe('constants', () => {
-  it('MODEL_IDS matches AVAILABLE_MODELS', () => {
-    expect(MODEL_IDS).toEqual(AVAILABLE_MODELS.map(m => m.id))
-  })
-
   it('DEFAULT_MODEL is a valid model', () => {
-    expect(MODEL_IDS).toContain(DEFAULT_MODEL)
+    expect(AVAILABLE_MODELS.map(m => m.id)).toContain(DEFAULT_MODEL)
   })
 
   it('DEFAULT_EFFORT is a valid effort level', () => {

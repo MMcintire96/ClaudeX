@@ -248,34 +248,4 @@ export function registerAgentHandlers(agentManager: AgentManager, worktreeManage
     return { success: true }
   })
 
-  ipcMain.handle('agent:link-sessions', (
-    _event,
-    sessionA: { id: string; name: string },
-    sessionB: { id: string; name: string }
-  ) => {
-    if (!bridgeServer) {
-      return { success: false, error: 'Bridge server not available' }
-    }
-
-    // Deposit an introduction message in each session's MCP inbox
-    bridgeServer.injectMessage(
-      sessionA.id,
-      sessionB.id,
-      sessionB.name,
-      `[Collaboration link] You are now paired with another Claude session named "${sessionB.name}" (session ID: ${sessionB.id}). ` +
-      `You can send messages to them with session_send(to="${sessionB.id}", content="...") and read their messages with session_read(). ` +
-      `Coordinate your work — they can see the same project files you can.`
-    )
-
-    bridgeServer.injectMessage(
-      sessionB.id,
-      sessionA.id,
-      sessionA.name,
-      `[Collaboration link] You are now paired with another Claude session named "${sessionA.name}" (session ID: ${sessionA.id}). ` +
-      `You can send messages to them with session_send(to="${sessionA.id}", content="...") and read their messages with session_read(). ` +
-      `Coordinate your work — they can see the same project files you can.`
-    )
-
-    return { success: true }
-  })
 }

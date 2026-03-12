@@ -20,8 +20,7 @@ export default function Sidebar() {
     currentPath, isGitRepo, recentProjects,
     setProject, setRecent, removeProject, reorderProjects,
     gitBranches, setGitBranch,
-    expandedProjects, toggleProjectExpanded,
-    expandAllProjects, collapseAllProjects
+    expandedProjects, toggleProjectExpanded
   } = useProjectStore()
   const {
     setSidePanelView, projectSidePanelMemory

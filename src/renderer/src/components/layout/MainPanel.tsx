@@ -26,7 +26,6 @@ export default function MainPanel() {
   const chatDetached = useUIStore(s => s.chatDetached)
   const toggleChatDetached = useUIStore(s => s.toggleChatDetached)
   const splitView = useUIStore(s => s.splitView)
-  const toggleSplitView = useUIStore(s => s.toggleSplitView)
   const splitSessionId = useUIStore(s => s.splitSessionId)
   const splitRatio = useUIStore(s => s.splitRatio)
   const setSplitRatio = useUIStore(s => s.setSplitRatio)

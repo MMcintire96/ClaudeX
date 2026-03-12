@@ -148,11 +148,6 @@ export function registerProjectHandlers(
     return { success: true }
   })
 
-  ipcMain.handle('project:has-start-config', (_event, projectPath: string) => {
-    if (!projectConfigManager) return false
-    return projectConfigManager.hasConfig(projectPath)
-  })
-
   ipcMain.handle('project:run-start', (_event, projectPath: string, cwdOverride?: string) => {
     if (!projectConfigManager || !terminalManager) return { success: false, error: 'Not configured' }
     const config = projectConfigManager.getConfig(projectPath)

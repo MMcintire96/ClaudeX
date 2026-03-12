@@ -1,146 +1,130 @@
 # ClaudeX
 
-A desktop IDE for managing Claude Code agent sessions across multiple projects. Built with Electron, React, and TypeScript.
+ClaudeX is a desktop IDE built around Claude Code. Instead of running agents in a terminal, you get a proper workspace — multiple agent sessions, integrated terminals, a browser panel, diff views, and everything persists between restarts. Think of it as what Claude Code would look like if it shipped as a native app.
 
-ClaudeX gives you a visual interface to run Claude Code agents with integrated terminals, an embedded browser, diff views, and session persistence — all in one window.
+It runs on Linux, macOS, and Windows (unconfirmed, but I doubt as no WSL intergration).
 
 ## Screenshots
 
-Main Interface (chat + side panels + terminals):
+Main interface — chat, side panels, terminals:
 
 ![Main Interface](screenshots/main-interface.png)
 
-Commit Dialog (diff-aware commit flow with AI message generation):
+Commit dialog — diff-aware with AI message generation:
 
 ![Commit Dialog](screenshots/commit-dialog.png)
 
-Command Palette (commands, files, sessions, projects, branches, themes):
+Command palette — commands, files, sessions, projects, branches, themes:
 
 ![Command Palette](screenshots/command-palette.png)
 
-## Full Feature Support
+## Automatons
 
-### Threads and Sessions
-- **Multi-project workspace** — Open, switch, and reorder projects with per-project state memory
-- **Quick Chat sessions** — Chat without opening a project (`__scratch__` mode)
-- **Multiple concurrent Claude threads per project** with active/inactive/needs-input status
-- **Session history** — Persist and resume past sessions (stored history capped at 200 entries)
-- **Session persistence across restart** — Restores UI layout, theme, expanded projects, and serialized sessions
-- **Inline session rename** and context menu actions (rename, close, fork, close others)
-- **Session forking** — Fork into two parallel branches (Fork A / Fork B) with independent worktrees
-- **Pop-out chat window** — Detach and re-dock chat
+The headline feature. Automatons let you schedule Claude agents to run tasks on their own — no babysitting required. Set up a prompt, pick a schedule, and ClaudeX handles the rest in the background.
 
-### Claude Agent Integration
-- **Claude Agent SDK integration** with streaming partial output and typed event handling
-- **Model selection per session** — `Opus 4.6`, `Sonnet 4.6`, `Haiku 4.5`
-- **Cost + turns tracking** from SDK result metadata
-- **Thinking blocks** (streaming and completed) with expandable rendering
-- **Tool execution timeline** with grouped tool calls and compact read grouping
-- **Tool permission controls** — Allow / Allow Always / Deny on pending tool calls
-- **Plan review flow** for `ExitPlanMode` prompts (Approve, Reject, or Feedback)
-- **Ask-user flow** for structured questions (single-select, multi-select, and free text)
-- **Todo tool rendering** with pinned active todo state
-- **Next message suggestions** — AI-generated follow-up predictions shown as ghost text in the input, accept with Tab
-- **Key moments rail** — Scrollable sidebar showing conversation milestones (messages, tool uses, errors, questions) with click-to-jump navigation
-- **Session preview cards** — Hover over sessions in the sidebar to see model, turn count, last messages, and streaming status
-- **Queued outbound user messages** while an agent is busy
-- **Retry last user prompt** action
+**How it works:**
 
-### Project, Git, and Diff Tooling
-- **Git status + diff views** for staged and unstaged changes (including untracked file diffs)
-- **File tree diff browser** with directory expansion, filters, and status badges
-- **Context actions from diff** — Add file reference to prompt, open in editor
-- **Branch visibility and branch switching** in chat footer and command palette
-- **Git helpers** — stage, commit, push, remotes, log, diff summary
-- **Commit modal workflow**:
-  - Include unstaged toggle
-  - AI-generated commit message
-  - Commit / Commit+Push / Commit+PR (via `gh pr create --web`)
-- **Project start configuration** — save named startup commands, optional build command, optional browser URL
-- **Run actions** — launch configured commands into integrated terminals
+1. Create an automaton with a prompt describing what you want done
+2. Choose a schedule — interval, daily, weekly, cron expression, or manual trigger
+3. Pick a sandbox mode to control how much access the agent gets:
+   - **Read-only** — agent can analyze but not modify anything
+   - **Workspace-write** — agent works in an isolated git worktree; you review and apply changes
+   - **Full-access** — agent runs directly in your project (use carefully)
+4. Results land in a triage inbox where you can review diffs, apply changes, pin important findings, or archive
+
+**Use cases:**
+- Nightly code reviews or dependency audits
+- Scheduled test analysis and bug triage
+- Recurring refactoring or cleanup tasks
+- Periodic codebase health checks
+- Anything you'd otherwise remember to ask Claude about every few days
+
+Each run tracks cost, duration, turns, and the full agent conversation. Automations that produce changes show up with diffs you can apply in one click. The scheduler ticks every 60 seconds, supports everything from "every 5 minutes" to full cron expressions, and won't double-run the same automation.
+
+## ALERT
+- It is unaware if this is legal with your Claude Code subscription. Under the hood you are calling the agent-sdk. anthropic 
+has been very hard to understand here if thats legal.
+
+If you get banned, it is not my fault. This is just a repo to help with workflow orcestration across multiple projects, and claude code is a great provider.
+
+## Features
+
+### Sessions and Projects
+- Open multiple projects, each with its own sessions, terminals, and state
+- Run several Claude threads per project at once — each shows whether it's active, idle, or waiting for input
+- Fork a session into two parallel branches with independent worktrees
+- Quick chat mode for one-off questions without a project
+- Session history persists across restarts
+- Pop out chat into its own window
+
+### Agent Integration
+- Streaming output with thinking blocks, tool timelines, and cost tracking
+- Switch models per session — Opus 4.6, Sonnet 4.6, or Haiku 4.5 --- Added Codex Support
+- Approve, deny, or always-allow tool calls inline
+- Plan review and structured question flows
+- Next-message suggestions shown as ghost text (Tab to accept)
+- Key moments rail for jumping to milestones in long conversations
+- Hover over sessions to preview model, turn count, and last messages
+
+### Git and Diffs
+- Built-in git status, staging, and diff views (staged, unstaged, and untracked)
+- File tree browser with filters and status badges
+- Branch switching from the chat footer or command palette
+- Commit dialog with AI-generated messages, push, or create PR via `gh`
+- Configurable startup commands and build steps per project
 
 ### Worktrees
-- **Optional per-thread isolated worktree** on first prompt
-- **Include local uncommitted changes** when creating worktree
-- **Worktree action bar**:
-  - open terminal in worktree
-  - create branch
-  - sync to local (`apply` or `overwrite`)
-  - discard/remove worktree
-- **Bidirectional sync APIs** (`sync-to-local`, `sync-from-local`) and worktree diff retrieval
-- **Automatic cleanup/pruning** on app shutdown
+- Optionally isolate each thread in its own git worktree
+- Include uncommitted changes when creating a worktree
+- Sync changes back to your main working tree (apply or overwrite)
+- Automatic cleanup on shutdown
 
-### Integrated Terminal
-- **Per-project PTY terminals** with multiple tabs
-- **Terminal split view** (two shell panes with draggable divider)
-- **Terminal popout** — Launch any terminal tab in an external emulator (kitty, alacritty, wezterm, etc.) with automatic detection, buffer history replay, and bidirectional I/O via Unix sockets
-- **Inline tab rename**, add/remove tabs, active tab memory by project
-- **Search inside terminal output** (`Ctrl+F`)
-- **Copy/paste support** (context menu + `Ctrl+Shift+C/V` in terminal view)
-- **Bracketed paste mode** for CLI safety/compat
+### Terminal
+- Per-project terminal tabs with split view
+- Pop out any terminal tab to an external emulator (kitty, alacritty, wezterm — auto-detected)
+- Search terminal output with `Ctrl+F`
+- Rename tabs, rearrange, add or remove
 
-### Editor and Browser Panels
-- **Embedded Neovim editor tab** (per-project `nvim` process)
-- **Open file in editor** from command palette and diff/project integrations
-- **Auto buffer refresh after agent tool results** (`:checktime`) and `autoread` support
-- **Embedded browser side panel** with:
-  - per-project tab sets
-  - URL navigation/back/forward/reload
-  - tab create/switch/close
-  - context menu actions
-  - inspect element/devtools
-  - page URL/content/screenshot bridge APIs
+### Editor and Browser
+- Embedded Neovim per project, with auto-refresh after agent changes
+- Open files from the command palette, diffs, or project tree
+- Browser panel with tabs, navigation, devtools, and page inspection
+- Bridge APIs let agents interact with the browser (navigate, click, type, screenshot)
 
-### MCP Support
-- **Built-in ClaudeX bridge MCP server** with tools for:
-  - terminal operations (execute, write, read output)
-  - browser interactions (navigate, click, type, screenshot)
-  - inter-session messaging for agent coordination
-- **User-managed local MCP servers** — add/edit/remove/start/stop/enable
-- **Remote MCP server management** — Enable/disable Claude-authenticated remote servers (e.g., HubSpot) per-session with disallowed tools filtering
-- **Auto-start MCP servers** on launch
-- **External MCP config discovery** from:
-  - `~/.mcp.json`
-  - project `.mcp.json` files found by walking ancestor directories
-- **Claude-reported remote MCP visibility** (tools surfaced in settings UI)
-- **Per-project MCP refresh** when project context changes
+### MCP Servers
+- Built-in bridge server gives agents access to terminals, browser, and inter-session messaging
+- Add your own local MCP servers — start, stop, enable per project
+- Remote MCP servers (like HubSpot) with per-session tool filtering
+- Auto-discovers configs from `~/.mcp.json` and project `.mcp.json` files
 
 ### Voice, Screenshots, and Notifications
-- **Voice input button** with local Whisper transcription (`onnx-community/whisper-tiny.en`)
-- **Screenshot-to-prompt** capture that inserts `@/path/to/image.png` references
-- **Desktop notifications** when a session needs user input
-- **Optional completion sound** and attention notifications
-- **Prevent sleep toggle** while working
+- Voice input with local Whisper transcription
+- Screenshot capture that inserts image references into your prompt
+- Desktop notifications when a session needs attention
+- Optional sound on completion, prevent-sleep toggle
 
-### Appearance and UX
-- **22 built-in themes** with xterm theme synchronization:
-  - `dark`, `light`, `monokai`, `solarized-dark`, `solarized-light`, `nord`
-  - `dracula`, `catppuccin-mocha`, `catppuccin-latte`, `tokyo-night`, `gruvbox-dark`, `gruvbox-light`
-  - `one-dark`, `one-light`, `rose-pine`, `rose-pine-dawn`, `everforest-dark`, `kanagawa`
-  - `ayu-dark`, `github-dark`, `github-light`, `synthwave`
-- **Customizable modifier key** for app shortcuts
-- **Vim mode options**:
-  - legacy input behavior toggle
-  - Vim keybindings in chat textarea (`NORMAL/INSERT/VISUAL`)
-- **Resizable layout panes** (sidebar, side panel, terminal height, terminal split ratio)
-- **Command palette** with fuzzy search across commands/files/sessions/terminals/projects/branches/themes
+### Appearance
+- 22 themes — dark, light, monokai, solarized, nord, dracula, catppuccin, tokyo-night, gruvbox, rose-pine, kanagawa, synthwave, and more
+- Vim keybindings in the chat input (normal/insert/visual modes)
+- Resizable panes everywhere
+- Command palette with fuzzy search across commands, files, sessions, terminals, projects, branches, and themes
 
 ## Installation
 
 ### Prerequisites
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- `git` available on `PATH` for git/diff/worktree features
+- `git` on `PATH`
 
-### Optional dependencies (feature-specific)
+### Optional
 
-- `nvim` for embedded editor support
-- `scrot` for screenshot capture button
-- `gh` for "Commit and create PR" flow
+- `nvim` — embedded editor
+- `scrot` — screenshot capture
+- `gh` — "commit and create PR" workflow
 
 ### Pre-built packages
 
-Download the latest release from the [Releases](https://github.com/MMcintire96/ClaudeX/releases) page, then:
+Grab the latest from the [Releases](https://github.com/MMcintire96/ClaudeX/releases) page.
 
 **AppImage (any Linux distro):**
 ```bash
@@ -180,47 +164,49 @@ npm run preview    # Preview production build
 
 ## Architecture
 
-ClaudeX follows Electron's three-process model:
+ClaudeX uses Electron's three-process model:
 
 ```
 src/
-├── main/           # Main process — app lifecycle, native APIs, agent/terminal management
-│   ├── agent/      #   AgentManager → AgentProcess → Claude Agent SDK
-│   ├── bridge/     #   ClaudexBridgeServer (MCP tool bridge)
-│   ├── browser/    #   Embedded browser tabs
-│   ├── terminal/   #   PTY terminal management
-│   ├── worktree/   #   Git worktree lifecycle
-│   ├── project/    #   Project & git operations
-│   └── session/    #   State persistence & session history
-├── preload/        # Preload bridge — exposes window.api via contextBridge
-└── renderer/       # React UI — components, Zustand stores, hooks
+├── main/              # Main process — lifecycle, native APIs, agent/terminal management
+│   ├── agent/         #   AgentManager → AgentProcess → Claude Agent SDK
+│   ├── automation/    #   AutomationManager, scheduler, persistence
+│   ├── bridge/        #   ClaudexBridgeServer (MCP tool bridge)
+│   ├── browser/       #   Embedded browser tabs
+│   ├── terminal/      #   PTY terminal management
+│   ├── worktree/      #   Git worktree lifecycle
+│   ├── project/       #   Project & git operations
+│   └── session/       #   State persistence & session history
+├── preload/           # Preload bridge — window.api via contextBridge
+└── renderer/          # React UI — components, Zustand stores, hooks
     ├── components/
-    │   ├── chat/       # Chat view, message rendering, tool blocks
-    │   ├── layout/     # App shell, sidebar, panels
-    │   ├── terminal/   # xterm.js terminal views
-    │   ├── diff/       # Diff panel with diff2html
-    │   └── settings/   # Settings panel
-    └── stores/         # Zustand state (session, project, terminal, ui, settings)
+    │   ├── chat/          # Chat view, message rendering, tool blocks
+    │   ├── layout/        # App shell, sidebar, panels
+    │   ├── terminal/      # xterm.js terminal views
+    │   ├── diff/          # Diff panel with diff2html
+    │   ├── automation/    # Automaton panel, editor, triage inbox
+    │   └── settings/      # Settings panel
+    └── stores/            # Zustand state (session, project, terminal, ui, settings, automation)
 ```
 
 ### How agents work
 
-1. `AgentManager` creates an `AgentProcess` which calls `query()` from `@anthropic-ai/claude-agent-sdk`
-2. The SDK returns an async iterator of typed messages, mapped to `AgentEvent` types
-3. Events flow to the renderer via IPC and are processed by `sessionStore`
-4. Each agent gets an MCP config pointing to `ClaudexBridgeServer`, a localhost HTTP server that exposes terminal, browser, and session tools back to the agent
-5. Paused agents (waiting for user input) can be resumed with `agent.send()` for tool approvals, question answers, and plan decisions
+1. `AgentManager` spins up an `AgentProcess` that calls `query()` from the Claude Agent SDK
+2. The SDK returns an async stream of typed events
+3. Events flow to the renderer over IPC and land in the session store
+4. Each agent gets an MCP config pointing to `ClaudexBridgeServer` — a localhost HTTP server exposing terminal, browser, and session tools back to the agent
+5. When an agent pauses (waiting for tool approval, a question answer, or plan decision), it resumes via `agent.send()`
 
 ### Key technologies
 
-- **Electron 40** — Desktop runtime
-- **React 19** — UI framework
-- **Zustand** — State management
-- **@anthropic-ai/claude-agent-sdk** — Claude Code agent integration
-- **xterm.js** — Terminal rendering
+- **Electron 40** — desktop runtime
+- **React 19** — UI
+- **Zustand** — state management
+- **@anthropic-ai/claude-agent-sdk** — agent integration
+- **xterm.js** — terminal rendering
 - **node-pty** — PTY creation
-- **simple-git** — Git operations
-- **electron-vite** — Build tooling
+- **simple-git** — git operations
+- **electron-vite** — build tooling
 
 ## Keyboard Shortcuts
 
@@ -240,7 +226,7 @@ src/
 | `Mod+P` | Popout chat |
 | `Mod+W` | Close active session |
 | `Mod+1-9` | Switch session by index |
-| `Ctrl+\`` | Toggle terminal panel |
+| `Ctrl+`` ` | Toggle terminal panel |
 
 ## License
 

@@ -55,7 +55,6 @@ export default function AppHeader() {
   const [runMenuOpen, setRunMenuOpen] = useState(false)
   const runMenuRef = useRef<HTMLDivElement>(null)
   const [startConfigPath, setStartConfigPath] = useState<string | null>(null)
-  const [hasStartConfig, setHasStartConfig] = useState(false)
   const [actions, setActions] = useState<Array<{ name: string; command: string }>>([])
   const [defaultAction, setDefaultAction] = useState<string | null>(null)
 
@@ -84,9 +83,8 @@ export default function AppHeader() {
 
   // Check start config existence for current project
   useEffect(() => {
-    if (!currentPath) { setHasStartConfig(false); setActions([]); setDefaultAction(null); return }
+    if (!currentPath) { setActions([]); setDefaultAction(null); return }
     window.api.project.getStartConfig(currentPath).then(config => {
-      setHasStartConfig(!!config && !!config.actions && config.actions.length > 0)
       setActions(config?.actions || [])
       setDefaultAction(config?.defaultAction || null)
     })
@@ -96,36 +94,6 @@ export default function AppHeader() {
     e.preventDefault()
     setCtxMenu({ x: e.clientX, y: e.clientY })
   }, [])
-
-const handleRunStart = useCallback(async () => {
-    if (!currentPath) return
-    const cwd = effectiveCwd || currentPath
-    const result = await window.api.project.runStart(currentPath, cwd !== currentPath ? cwd : undefined)
-    if (result.success && result.terminals) {
-      const store = useTerminalStore.getState()
-      for (const t of result.terminals) {
-        // Always associate with currentPath so the terminal panel can find it
-        store.addTerminal({ id: t.id, projectPath: currentPath, pid: t.pid, name: t.name })
-      }
-    } else if (result.success && result.terminalIds) {
-      const store = useTerminalStore.getState()
-      for (const tid of result.terminalIds) {
-        store.addTerminal({ id: tid, projectPath: currentPath, pid: 0 })
-      }
-    }
-    if (result.success && result.browserUrl) {
-      const url = result.browserUrl
-      const currentPanel = useUIStore.getState().sidePanelView
-      const browserAlreadyOpen = currentPanel?.type === 'browser' && currentPanel?.projectPath === currentPath
-      if (browserAlreadyOpen) {
-        window.api.browser.navigate(url)
-      } else {
-        useUIStore.getState().setPendingBrowserUrl(url)
-        setSidePanelView({ type: 'browser', projectPath: currentPath })
-      }
-    }
-    setRunMenuOpen(false)
-  }, [currentPath, effectiveCwd, setSidePanelView])
 
   const handleRunAction = useCallback(async (action: { name: string; command: string }) => {
     if (!currentPath) return

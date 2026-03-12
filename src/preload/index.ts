@@ -48,8 +48,6 @@ const api = {
       ipcRenderer.invoke('agent:resume', sessionId, projectPath, message, model, effort),
     fork: (sourceSessionId: string, projectPath: string, sourceSdkSessionId: string | null) =>
       ipcRenderer.invoke('agent:fork', sourceSessionId, projectPath, sourceSdkSessionId),
-    linkSessions: (sessionA: { id: string; name: string }, sessionB: { id: string; name: string }) =>
-      ipcRenderer.invoke('agent:link-sessions', sessionA, sessionB),
     pairSessions: (sessionA: string, sessionB: string) =>
       ipcRenderer.invoke('agent:pair-sessions', sessionA, sessionB),
     unpairSessions: (sessionId: string) =>
@@ -83,8 +81,6 @@ const api = {
       ipcRenderer.invoke('project:get-start-config', projectPath),
     saveStartConfig: (projectPath: string, config: unknown) =>
       ipcRenderer.invoke('project:save-start-config', projectPath, config),
-    hasStartConfig: (projectPath: string) =>
-      ipcRenderer.invoke('project:has-start-config', projectPath),
     runStart: (projectPath: string, cwdOverride?: string) =>
       ipcRenderer.invoke('project:run-start', projectPath, cwdOverride),
     listFiles: (projectPath: string) =>
