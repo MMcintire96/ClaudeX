@@ -101,6 +101,20 @@ export class TerminalManager {
     return this._registerPty(id, projectPath, ptyProcess)
   }
 
+  createWithCommand(projectPath: string, command: string, args: string[]): TerminalInfo {
+    const id = uuidv4()
+
+    const ptyProcess = pty.spawn(command, args, {
+      name: 'xterm-256color',
+      cols: 80,
+      rows: 24,
+      cwd: projectPath,
+      env: process.env as Record<string, string>
+    })
+
+    return this._registerPty(id, projectPath, ptyProcess)
+  }
+
   setTerminalName(id: string, name: string): void {
     this.terminalNames.set(id, name)
   }

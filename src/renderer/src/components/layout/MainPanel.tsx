@@ -6,6 +6,7 @@ import { useEditorStore } from '../../stores/editorStore'
 import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import ChatView from '../chat/ChatView'
 import NeovimEditor from '../editor/NeovimEditor'
+import ClaudeCodeTerminal from '../cc/ClaudeCodeTerminal'
 
 function SplitEmptyState({ side }: { side: 'left' | 'right' }) {
   return (
@@ -181,6 +182,18 @@ export default function MainPanel() {
               Editor
             </button>
           )}
+          {!isScratchSession && (
+            <button
+              className={`main-panel-tab${mainPanelTab === 'cc' ? ' active' : ''}`}
+              onClick={() => setMainPanelTab('cc')}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="4 17 10 11 4 5"/>
+                <line x1="12" y1="19" x2="20" y2="19"/>
+              </svg>
+              CC
+            </button>
+          )}
           <div style={{ flex: 1 }} />
           {/* Split view button hidden */}
         </div>
@@ -269,6 +282,29 @@ export default function MainPanel() {
       {/* Editor tab content — stays mounted, toggled via display */}
       <div style={{ display: mainPanelTab === 'editor' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
         <NeovimEditor projectPath={currentPath} visible={mainPanelTab === 'editor'} />
+      </div>
+
+      {/* CC tab content — per-session Claude Code CLI terminal */}
+      <div style={{ display: mainPanelTab === 'cc' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
+        {activeSessionId && chatProjectPath ? (
+          <ClaudeCodeTerminal
+            key={activeSessionId}
+            sessionId={activeSessionId}
+            projectPath={chatProjectPath}
+            visible={mainPanelTab === 'cc'}
+          />
+        ) : (
+          <div className="empty-state">
+            <div className="empty-state-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="4 17 10 11 4 5"/>
+                <line x1="12" y1="19" x2="20" y2="19"/>
+              </svg>
+            </div>
+            <h2>Start a thread to use Claude Code</h2>
+            <p>Each thread gets its own Claude Code terminal instance</p>
+          </div>
+        )}
       </div>
     </main>
   )

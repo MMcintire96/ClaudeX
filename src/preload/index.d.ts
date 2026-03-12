@@ -77,8 +77,10 @@ export interface ElectronAPI {
     close: (id: string) => Promise<{ success: boolean }>
     list: (projectPath: string) => Promise<Array<{ id: string; projectPath: string; pid: number }>>
     rename: (id: string, name: string) => Promise<{ success: boolean }>
+    getBuffer: (id: string) => Promise<string>
     onData: (callback: (id: string, data: string) => void) => () => void
     onExit: (callback: (id: string, exitCode: number) => void) => () => void
+    createCC: (projectPath: string, skipPermissions: boolean, model?: string | null, effort?: string | null) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; error?: string }>
   }
   session: {
     history: (projectPath: string) => Promise<Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>>

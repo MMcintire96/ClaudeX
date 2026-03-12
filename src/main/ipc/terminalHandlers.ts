@@ -59,6 +59,20 @@ export function registerTerminalHandlers(
     return { success: true }
   })
 
+  ipcMain.handle('terminal:create-cc', (_event, projectPath: string, skipPermissions: boolean, model?: string | null, effort?: string | null) => {
+    try {
+      const cwd = projectPath === '~' ? homedir() : projectPath
+      const args: string[] = []
+      if (skipPermissions) args.push('--dangerously-skip-permissions')
+      if (model) args.push('--model', model)
+      if (effort) args.push('--effort', effort)
+      const info = terminalManager.createWithCommand(cwd, 'claude', args)
+      return { success: true, ...info }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
   // Session history handlers
   ipcMain.handle('session:history', (_event, projectPath: string) => {
     if (!sessionPersistence) return []

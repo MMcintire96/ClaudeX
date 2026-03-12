@@ -10,8 +10,8 @@ interface EditorState {
   activeEditors: Record<string, EditorInfo>
 
   // Which MainPanel tab is shown
-  mainPanelTab: 'chat' | 'editor'
-  setMainPanelTab: (tab: 'chat' | 'editor') => void
+  mainPanelTab: 'chat' | 'editor' | 'cc'
+  setMainPanelTab: (tab: 'chat' | 'editor' | 'cc') => void
 
   // Editor lifecycle
   setEditorActive: (projectPath: string, pid: number) => void
@@ -22,7 +22,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   activeEditors: {},
   mainPanelTab: 'chat',
 
-  setMainPanelTab: (tab: 'chat' | 'editor'): void => {
+  setMainPanelTab: (tab: 'chat' | 'editor' | 'cc'): void => {
     set({ mainPanelTab: tab })
   },
 

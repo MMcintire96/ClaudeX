@@ -141,7 +141,9 @@ const api = {
       const handler = (_: unknown, id: string) => callback(id)
       ipcRenderer.on('terminal:popout-closed', handler)
       return () => ipcRenderer.removeListener('terminal:popout-closed', handler)
-    }
+    },
+    createCC: (projectPath: string, skipPermissions: boolean, model?: string | null, effort?: string | null) =>
+      ipcRenderer.invoke('terminal:create-cc', projectPath, skipPermissions, model, effort)
   },
   session: {
     history: (projectPath: string) =>
