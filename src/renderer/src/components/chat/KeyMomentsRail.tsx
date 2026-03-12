@@ -273,15 +273,23 @@ export default function KeyMomentsRail({ messages, listRef, visibleCount, setVis
     return { edits, others }
   }
 
-  const kindIcon = (kind: MomentKind): string => {
+  const kindIcon = (kind: MomentKind): React.ReactNode => {
+    const s = { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
     switch (kind) {
-      case 'assistant': return '\u{1F4AC}'
-      case 'error': return '\u{274C}'
-      case 'question': return '\u{2753}'
-      case 'todo': return '\u{2705}'
-      case 'edit': return '\u{270F}\u{FE0F}'
-      case 'bash': return '\u{203A}_'
-      default: return ''
+      case 'assistant':
+        return <svg {...s}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      case 'error':
+        return <svg {...s}><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      case 'question':
+        return <svg {...s}><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      case 'todo':
+        return <svg {...s}><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      case 'edit':
+        return <svg {...s}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      case 'bash':
+        return <svg {...s}><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      default:
+        return null
     }
   }
 
@@ -345,7 +353,7 @@ export default function KeyMomentsRail({ messages, listRef, visibleCount, setVis
                         onClick={() => handleMomentClick(m)}
                         title={m.label}
                       >
-                        <span className="km-item-icon">{'\u{270F}\u{FE0F}'}</span>
+                        <span className="km-item-icon">{kindIcon('edit')}</span>
                         <span className="km-item-label">{m.label}</span>
                       </button>
                     ))}

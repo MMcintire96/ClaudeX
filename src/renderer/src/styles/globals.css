@@ -5641,17 +5641,10 @@ body {
 
 .km-item-icon {
   flex-shrink: 0;
-  font-size: 10px;
   width: 14px;
-  text-align: center;
-  line-height: 1;
-}
-
-.km-item.bash .km-item-icon {
-  font-family: var(--font-mono, monospace);
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .km-item-label {
@@ -5665,7 +5658,8 @@ body {
 .km-item.error    { color: var(--danger); }
 .km-item.question .km-item-icon { color: var(--warning, #f59e0b); }
 .km-item.todo     .km-item-icon { color: var(--success, #22c55e); }
-.km-item.edit     .km-item-icon { color: var(--accent); }
+.km-item.edit     .km-item-icon { color: #e8943a; }
+.km-item.bash     .km-item-icon { color: #34a853; }
 
 /* ===== CHAT SEARCH BAR ===== */
 .chat-search-bar {
