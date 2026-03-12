@@ -140,6 +140,11 @@ sudo dpkg -i claudex_*_amd64.deb
 **macOS:**
 Open the `.dmg` and drag ClaudeX to Applications.
 
+You also need to install the Anthropic AI CLI globally:
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
 **Windows:**
 Run the `.exe` installer.
 

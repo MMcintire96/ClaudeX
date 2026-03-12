@@ -1018,6 +1018,7 @@ body {
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   position: relative;
   z-index: 1000;
+  -webkit-app-region: drag;
 }
 
 .main-header-left {
