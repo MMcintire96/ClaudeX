@@ -337,7 +337,7 @@ export default function MainPanel() {
       </div>
 
       {/* CC tab content — per-session Claude Code CLI terminals, kept mounted for persistence */}
-      <div style={{ display: mainPanelTab === 'cc' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+      <div style={{ display: mainPanelTab === 'cc' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden', position: 'relative', minWidth: 0 }}>
         {/* Render all CC terminals that have been mounted — hidden when not active */}
         {Array.from(ccMountedSessions).map(sid => {
           const isActive = sid === activeSessionId

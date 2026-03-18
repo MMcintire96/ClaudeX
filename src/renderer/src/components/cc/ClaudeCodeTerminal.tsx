@@ -268,6 +268,8 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
       }
       spawnCC(effectivePath, resumeId).then(() => {
         if (resumeId) handoffInProgressRef.current = false
+        // Fit after spawn so PTY gets the correct size
+        doFit()
       })
     }
 
@@ -442,13 +444,14 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
   return (
     <div
       className="neovim-editor-wrapper"
-      style={{ display: visible ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden', position: 'relative' }}
+      style={{ display: visible ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden', position: 'relative', minWidth: 0 }}
     >
-      <div
-        className="neovim-editor-xterm"
-        ref={xtermContainerRef}
-        style={{ flex: 1, padding: '8px 8px 0 8px' }}
-      />
+      <div className="cc-terminal-padding">
+        <div
+          className="neovim-editor-xterm"
+          ref={xtermContainerRef}
+        />
+      </div>
       <button
         className="cc-screenshot-btn"
         onClick={handleScreenshot}

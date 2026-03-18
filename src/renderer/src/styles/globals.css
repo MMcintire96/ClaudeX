@@ -988,11 +988,22 @@ body {
 
 .neovim-editor-xterm {
   height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .neovim-editor-xterm .xterm {
   height: 100%;
+  width: 100%;
   padding: 0;
+  overflow: hidden;
+}
+
+.cc-terminal-padding .neovim-editor-xterm {
+  flex: 1;
+  height: auto;
 }
 
 .neovim-editor-empty {
@@ -3185,6 +3196,18 @@ body {
 .btn-screenshot:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+/* CC Terminal padding wrapper */
+.cc-terminal-padding {
+  flex: 1;
+  padding: 8px 8px 0 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* CC Terminal floating screenshot button */
