@@ -4,6 +4,7 @@ import { homedir } from 'os'
 import { BrowserWindow } from 'electron'
 import { broadcastSend } from '../broadcast'
 import { sdkPathHash } from '../utils/sdkPathHash'
+import { generateSessionTitle } from '../agent/TitleGenerator'
 
 interface CCWatcherOptions {
   /** The UUID passed to --session-id (= JSONL filename stem) */
@@ -25,6 +26,8 @@ export class CCSessionWatcher {
   private stopped = false
   // Track seen message UUIDs to avoid duplicate events from multiple JSONL lines with same message
   private seenUuids = new Set<string>()
+  private titleGenerated = false
+  private firstUserMessage: string | null = null
 
   constructor(options: CCWatcherOptions) {
     this.rendererSessionId = options.rendererSessionId
@@ -236,5 +239,36 @@ export class CCSessionWatcher {
       })
     }
     // Skip queue-operation, system, summary records
+
+    // Title generation: capture first user message, generate title on first result
+    if (!this.titleGenerated) {
+      if (type === 'user' && !this.firstUserMessage) {
+        const msg = record.message as Record<string, unknown> | undefined
+        if (msg) {
+          const content = msg.content
+          if (typeof content === 'string' && content.trim()) {
+            this.firstUserMessage = content.trim()
+          } else if (Array.isArray(content)) {
+            const textBlock = (content as Array<Record<string, unknown>>).find(b => b.type === 'text')
+            if (textBlock && typeof textBlock.text === 'string') {
+              this.firstUserMessage = (textBlock.text as string).trim()
+            }
+          }
+        }
+      }
+
+      if (type === 'result' && this.firstUserMessage) {
+        this.titleGenerated = true
+        const userMsg = this.firstUserMessage
+        generateSessionTitle(userMsg).then(title => {
+          if (title && this.mainWindow && !this.mainWindow.isDestroyed()) {
+            broadcastSend(this.mainWindow, 'agent:title', {
+              sessionId: this.rendererSessionId,
+              title
+            })
+          }
+        })
+      }
+    }
   }
 }
