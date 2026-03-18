@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useProjectStore } from '../../stores/projectStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
@@ -13,6 +14,17 @@ import AutomationSidebarSection from '../automation/AutomationSidebarSection'
 export default function Sidebar() {
   const [creatingThread, setCreatingThread] = useState(false)
   const [sectionsCollapsed, setSectionsCollapsed] = useState<Record<string, boolean>>({})
+  const [quickChatContextMenu, setQuickChatContextMenu] = useState<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    if (!quickChatContextMenu) return
+    const dismiss = () => setQuickChatContextMenu(null)
+    window.addEventListener('click', dismiss)
+    window.addEventListener('contextmenu', dismiss)
+    return () => {
+      window.removeEventListener('click', dismiss)
+      window.removeEventListener('contextmenu', dismiss)
+    }
+  }, [quickChatContextMenu])
   const toggleSection = useCallback((section: string) => {
     setSectionsCollapsed(prev => ({ ...prev, [section]: !prev[section] }))
   }, [])
@@ -511,7 +523,15 @@ export default function Sidebar() {
           const scratchHistory = historyByProject[SCRATCH_PROJECT_PATH] || []
           return (
             <div className="sidebar-scratch-section">
-              <div className="sidebar-section-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div
+                className="sidebar-section-label"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setQuickChatContextMenu({ x: e.clientX, y: e.clientY })
+                }}
+              >
                 <span className="sidebar-section-toggle" onClick={() => toggleSection('chats')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: sectionsCollapsed.chats ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}>
                     <polyline points="6 9 12 15 18 9" />
@@ -565,6 +585,28 @@ export default function Sidebar() {
                   </div>
                 )
               })}
+              {quickChatContextMenu && createPortal(
+                <div
+                  className="thread-context-menu"
+                  style={{
+                    left: Math.min(quickChatContextMenu.x, window.innerWidth - 180),
+                    ...(quickChatContextMenu.y + 100 > window.innerHeight
+                      ? { bottom: window.innerHeight - quickChatContextMenu.y }
+                      : { top: quickChatContextMenu.y })
+                  }}
+                >
+                  <button
+                    className="thread-context-menu-item thread-context-menu-danger"
+                    onClick={() => {
+                      handleClearQuickChats()
+                      setQuickChatContextMenu(null)
+                    }}
+                  >
+                    Clear all sessions
+                  </button>
+                </div>,
+                document.body
+              )}
             </div>
           )
         })()}
