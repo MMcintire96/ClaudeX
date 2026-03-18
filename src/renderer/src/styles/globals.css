@@ -3187,6 +3187,38 @@ body {
   cursor: not-allowed;
 }
 
+/* CC Terminal floating screenshot button */
+.cc-screenshot-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  transition: opacity 0.15s, color 0.15s, background 0.15s, border-color 0.15s, transform 0.15s;
+  z-index: 10;
+}
+.cc-screenshot-btn:hover {
+  opacity: 1;
+  color: var(--text-primary);
+  background: var(--hover-bg);
+  border-color: var(--text-secondary);
+  transform: scale(1.08);
+}
+.cc-screenshot-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .btn-send {
   width: 34px;
   height: 34px;

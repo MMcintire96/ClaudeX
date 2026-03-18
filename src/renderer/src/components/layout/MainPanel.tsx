@@ -6,7 +6,7 @@ import { useEditorStore } from '../../stores/editorStore'
 import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import ChatView from '../chat/ChatView'
 import NeovimEditor from '../editor/NeovimEditor'
-import ClaudeCodeTerminal from '../cc/ClaudeCodeTerminal'
+import ClaudeCodeTerminal, { killCCTerminal } from '../cc/ClaudeCodeTerminal'
 
 function SplitEmptyState({ side }: { side: 'left' | 'right' }) {
   return (
@@ -35,10 +35,50 @@ export default function MainPanel() {
   const splitSession = useSessionStore(s => splitSessionId ? s.sessions[splitSessionId] ?? null : null)
   const mainPanelTab = useEditorStore(s => s.mainPanelTab)
   const setMainPanelTab = useEditorStore(s => s.setMainPanelTab)
+  const setCCSessionId = useEditorStore(s => s.setCCSessionId)
+  const ccResumeId = useEditorStore(s => s.ccResumeId)
+  const setCCResumeId = useEditorStore(s => s.setCCResumeId)
+  const hasCCTerminal = useEditorStore(s => !!(activeSessionId && s.ccSessionIds[activeSessionId]))
+  const markAsResumable = useSessionStore(s => s.markAsResumable)
 
   const isScratchSession = activeSession?.projectPath === SCRATCH_PROJECT_PATH
   const showTabs = !!(currentPath || isScratchSession)
   const chatProjectPath = activeSession?.projectPath ?? currentPath
+  // For CC terminal: scratch sessions use home dir (~) instead of the sentinel path
+  const ccProjectPath = isScratchSession ? '~' : chatProjectPath
+
+  // Track which sessions have had their CC terminal mounted (so we keep them alive)
+  const [ccMountedSessions, setCCMountedSessions] = useState<Set<string>>(new Set())
+
+  // When active session + CC tab is shown, add it to the mounted set
+  useEffect(() => {
+    if (activeSessionId && ccProjectPath && mainPanelTab === 'cc') {
+      setCCMountedSessions(prev => {
+        if (prev.has(activeSessionId)) return prev
+        const next = new Set(prev)
+        next.add(activeSessionId)
+        return next
+      })
+    }
+  }, [activeSessionId, ccProjectPath, mainPanelTab])
+
+  // Clean up removed sessions from mounted set
+  const sessions = useSessionStore(s => s.sessions)
+  useEffect(() => {
+    setCCMountedSessions(prev => {
+      const sessionIds = new Set(Object.keys(sessions))
+      let changed = false
+      const next = new Set<string>()
+      for (const id of prev) {
+        if (sessionIds.has(id)) {
+          next.add(id)
+        } else {
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [sessions])
 
   const [launching, setLaunching] = useState(false)
   const splitContainerRef = useRef<HTMLDivElement>(null)
@@ -157,13 +197,28 @@ export default function MainPanel() {
     }
   }, [currentPath, createSession])
 
+  // CC → Chat: just switch tabs — CC keeps running, watcher keeps feeding events into Chat
+  const handleCCToChat = useCallback(() => {
+    setMainPanelTab('chat')
+  }, [setMainPanelTab])
+
+  // Chat → CC handoff: stop SDK agent, set resume ID, switch to CC
+  const handleChatToCC = useCallback(async () => {
+    if (!activeSessionId) return
+    // Stop the SDK agent
+    await window.api.agent.stop(activeSessionId)
+    // Set the resume ID — CC terminal effect will kill existing + respawn with --resume
+    setCCResumeId(activeSessionId)
+    setMainPanelTab('cc')
+  }, [activeSessionId, setCCResumeId, setMainPanelTab])
+
   return (
     <main className="main-panel">
       {showTabs && (
         <div className="main-panel-tabs">
           <button
             className={`main-panel-tab${mainPanelTab === 'chat' ? ' active' : ''}`}
-            onClick={() => setMainPanelTab('chat')}
+            onClick={() => mainPanelTab === 'cc' && activeSessionId ? handleCCToChat() : setMainPanelTab('chat')}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -182,20 +237,17 @@ export default function MainPanel() {
               Editor
             </button>
           )}
-          {!isScratchSession && (
-            <button
-              className={`main-panel-tab${mainPanelTab === 'cc' ? ' active' : ''}`}
-              onClick={() => setMainPanelTab('cc')}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="4 17 10 11 4 5"/>
-                <line x1="12" y1="19" x2="20" y2="19"/>
-              </svg>
-              CC
-            </button>
-          )}
+          <button
+            className={`main-panel-tab${mainPanelTab === 'cc' ? ' active' : ''}`}
+            onClick={() => mainPanelTab === 'chat' && activeSessionId && activeSession?.messages?.length && !hasCCTerminal ? handleChatToCC() : setMainPanelTab('cc')}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="4 17 10 11 4 5"/>
+              <line x1="12" y1="19" x2="20" y2="19"/>
+            </svg>
+            CC
+          </button>
           <div style={{ flex: 1 }} />
-          {/* Split view button hidden */}
         </div>
       )}
 
@@ -284,16 +336,27 @@ export default function MainPanel() {
         <NeovimEditor projectPath={currentPath} visible={mainPanelTab === 'editor'} />
       </div>
 
-      {/* CC tab content — per-session Claude Code CLI terminal */}
-      <div style={{ display: mainPanelTab === 'cc' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
-        {activeSessionId && chatProjectPath ? (
-          <ClaudeCodeTerminal
-            key={activeSessionId}
-            sessionId={activeSessionId}
-            projectPath={chatProjectPath}
-            visible={mainPanelTab === 'cc'}
-          />
-        ) : (
+      {/* CC tab content — per-session Claude Code CLI terminals, kept mounted for persistence */}
+      <div style={{ display: mainPanelTab === 'cc' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+        {/* Render all CC terminals that have been mounted — hidden when not active */}
+        {Array.from(ccMountedSessions).map(sid => {
+          const isActive = sid === activeSessionId
+          const sess = sessions[sid]
+          const sessProjectPath = sess?.projectPath === SCRATCH_PROJECT_PATH ? '~' : (sess?.projectPath ?? currentPath)
+          return sessProjectPath ? (
+            <ClaudeCodeTerminal
+              key={sid}
+              sessionId={sid}
+              projectPath={sessProjectPath}
+              visible={mainPanelTab === 'cc' && isActive}
+              resumeSessionId={isActive ? ccResumeId : null}
+              onCCSessionId={(ccId) => setCCSessionId(sid, ccId)}
+              onResumeConsumed={isActive ? () => setCCResumeId(null) : undefined}
+            />
+          ) : null
+        })}
+        {/* Show empty state when active session hasn't spawned CC yet */}
+        {(!activeSessionId || !ccProjectPath || !ccMountedSessions.has(activeSessionId)) && (
           <div className="empty-state">
             <div className="empty-state-icon">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

@@ -142,8 +142,8 @@ const api = {
       ipcRenderer.on('terminal:popout-closed', handler)
       return () => ipcRenderer.removeListener('terminal:popout-closed', handler)
     },
-    createCC: (projectPath: string, skipPermissions: boolean, model?: string | null, effort?: string | null) =>
-      ipcRenderer.invoke('terminal:create-cc', projectPath, skipPermissions, model, effort)
+    createCC: (projectPath: string, skipPermissions: boolean, model?: string | null, effort?: string | null, ccSessionId?: string, resumeSessionId?: string) =>
+      ipcRenderer.invoke('terminal:create-cc', projectPath, skipPermissions, model, effort, ccSessionId, resumeSessionId)
   },
   session: {
     history: (projectPath: string) =>
@@ -365,6 +365,19 @@ const api = {
       const handler = (_: unknown, data: { servers: Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; source?: string }> }) => callback(data)
       ipcRenderer.on('mcp:config-changed', handler)
       return () => ipcRenderer.removeListener('mcp:config-changed', handler)
+    }
+  },
+  cc: {
+    watchSession: (opts: { ccSessionId: string; projectPath: string; rendererSessionId: string }) =>
+      ipcRenderer.invoke('cc:watch-session', opts),
+    stopWatch: (rendererSessionId: string) =>
+      ipcRenderer.invoke('cc:stop-watch', rendererSessionId),
+    handoffToChat: (rendererSessionId: string) =>
+      ipcRenderer.invoke('cc:handoff-to-chat', rendererSessionId),
+    onSessionEvent: (callback: (data: { sessionId: string; event: unknown }) => void) => {
+      const handler = (_: unknown, data: { sessionId: string; event: unknown }) => callback(data)
+      ipcRenderer.on('cc:session-event', handler)
+      return () => ipcRenderer.removeListener('cc:session-event', handler)
     }
   },
   automation: {

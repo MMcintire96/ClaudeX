@@ -33,6 +33,10 @@ export class AgentProcess extends EventEmitter {
   private _effort: string | null
   private _isRunning = false
   private _hasCompletedFirstTurn = false
+  private _lastPrompt: string | null = null
+  private _lastIsResume = false
+  private _retryCount = 0
+  private static readonly MAX_RETRIES = 2
 
   get sessionId(): string {
     return this._sessionId
@@ -77,6 +81,7 @@ export class AgentProcess extends EventEmitter {
     if (this._query) {
       throw new Error('Agent process already running')
     }
+    this._retryCount = 0
     this._runQuery(initialPrompt, false)
   }
 
@@ -84,6 +89,7 @@ export class AgentProcess extends EventEmitter {
     if (this._query) {
       throw new Error('Agent process already running')
     }
+    this._retryCount = 0
     this._runQuery(message, true)
   }
 
@@ -160,6 +166,8 @@ export class AgentProcess extends EventEmitter {
     console.log(`[AgentProcess] CWD: ${this._projectPath}`)
     console.log(`[AgentProcess] Prompt length: ${prompt.length} chars`)
 
+    this._lastPrompt = prompt
+    this._lastIsResume = isResume
     this._isRunning = true
     const generation = ++this._queryGeneration
 
@@ -200,6 +208,21 @@ export class AgentProcess extends EventEmitter {
         this._hasCompletedFirstTurn = true
         console.log('[AgentProcess] Query aborted')
         this.emit('close', 0)
+        return
+      }
+
+      // Retry on 500 API errors (transient server errors, remote MCP issues, etc.)
+      const is500 = err?.status === 500 || err?.statusCode === 500 ||
+        (typeof err?.message === 'string' && err.message.includes('"status":500')) ||
+        (typeof err?.message === 'string' && /API Error:\s*500/.test(err.message))
+      if (is500 && this._retryCount < AgentProcess.MAX_RETRIES && this._lastPrompt !== null) {
+        this._retryCount++
+        const delay = 2000 * this._retryCount
+        console.warn(`[AgentProcess] 500 error, retrying (attempt ${this._retryCount}/${AgentProcess.MAX_RETRIES}) in ${delay}ms...`)
+        setTimeout(() => {
+          if (this.abortController?.signal.aborted) return
+          this._runQuery(this._lastPrompt!, this._lastIsResume)
+        }, delay)
         return
       }
 

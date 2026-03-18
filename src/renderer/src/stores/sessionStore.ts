@@ -187,6 +187,8 @@ interface SessionStore {
   markAsRead: (sessionId: string) => void
   markAsForked: (sessionId: string, childIds: [string, string]) => void
   truncateToTurn: (sessionId: string, messageCount: number) => void
+  injectCCEvent: (sessionId: string, event: unknown) => void
+  markAsResumable: (sessionId: string) => void
   getSerializableSessions: () => Array<{ id: string; projectPath: string; name: string; messages: UIMessage[]; model: string | null; totalCostUsd: number; numTurns: number; selectedModel: string | null; createdAt: number; lastActiveAt: number; worktreePath: string | null; isWorktree: boolean; worktreeSessionId: string | null; forkedFrom: string | null; forkChildren: string[] | null; forkLabel: string | null; isForkParent: boolean }>
 }
 
@@ -762,6 +764,38 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             streamingText: '',
             suggestion: null
           }
+        }
+      }
+    })
+  },
+
+  injectCCEvent: (sessionId: string, rawEvent: unknown): void => {
+    const event = rawEvent as Record<string, unknown>
+    if (!event || typeof event !== 'object') return
+
+    const session = get().sessions[sessionId]
+    if (!session) return
+
+    // Route CC watcher events into processEvent for assistant/tool_result/result
+    if (event.type === 'assistant' || event.type === 'tool_result') {
+      if (!session.isProcessing) get().setProcessing(sessionId, true)
+      get().processEvent(sessionId, event)
+    } else if (event.type === 'result') {
+      get().processEvent(sessionId, event)
+      get().setProcessing(sessionId, false)
+    } else if (event.type === 'cc_user_text') {
+      // CC user text: add as a user message in the chat
+      get().addUserMessage(sessionId, event.content as string)
+    }
+  },
+
+  markAsResumable: (sessionId: string): void => {
+    set(s => {
+      if (!s.sessions[sessionId]) return s
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: { ...s.sessions[sessionId], isRestored: true }
         }
       }
     })

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect, useRef, useCallback, startTransition, memo } from 'react'
 import { parse as diffParse } from 'diff2html'
 import { createPortal } from 'react-dom'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -11,16 +11,26 @@ interface Props {
 
 // Safety cap: truncate per-file lines to prevent DOM explosion
 const MAX_LINES_PER_FILE = 2000
+// Auto-collapse file bodies when diff has more files than this
+const AUTO_COLLAPSE_THRESHOLD = 10
 
 export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props) {
   const sideBySide = useSettingsStore(s => s.sideBySideDiffs)
-  const files = useMemo(() => {
-    if (!diff.trim()) return []
-    try {
-      return diffParse(diff)
-    } catch {
-      return []
+  const [files, setFiles] = useState<ReturnType<typeof diffParse>>([])
+
+  // Parse diff in a transition so it doesn't block the UI
+  useMemo(() => {
+    if (!diff.trim()) {
+      setFiles([])
+      return
     }
+    startTransition(() => {
+      try {
+        setFiles(diffParse(diff))
+      } catch {
+        setFiles([])
+      }
+    })
   }, [diff])
 
   if (!diff.trim()) {
@@ -35,6 +45,8 @@ export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props)
     )
   }
 
+  const autoCollapse = files.length > AUTO_COLLAPSE_THRESHOLD
+
   return (
     <div className="gh-diff">
       {files.map((file, i) => (
@@ -44,6 +56,7 @@ export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props)
           onAddToClaude={onAddToClaude}
           onOpenInEditor={onOpenInEditor}
           sideBySide={sideBySide}
+          defaultCollapsed={autoCollapse}
         />
       ))}
     </div>
@@ -60,21 +73,47 @@ function getMenuPosition(clientX: number, clientY: number) {
   }
 }
 
-function DiffFileBlock({
+const DiffFileBlock = memo(function DiffFileBlock({
   file,
   onAddToClaude,
   onOpenInEditor,
-  sideBySide
+  sideBySide,
+  defaultCollapsed = false
 }: {
   file: ReturnType<typeof diffParse>[number]
   onAddToClaude?: (filePath: string) => void
   onOpenInEditor?: (filePath: string) => void
   sideBySide: boolean
+  defaultCollapsed?: boolean
 }) {
   const fileName = file.newName !== '/dev/null' ? file.newName : file.oldName
   const isNew = file.oldName === '/dev/null'
   const isDeleted = file.newName === '/dev/null'
   const isRenamed = file.oldName !== file.newName && !isNew && !isDeleted
+
+  // Collapse / expand state
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
+
+  // Lazy rendering: only render body when scrolled into view
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const [hasBeenVisible, setHasBeenVisible] = useState(!defaultCollapsed)
+
+  useEffect(() => {
+    if (hasBeenVisible || collapsed) return
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setHasBeenVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px' } // start rendering 200px before visible
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasBeenVisible, collapsed])
 
   // Count total lines in this file
   const fileLineCount = useMemo(() => {
@@ -113,16 +152,23 @@ function DiffFileBlock({
     return () => window.removeEventListener('click', close)
   }, [contextMenu])
 
+  const shouldRenderBody = hasBeenVisible && !collapsed
+
   return (
     <div className="gh-diff-file">
       <div
         className="gh-diff-file-header"
+        onClick={() => setCollapsed(c => !c)}
+        style={{ cursor: 'pointer' }}
         onContextMenu={(e) => {
           if (!onAddToClaude && !onOpenInEditor) return
           e.preventDefault()
           setContextMenu(getMenuPosition(e.clientX, e.clientY))
         }}
       >
+        <span className="gh-diff-collapse-icon" style={{ marginRight: 4, opacity: 0.6, fontSize: 10 }}>
+          {collapsed ? '\u25B8' : '\u25BE'}
+        </span>
         <span className="gh-diff-stats">
           {file.addedLines > 0 && (
             <span className="gh-diff-stat-add">+{file.addedLines}</span>
@@ -142,7 +188,10 @@ function DiffFileBlock({
         )}
       </div>
 
-      {!sideBySide && (
+      {/* Sentinel for IntersectionObserver lazy loading */}
+      <div ref={sentinelRef} />
+
+      {shouldRenderBody && !sideBySide && (
         <div className="gh-diff-file-body">
           <table className="gh-diff-table">
             <tbody>
@@ -193,7 +242,7 @@ function DiffFileBlock({
         </div>
       )}
 
-      {sideBySide && (
+      {shouldRenderBody && sideBySide && (
         <div className="gh-diff-file-body gh-diff-side-by-side">
           <div className="gh-diff-side gh-diff-side-old">
             <table className="gh-diff-table">
@@ -314,4 +363,4 @@ function DiffFileBlock({
       )}
     </div>
   )
-}
+})

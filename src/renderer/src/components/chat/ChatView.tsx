@@ -15,12 +15,14 @@ import VoiceButton from '../common/VoiceButton'
 import WorktreeBar from './WorktreeBar'
 import KeyMomentsRail from './KeyMomentsRail'
 import { useUIStore } from '../../stores/uiStore'
+import { useEditorStore } from '../../stores/editorStore'
 import { useProjectStore } from '../../stores/projectStore'
 import { AVAILABLE_MODELS, DEFAULT_MODEL, getModelLabel, getModelEffortLevels } from '../../constants/models'
 import type { EffortLevel } from '../../constants/models'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useVimMode } from '../../hooks/useVimMode'
 import { useAgent } from '../../hooks/useAgent'
+import { killCCTerminal } from '../cc/ClaudeCodeTerminal'
 import { useAutomationStore } from '../../stores/automationStore'
 import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 
@@ -825,6 +827,18 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     }
   }, [messages, messageQueue, searchOpen, searchQuery])
 
+  // Scroll to bottom when switching back to Chat tab
+  const mainPanelTab = useEditorStore(s => s.mainPanelTab)
+  useEffect(() => {
+    if (mainPanelTab === 'chat' && listRef.current) {
+      requestAnimationFrame(() => {
+        if (listRef.current) {
+          listRef.current.scrollTop = listRef.current.scrollHeight
+        }
+      })
+    }
+  }, [mainPanelTab])
+
   const handleSend = useCallback(async () => {
     const trimmed = inputText.trim()
     const hasPasted = pastedChunks.length > 0
@@ -910,6 +924,33 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
     userScrolledUpRef.current = false
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight
+    }
+
+    // CC → Chat handoff: if a CC terminal is active for this session, kill it and resume via SDK
+    // This must run before the isProcessing check since CC watcher sets isProcessing=true
+    const editorState = useEditorStore.getState()
+    const ccUuid = editorState.ccSessionIds[sessionId]
+    if (ccUuid) {
+      // Kill CC terminal process and watcher
+      killCCTerminal(sessionId)
+      window.api.cc.stopWatch(sessionId)
+      editorState.clearCCSessionId(sessionId)
+
+      // Re-key session from renderer ID to CC UUID (so SDK agent finds the JSONL)
+      const store = useSessionStore.getState()
+      const sess = store.sessions[sessionId]
+      store.replaceSessionId(sessionId, ccUuid)
+
+      // Add user message and start processing under the new session ID
+      store.addUserMessage(ccUuid, text)
+      store.setProcessing(ccUuid, true)
+
+      // Resume the CC conversation via SDK agent
+      const effectivePath = sess?.worktreePath || sess?.projectPath || projectPath
+      const model = sess?.selectedModel || null
+      const effort = sess?.selectedEffort || null
+      await window.api.agent.resume(ccUuid, effectivePath, text, model, effort)
+      return
     }
 
     if (isProcessing) {

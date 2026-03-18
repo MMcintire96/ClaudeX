@@ -12,6 +12,9 @@ interface Props {
   sessionId: string
   projectPath: string
   visible: boolean
+  resumeSessionId?: string | null
+  onCCSessionId?: (ccId: string) => void
+  onResumeConsumed?: () => void
 }
 
 // Track CC terminal IDs per session so each thread gets its own instance
@@ -26,7 +29,9 @@ function killCCTerminal(sessionId: string): void {
   }
 }
 
-export default function ClaudeCodeTerminal({ sessionId, projectPath, visible }: Props) {
+export { killCCTerminal }
+
+export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, resumeSessionId, onCCSessionId, onResumeConsumed }: Props) {
   const xtermContainerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -45,12 +50,24 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible }: 
   const [exited, setExited] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [screenshotting, setScreenshotting] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchOpenRef = useRef(false)
   searchOpenRef.current = searchOpen
   const terminalIdRef = useRef<string | null>(null)
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
+  const ccSessionIdRef = useRef<string | null>(null)
+  const lastCcSessionIdRef = useRef<string | null>(null) // preserved through exit for auto-resume
+  const resumeConsumedRef = useRef(false)
+  const handoffInProgressRef = useRef(false)
+
+  // Reset consumed flag when a new resume ID is set (e.g. new handoff)
+  useEffect(() => {
+    if (resumeSessionId) {
+      resumeConsumedRef.current = false
+    }
+  }, [resumeSessionId])
 
   useEffect(() => {
     if (visible && effectivePath && !initialized) {
@@ -58,19 +75,41 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible }: 
     }
   }, [visible, effectivePath, initialized])
 
-  const spawnCC = useCallback(async (path: string) => {
-    const result = await window.api.terminal.createCC(path, skipPermissions, model, effort)
-    if (result.success) {
+  const spawnCC = useCallback(async (path: string, resumeId?: string | null) => {
+    // Stop any existing watcher
+    if (ccSessionIdRef.current) {
+      window.api.cc.stopWatch(sessionIdRef.current)
+    }
+
+    const ccId = crypto.randomUUID()
+    ccSessionIdRef.current = ccId
+
+    const result = await window.api.terminal.createCC(
+      path, skipPermissions, model, effort,
+      resumeId ? undefined : ccId,  // --session-id (only if not resuming)
+      resumeId ?? undefined         // --resume
+    )
+    if (result.success && result.id) {
       terminalIdRef.current = result.id
       sessionTerminals[sessionIdRef.current] = result.id
+
+      // Start watching the JSONL for this CC session
+      window.api.cc.watchSession({
+        ccSessionId: resumeId ?? ccId,
+        projectPath: path,
+        rendererSessionId: sessionIdRef.current
+      })
+
+      onCCSessionId?.(resumeId ?? ccId)
     }
     return result
-  }, [skipPermissions, model, effort])
+  }, [skipPermissions, model, effort, onCCSessionId])
 
-  // Clean up PTY when session is removed
+  // Clean up PTY + watcher when session is removed
   useEffect(() => {
     return () => {
       killCCTerminal(sessionId)
+      window.api.cc.stopWatch(sessionId)
     }
   }, [sessionId])
 
@@ -186,9 +225,15 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible }: 
     const unsubExit = window.api.terminal.onExit((id: string) => {
       if (id === terminalIdRef.current) {
         term.write('\r\n\x1b[90m[Process exited]\x1b[0m\r\n')
+        // Preserve CC session ID for auto-resume before clearing
+        if (ccSessionIdRef.current) {
+          lastCcSessionIdRef.current = ccSessionIdRef.current
+        }
         setExited(true)
         delete sessionTerminals[sessionIdRef.current]
         terminalIdRef.current = null
+        window.api.cc.stopWatch(sessionIdRef.current)
+        ccSessionIdRef.current = null
       }
     })
 
@@ -214,7 +259,16 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible }: 
         if (buffer) term.write(buffer)
       })
     } else {
-      spawnCC(effectivePath)
+      // Consume resumeSessionId if provided (only once)
+      const resumeId = !resumeConsumedRef.current ? resumeSessionId : null
+      if (resumeId) {
+        resumeConsumedRef.current = true
+        handoffInProgressRef.current = true
+        onResumeConsumed?.()
+      }
+      spawnCC(effectivePath, resumeId).then(() => {
+        if (resumeId) handoffInProgressRef.current = false
+      })
     }
 
     return () => {
@@ -270,13 +324,17 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible }: 
     return () => clearTimeout(timer)
   }, [visible])
 
-  // Respawn after exit
+  // Respawn after natural exit (CC process ended on its own — NOT during handoff)
+  // Auto-resumes the previous CC session so the user doesn't see a fresh "Resume Session" menu
   useEffect(() => {
     if (!visible || !exited || !effectivePath || !termRef.current) return
+    if (handoffInProgressRef.current) return // handoff effect handles respawn
     const term = termRef.current
     term.clear()
     setExited(false)
-    spawnCC(effectivePath).then(() => {
+    const resumeId = lastCcSessionIdRef.current
+    lastCcSessionIdRef.current = null
+    spawnCC(effectivePath, resumeId).then(() => {
       try {
         fitAddonRef.current?.fit()
         const tid = terminalIdRef.current
@@ -288,6 +346,43 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible }: 
       }
     })
   }, [visible, exited, effectivePath, spawnCC])
+
+  // Chat → CC handoff: when resumeSessionId is set, kill existing and respawn with --resume
+  useEffect(() => {
+    if (!resumeSessionId || resumeConsumedRef.current) return
+    if (!initialized || !effectivePath || !termRef.current) return
+    resumeConsumedRef.current = true
+    handoffInProgressRef.current = true
+
+    // Kill existing CC process if running (suppress natural respawn via handoffInProgressRef)
+    const existingTid = terminalIdRef.current
+    if (existingTid) {
+      window.api.terminal.close(existingTid)
+      delete sessionTerminals[sessionId]
+      terminalIdRef.current = null
+      window.api.cc.stopWatch(sessionId)
+      ccSessionIdRef.current = null
+    }
+
+    const term = termRef.current
+    term.clear()
+    term.write('\x1b[90m[Resuming from Chat...]\x1b[0m\r\n')
+    setExited(false)
+
+    spawnCC(effectivePath, resumeSessionId).then(() => {
+      handoffInProgressRef.current = false
+      onResumeConsumed?.()
+      try {
+        fitAddonRef.current?.fit()
+        const tid = terminalIdRef.current
+        if (termRef.current && tid) {
+          window.api.terminal.resize(tid, termRef.current.cols, termRef.current.rows)
+        }
+      } catch {
+        // Ignore
+      }
+    })
+  }, [resumeSessionId, initialized, effectivePath, sessionId, spawnCC, onResumeConsumed])
 
   // Focus search input when search opens
   useEffect(() => {
@@ -308,6 +403,21 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible }: 
       searchAddonRef.current.clearDecorations()
     }
   }, [searchQuery, searchOpen])
+
+  const handleScreenshot = useCallback(async () => {
+    const tid = terminalIdRef.current
+    if (!tid || screenshotting) return
+    setScreenshotting(true)
+    try {
+      const result = await window.api.screenshot.capture()
+      if (result.success && result.path) {
+        // Send the screenshot path as user input to the CC session
+        window.api.terminal.write(tid, `${result.path}\n`)
+      }
+    } finally {
+      setScreenshotting(false)
+    }
+  }, [screenshotting])
 
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -339,6 +449,18 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible }: 
         ref={xtermContainerRef}
         style={{ flex: 1, padding: '8px 8px 0 8px' }}
       />
+      <button
+        className="cc-screenshot-btn"
+        onClick={handleScreenshot}
+        disabled={screenshotting || !terminalIdRef.current}
+        title="Take screenshot and send to CC"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1" y="3" width="14" height="11" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+          <circle cx="8" cy="8.5" r="2.5" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+          <rect x="5" y="1" width="6" height="2" rx="1" stroke="currentColor" strokeWidth="1" fill="none"/>
+        </svg>
+      </button>
       {searchOpen && (
         <div className="terminal-search-bar">
           <input

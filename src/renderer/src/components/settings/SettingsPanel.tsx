@@ -38,7 +38,7 @@ export default function SettingsPanel() {
     claude, modKey, vimMode, autoExpandEdits, notificationSounds,
     preventSleep, suggestNextMessage, sideBySideDiffs,
     defaultModel, defaultEffort, fontSize, fontFamily, lineHeight,
-    showTimestamps, compactMessages,
+    showTimestamps, compactMessages, defaultMainTab,
     updateSettings
   } = useSettingsStore()
   const { theme, setTheme, chatZoom, setChatZoom } = useUIStore()
@@ -293,6 +293,18 @@ export default function SettingsPanel() {
                       />
                       <span className="settings-toggle-slider" />
                     </label>
+                  </div>
+                  <div className="settings-field">
+                    <label className="settings-field-label">Default tab</label>
+                    <select
+                      className="settings-select"
+                      value={defaultMainTab}
+                      onChange={(e) => updateSettings({ defaultMainTab: e.target.value as 'chat' | 'cc' })}
+                    >
+                      <option value="chat">Chat</option>
+                      <option value="cc">Claude Code</option>
+                    </select>
+                    <span className="settings-field-hint">Which tab to show when opening a new session.</span>
                   </div>
                   <div className="settings-row">
                     <div className="settings-label">

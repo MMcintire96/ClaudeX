@@ -80,7 +80,7 @@ export interface ElectronAPI {
     getBuffer: (id: string) => Promise<string>
     onData: (callback: (id: string, data: string) => void) => () => void
     onExit: (callback: (id: string, exitCode: number) => void) => () => void
-    createCC: (projectPath: string, skipPermissions: boolean, model?: string | null, effort?: string | null) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; error?: string }>
+    createCC: (projectPath: string, skipPermissions: boolean, model?: string | null, effort?: string | null, ccSessionId?: string, resumeSessionId?: string) => Promise<{ success: boolean; id?: string; projectPath?: string; pid?: number; error?: string }>
   }
   session: {
     history: (projectPath: string) => Promise<Array<{ id: string; claudeSessionId?: string; projectPath: string; name: string; createdAt: number; endedAt: number; worktreePath?: string | null; isWorktree?: boolean }>>
@@ -149,6 +149,12 @@ export interface ElectronAPI {
     syncToLocal: (sessionId: string, mode: 'overwrite' | 'apply') => Promise<{ success: boolean; error?: string }>
     syncFromLocal: (sessionId: string, mode: 'overwrite' | 'apply') => Promise<{ success: boolean; error?: string }>
     openInEditor: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+  }
+  cc: {
+    watchSession: (opts: { ccSessionId: string; projectPath: string; rendererSessionId: string }) => Promise<{ success: boolean }>
+    stopWatch: (rendererSessionId: string) => Promise<{ success: boolean }>
+    handoffToChat: (rendererSessionId: string) => Promise<{ success: boolean }>
+    onSessionEvent: (callback: (data: { sessionId: string; event: unknown }) => void) => () => void
   }
   neovim: {
     create: (projectPath: string, filePath?: string) => Promise<{ success: boolean; projectPath?: string; pid?: number; error?: string }>

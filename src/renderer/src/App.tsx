@@ -12,6 +12,7 @@ import { useAutomationStore } from './stores/automationStore'
 import { convertRunToMessages } from './components/automation/AutomationSidebarSection'
 import { validateTheme } from './lib/themes'
 import { sendNotification } from './lib/notificationSound'
+import { useCCBridge } from './hooks/useCCBridge'
 
 export default function App() {
   const processEvent = useSessionStore(s => s.processEvent)
@@ -31,6 +32,9 @@ export default function App() {
   const [hotkeysOpen, setHotkeysOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const heldKeysRef = useRef<Set<string>>(new Set())
+
+  // Wire up CC terminal session bridge
+  useCCBridge()
 
   // Wire up agent event listeners (SDK path)
   useEffect(() => {
@@ -53,7 +57,11 @@ export default function App() {
 
     const unsubError = window.api.agent.onError(({ sessionId, error }) => {
       setProcessing(sessionId, false)
-      setError(sessionId, error)
+      // Annotate 500 API errors with a hint about remote MCP connections
+      const is500 = /API Error:\s*500|"status"\s*:\s*500|internal server error/i.test(error)
+      setError(sessionId, is500
+        ? `${error}\n\nThis may be caused by a remote MCP integration (e.g. WordPress, HubSpot). Try disabling remote MCPs in Settings → MCP.`
+        : error)
     })
 
     const unsubTitle = window.api.agent.onTitle(({ sessionId, title }) => {

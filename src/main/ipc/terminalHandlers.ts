@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { homedir } from 'os'
+import { randomUUID } from 'crypto'
 import { TerminalManager } from '../terminal/TerminalManager'
 import { SessionPersistence } from '../session/SessionPersistence'
 
@@ -59,13 +60,18 @@ export function registerTerminalHandlers(
     return { success: true }
   })
 
-  ipcMain.handle('terminal:create-cc', (_event, projectPath: string, skipPermissions: boolean, model?: string | null, effort?: string | null) => {
+  ipcMain.handle('terminal:create-cc', (_event, projectPath: string, skipPermissions: boolean, model?: string | null, effort?: string | null, ccSessionId?: string, resumeSessionId?: string) => {
     try {
       const cwd = projectPath === '~' ? homedir() : projectPath
       const args: string[] = []
       if (skipPermissions) args.push('--dangerously-skip-permissions')
       if (model) args.push('--model', model)
       if (effort) args.push('--effort', effort)
+      if (resumeSessionId) {
+        args.push('--resume', resumeSessionId)
+      } else if (ccSessionId) {
+        args.push('--session-id', ccSessionId)
+      }
       const info = terminalManager.createWithCommand(cwd, 'claude', args)
       return { success: true, ...info }
     } catch (err) {

@@ -24,6 +24,7 @@ import { CheckpointManager } from '../checkpoint/CheckpointManager'
 import { registerCheckpointHandlers } from './checkpointHandlers'
 import { AutomationManager } from '../automation/AutomationManager'
 import { registerAutomationHandlers } from './automationHandlers'
+import { registerCCHandlers, setCCMainWindow } from './ccHandlers'
 
 export function registerAllHandlers(
   agentManager: AgentManager,
@@ -63,4 +64,5 @@ export function registerAllHandlers(
   if (automationManager) {
     registerAutomationHandlers(automationManager)
   }
+  registerCCHandlers()
 }

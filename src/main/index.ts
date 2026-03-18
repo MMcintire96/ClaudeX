@@ -16,6 +16,7 @@ import { McpManager } from './mcp/McpManager'
 import { CheckpointManager } from './checkpoint/CheckpointManager'
 import { AutomationManager } from './automation/AutomationManager'
 import { addBroadcastWindow, removeBroadcastWindow, markWindowReady } from './broadcast'
+import { setCCMainWindow } from './ipc/ccHandlers'
 
 // Auto-grant media permissions (Electron has no native permission dialog)
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream')
@@ -142,6 +143,7 @@ function createWindow(): void {
   terminalManager.setMainWindow(mainWindow)
   neovimManager.setMainWindow(mainWindow)
   mcpManager.setMainWindow(mainWindow)
+  setCCMainWindow(mainWindow)
 
   // Prevent the window from navigating away
   mainWindow.webContents.on('will-navigate', (e) => {

@@ -18,6 +18,7 @@ interface AppSettings {
   lineHeight: number
   showTimestamps: boolean
   compactMessages: boolean
+  defaultMainTab: 'chat' | 'cc'
 }
 
 interface SettingsState extends AppSettings {
@@ -44,11 +45,17 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   lineHeight: 1.65,
   showTimestamps: false,
   compactMessages: false,
+  defaultMainTab: 'chat',
   loaded: false,
 
   loadSettings: async (): Promise<void> => {
     const settings = await window.api.settings.get()
     set({ ...settings, loaded: true })
+    // Apply defaultMainTab to editorStore on initial load
+    if (settings.defaultMainTab) {
+      const { useEditorStore } = await import('./editorStore')
+      useEditorStore.getState().setMainPanelTab(settings.defaultMainTab)
+    }
   },
 
   updateSettings: async (partial: Partial<AppSettings>): Promise<void> => {

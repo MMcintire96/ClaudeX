@@ -22,6 +22,7 @@ export interface AppSettings {
   lineHeight: number
   showTimestamps: boolean
   compactMessages: boolean
+  defaultMainTab: 'chat' | 'cc'
   mcpServers: McpServerConfig[]
   disabledRemoteMcpServers: string[] // Remote MCP server names that are disabled
   knownRemoteMcpServers: Record<string, string[]> // Persisted tool names per remote server
@@ -45,6 +46,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   lineHeight: 1.65,
   showTimestamps: false,
   compactMessages: false,
+  defaultMainTab: 'chat',
   mcpServers: [],
   disabledRemoteMcpServers: [],
   knownRemoteMcpServers: {},
@@ -82,6 +84,7 @@ export class SettingsManager {
         lineHeight: loaded.lineHeight ?? DEFAULT_SETTINGS.lineHeight,
         showTimestamps: loaded.showTimestamps ?? DEFAULT_SETTINGS.showTimestamps,
         compactMessages: loaded.compactMessages ?? DEFAULT_SETTINGS.compactMessages,
+        defaultMainTab: loaded.defaultMainTab ?? DEFAULT_SETTINGS.defaultMainTab,
         mcpServers: Array.isArray(loaded.mcpServers) ? loaded.mcpServers : [],
         disabledRemoteMcpServers: Array.isArray(loaded.disabledRemoteMcpServers) ? loaded.disabledRemoteMcpServers : [],
         knownRemoteMcpServers: (loaded.knownRemoteMcpServers && typeof loaded.knownRemoteMcpServers === 'object') ? loaded.knownRemoteMcpServers : {},
@@ -140,6 +143,9 @@ export class SettingsManager {
     }
     if (partial.compactMessages !== undefined) {
       this.settings.compactMessages = partial.compactMessages
+    }
+    if (partial.defaultMainTab !== undefined) {
+      this.settings.defaultMainTab = partial.defaultMainTab
     }
     if (partial.mcpServers !== undefined) {
       this.settings.mcpServers = partial.mcpServers
