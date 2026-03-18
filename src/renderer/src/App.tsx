@@ -12,6 +12,7 @@ import { useAutomationStore } from './stores/automationStore'
 import { convertRunToMessages } from './components/automation/AutomationSidebarSection'
 import { validateTheme } from './lib/themes'
 import { sendNotification } from './lib/notificationSound'
+import { useEditorStore } from './stores/editorStore'
 import { useCCBridge } from './hooks/useCCBridge'
 
 export default function App() {
@@ -196,6 +197,39 @@ export default function App() {
       }
     }
   }, [sessions, activeSessionId])
+
+  // CC tab completion notification: fire when a CC session finishes a turn
+  // (isProcessing transitions true → false) and user isn't viewing that session's CC tab
+  const ccSessionIds = useEditorStore(s => s.ccSessionIds)
+  const mainPanelTab = useEditorStore(s => s.mainPanelTab)
+  const prevProcessingRef = useRef<Record<string, boolean>>({})
+
+  useEffect(() => {
+    for (const [sid, session] of Object.entries(sessions)) {
+      const wasProcessing = prevProcessingRef.current[sid] ?? false
+      const isProcessing = session.isProcessing
+
+      // Detect turn completion (processing → not processing) for CC sessions
+      if (wasProcessing && !isProcessing && sid in ccSessionIds) {
+        // Don't notify if user is actively viewing this session's CC tab
+        const isViewingCC = sid === activeSessionId && mainPanelTab === 'cc'
+        // Don't notify if sessionNeedsInput — the existing effect handles that
+        if (!isViewingCC && !sessionNeedsInput(session)) {
+          const projectName = session.projectPath && session.projectPath !== '__scratch__'
+            ? session.projectPath.split('/').pop()
+            : null
+          const threadLabel = session.name && session.name !== 'Session' ? session.name : null
+          const prefix = threadLabel
+            ? (projectName ? `${threadLabel} · ${projectName}` : threadLabel)
+            : (projectName || 'Claude Code')
+
+          sendNotification(prefix, 'task complete')
+        }
+      }
+
+      prevProcessingRef.current[sid] = isProcessing
+    }
+  }, [sessions, activeSessionId, ccSessionIds, mainPanelTab])
 
   // Prevent Electron from opening dropped files in the browser window
   useEffect(() => {
