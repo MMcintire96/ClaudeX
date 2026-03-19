@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
+import { Terminal, FitAddon } from 'ghostty-web'
 import { useUIStore } from '../../stores/uiStore'
 import { useEditorStore } from '../../stores/editorStore'
 import { XTERM_THEMES } from '../../lib/xtermThemes'
@@ -48,7 +47,6 @@ export default function NeovimEditor({ projectPath, visible }: Props) {
       theme: xtermTheme,
       cursorBlink: true,
       scrollback: 1000,
-      allowProposedApi: true
     })
 
     const fitAddon = new FitAddon()
@@ -130,7 +128,6 @@ export default function NeovimEditor({ projectPath, visible }: Props) {
     if (term) {
       const base = XTERM_THEMES[theme] || XTERM_THEMES.dark
       term.options.theme = base
-      term.refresh(0, term.rows - 1)
     }
   }, [theme])
 
@@ -142,7 +139,6 @@ export default function NeovimEditor({ projectPath, visible }: Props) {
         fitAddonRef.current?.fit()
         if (termRef.current && projectPathRef.current) {
           window.api.neovim.resize(projectPathRef.current, termRef.current.cols, termRef.current.rows)
-          termRef.current.refresh(0, termRef.current.rows - 1)
         }
       } catch {
         // Ignore

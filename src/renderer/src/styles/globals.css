@@ -994,7 +994,7 @@ body {
   overflow: hidden;
 }
 
-.neovim-editor-xterm .xterm {
+.neovim-editor-xterm canvas {
   height: 100%;
   width: 100%;
   padding: 0;
@@ -6004,14 +6004,8 @@ body {
   padding: 4px 4px 12px 4px;
 }
 
-/* xterm.js container overrides */
-.terminal-view .xterm {
-  height: 100%;
-}
-.terminal-view .xterm-viewport {
-  overflow-y: auto;
-}
-.terminal-view .xterm-screen {
+/* ghostty-web terminal canvas overrides */
+.terminal-view canvas {
   height: 100%;
 }
 

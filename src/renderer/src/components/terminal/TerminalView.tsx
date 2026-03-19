@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { SearchAddon } from '@xterm/addon-search'
+import { Terminal, FitAddon } from 'ghostty-web'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { XTERM_THEMES } from '../../lib/xtermThemes'
@@ -17,7 +15,6 @@ export default function TerminalView({ terminalId, visible, active, background }
   const xtermContainerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
-  const searchAddonRef = useRef<SearchAddon | null>(null)
   const theme = useUIStore(s => s.theme)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -42,11 +39,10 @@ export default function TerminalView({ terminalId, visible, active, background }
     if (!term) return
     const text = await navigator.clipboard.readText()
     if (text) {
-      // Wrap in bracket paste sequences so CLI programs (e.g. Claude Code)
-      // detect this as pasted text rather than individual keystrokes
-      window.api.terminal.write(terminalId, `\x1b[200~${text}\x1b[201~`)
+      // ghostty-web's paste() handles bracketed paste automatically
+      term.paste(text)
     }
-  }, [terminalId])
+  }, [])
 
   const handleSendToClaude = useCallback((autoRun = false) => {
     const term = termRef.current
@@ -85,14 +81,10 @@ export default function TerminalView({ terminalId, visible, active, background }
         : xtermTheme,
       cursorBlink: true,
       scrollback: 5000,
-      allowProposedApi: true,
-      rightClickSelectsWord: true
     })
 
     const fitAddon = new FitAddon()
-    const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
-    term.loadAddon(searchAddon)
     term.open(xtermContainerRef.current)
 
     // Initial fit
@@ -106,59 +98,35 @@ export default function TerminalView({ terminalId, visible, active, background }
 
     termRef.current = term
     fitAddonRef.current = fitAddon
-    searchAddonRef.current = searchAddon
 
-    // Track whether Ctrl+Shift+V already handled a paste (to avoid duplicate from paste event)
-    let keyPasteInFlight = false
-
-    // Ctrl+Shift+C = copy, Ctrl+Shift+V = paste, Ctrl+F = search
-    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-      if (e.type === 'keydown' && e.ctrlKey && e.shiftKey) {
-        if (e.key === 'C' || e.code === 'KeyC') {
-          const selection = term.getSelection()
-          if (selection) navigator.clipboard.writeText(selection)
-          return false
-        }
-        if (e.key === 'V' || e.code === 'KeyV') {
-          keyPasteInFlight = true
-          navigator.clipboard.readText().then(text => {
-            if (text) window.api.terminal.write(terminalId, `\x1b[200~${text}\x1b[201~`)
-          })
-          return false
-        }
-      }
-      // Ctrl+F to toggle search
-      if (e.type === 'keydown' && e.ctrlKey && !e.shiftKey && (e.key === 'f' || e.code === 'KeyF')) {
-        setSearchOpen(prev => !prev)
-        return false
-      }
-      // Escape to close search if open
-      if (e.type === 'keydown' && e.key === 'Escape' && searchOpenRef.current) {
-        setSearchOpen(false)
-        return false
-      }
-      return true
-    })
-
-    // Intercept ALL paste events in capture phase (before xterm's handler)
-    // so paste is only handled once through our own write path.
-    const handleTerminalPaste = (e: ClipboardEvent): void => {
-      e.preventDefault()
-      e.stopPropagation()
-
-      // If Ctrl+Shift+V key handler already sent the paste, skip
-      if (keyPasteInFlight) {
-        keyPasteInFlight = false
+    // Capture-phase keydown listener to intercept shortcuts before the browser
+    // (contenteditable can cause Chrome to handle Ctrl+F as "find in page")
+    const containerEl = xtermContainerRef.current!
+    const handleShortcuts = (e: KeyboardEvent) => {
+      // Ctrl+Shift+C = copy
+      if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.code === 'KeyC')) {
+        e.preventDefault()
+        e.stopPropagation()
+        const selection = term.getSelection()
+        if (selection) navigator.clipboard.writeText(selection)
         return
       }
-
-      const text = e.clipboardData?.getData('text/plain')
-      if (text) {
-        window.api.terminal.write(terminalId, `\x1b[200~${text}\x1b[201~`)
+      // Ctrl+F = toggle search
+      if (e.ctrlKey && !e.shiftKey && (e.key === 'f' || e.code === 'KeyF')) {
+        e.preventDefault()
+        e.stopPropagation()
+        setSearchOpen(prev => !prev)
+        return
+      }
+      // Escape = close search
+      if (e.key === 'Escape' && searchOpenRef.current) {
+        e.preventDefault()
+        e.stopPropagation()
+        setSearchOpen(false)
+        return
       }
     }
-    const containerEl = xtermContainerRef.current!
-    containerEl.addEventListener('paste', handleTerminalPaste, true)
+    containerEl.addEventListener('keydown', handleShortcuts, true)
 
     // User keystrokes → PTY
     const onDataDisposable = term.onData((data: string) => {
@@ -205,7 +173,7 @@ export default function TerminalView({ terminalId, visible, active, background }
 
     return () => {
       disposed = true
-      containerEl.removeEventListener('paste', handleTerminalPaste, true)
+      containerEl.removeEventListener('keydown', handleShortcuts, true)
       observer.disconnect()
       onDataDisposable.dispose()
       unsubData?.()
@@ -213,7 +181,6 @@ export default function TerminalView({ terminalId, visible, active, background }
       term.dispose()
       termRef.current = null
       fitAddonRef.current = null
-      searchAddonRef.current = null
     }
   }, [terminalId]) // Only re-create on terminal ID change
 
@@ -223,8 +190,6 @@ export default function TerminalView({ terminalId, visible, active, background }
     if (term) {
       const base = XTERM_THEMES[theme] || XTERM_THEMES.dark
       term.options.theme = background ? { ...base, background } : base
-      // Force a full repaint so existing content picks up the new colors
-      term.refresh(0, term.rows - 1)
     }
   }, [theme, background])
 
@@ -237,7 +202,6 @@ export default function TerminalView({ terminalId, visible, active, background }
           if (termRef.current) {
             window.api.terminal.resize(terminalId, termRef.current.cols, termRef.current.rows)
             termRef.current.scrollToBottom()
-            termRef.current.refresh(0, termRef.current.rows - 1)
             termRef.current.focus()
           }
         } catch {
@@ -266,31 +230,45 @@ export default function TerminalView({ terminalId, visible, active, background }
       requestAnimationFrame(() => searchInputRef.current?.focus())
     } else {
       setSearchQuery('')
-      searchAddonRef.current?.clearDecorations()
     }
   }, [searchOpen])
 
-  // Incremental search on query change
-  useEffect(() => {
-    if (!searchOpen || !searchAddonRef.current) return
-    if (searchQuery) {
-      searchAddonRef.current.findNext(searchQuery)
-    } else {
-      searchAddonRef.current.clearDecorations()
+  // Buffer-based search: scan terminal buffer lines for query text
+  const bufferSearch = useCallback((query: string, direction: 'next' | 'prev') => {
+    const term = termRef.current
+    if (!term || !query) return
+    const buf = term.buffer.active
+    const totalLines = buf.length
+    const lines: string[] = []
+    for (let i = 0; i < totalLines; i++) {
+      const line = buf.getLine(i)
+      lines.push(line ? line.translateToString(true) : '')
     }
-  }, [searchQuery, searchOpen])
+    const text = lines.join('\n')
+    const idx = direction === 'next'
+      ? text.toLowerCase().indexOf(query.toLowerCase())
+      : text.toLowerCase().lastIndexOf(query.toLowerCase())
+    if (idx !== -1) {
+      // Find which line the match is on and scroll to it
+      let charCount = 0
+      for (let i = 0; i < lines.length; i++) {
+        if (charCount + lines[i].length >= idx) {
+          const scrollTarget = Math.max(0, i - Math.floor(term.rows / 2))
+          term.scrollToLine(scrollTarget)
+          break
+        }
+        charCount += lines[i].length + 1 // +1 for newline
+      }
+    }
+  }, [])
 
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       setSearchOpen(false)
     } else if (e.key === 'Enter') {
-      if (e.shiftKey) {
-        searchAddonRef.current?.findPrevious(searchQuery)
-      } else {
-        searchAddonRef.current?.findNext(searchQuery)
-      }
+      bufferSearch(searchQuery, e.shiftKey ? 'prev' : 'next')
     }
-  }, [searchQuery])
+  }, [searchQuery, bufferSearch])
 
   return (
     <div
@@ -316,8 +294,8 @@ export default function TerminalView({ terminalId, visible, active, background }
             onKeyDown={handleSearchKeyDown}
             placeholder="Search..."
           />
-          <button onClick={() => searchAddonRef.current?.findPrevious(searchQuery)} title="Previous (Shift+Enter)">&#x25B2;</button>
-          <button onClick={() => searchAddonRef.current?.findNext(searchQuery)} title="Next (Enter)">&#x25BC;</button>
+          <button onClick={() => bufferSearch(searchQuery, 'prev')} title="Previous (Shift+Enter)">&#x25B2;</button>
+          <button onClick={() => bufferSearch(searchQuery, 'next')} title="Next (Enter)">&#x25BC;</button>
           <button onClick={() => setSearchOpen(false)} title="Close (Escape)">&times;</button>
         </div>
       )}

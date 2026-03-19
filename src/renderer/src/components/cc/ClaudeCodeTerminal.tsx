@@ -1,8 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { SearchAddon } from '@xterm/addon-search'
-import { WebLinksAddon } from '@xterm/addon-web-links'
+import { Terminal, FitAddon } from 'ghostty-web'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useSessionStore } from '../../stores/sessionStore'
@@ -35,7 +32,8 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
   const xtermContainerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
-  const searchAddonRef = useRef<SearchAddon | null>(null)
+  // Buffer-based search (replaces SearchAddon)
+  const bufferSearchRef = useRef<{ findNext: (q: string) => void; findPrevious: (q: string) => void } | null>(null)
   const theme = useUIStore(s => s.theme)
   const skipPermissions = useSettingsStore(s => s.claude.dangerouslySkipPermissions)
   const fontSize = useSettingsStore(s => s.fontSize)
@@ -127,20 +125,45 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
       theme: xtermTheme,
       cursorBlink: true,
       scrollback: 5000,
-      allowProposedApi: true
     })
 
     const fitAddon = new FitAddon()
-    const searchAddon = new SearchAddon()
-    const webLinksAddon = new WebLinksAddon()
     term.loadAddon(fitAddon)
-    term.loadAddon(searchAddon)
-    term.loadAddon(webLinksAddon)
     term.open(xtermContainerRef.current)
 
     termRef.current = term
     fitAddonRef.current = fitAddon
-    searchAddonRef.current = searchAddon
+
+    // Create buffer-based search helper
+    const makeBufferSearch = (direction: 'next' | 'prev') => (query: string) => {
+      if (!query) return
+      const buf = term.buffer.active
+      const totalLines = buf.length
+      const lines: string[] = []
+      for (let i = 0; i < totalLines; i++) {
+        const line = buf.getLine(i)
+        lines.push(line ? line.translateToString(true) : '')
+      }
+      const text = lines.join('\n')
+      const idx = direction === 'next'
+        ? text.toLowerCase().indexOf(query.toLowerCase())
+        : text.toLowerCase().lastIndexOf(query.toLowerCase())
+      if (idx !== -1) {
+        let charCount = 0
+        for (let i = 0; i < lines.length; i++) {
+          if (charCount + lines[i].length >= idx) {
+            const scrollTarget = Math.max(0, i - Math.floor(term.rows / 2))
+            term.scrollToLine(scrollTarget)
+            break
+          }
+          charCount += lines[i].length + 1
+        }
+      }
+    }
+    bufferSearchRef.current = {
+      findNext: makeBufferSearch('next'),
+      findPrevious: makeBufferSearch('prev')
+    }
 
     const doFit = () => {
       try {
@@ -156,55 +179,33 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
     requestAnimationFrame(() => requestAnimationFrame(doFit))
     const fitTimer = setTimeout(doFit, 100)
 
-    // Ctrl+Shift+C = copy, Ctrl+Shift+V = paste, Ctrl+F = search
-    let keyPasteInFlight = false
-    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-      if (e.type === 'keydown' && e.ctrlKey && e.shiftKey) {
-        if (e.key === 'C' || e.code === 'KeyC') {
-          const selection = term.getSelection()
-          if (selection) navigator.clipboard.writeText(selection)
-          return false
-        }
-        if (e.key === 'V' || e.code === 'KeyV') {
-          keyPasteInFlight = true
-          const tid = terminalIdRef.current
-          if (tid) {
-            navigator.clipboard.readText().then(text => {
-              if (text) window.api.terminal.write(tid, `\x1b[200~${text}\x1b[201~`)
-            })
-          }
-          return false
-        }
-      }
-      // Ctrl+F to toggle search
-      if (e.type === 'keydown' && e.ctrlKey && !e.shiftKey && (e.key === 'f' || e.code === 'KeyF')) {
-        setSearchOpen(prev => !prev)
-        return false
-      }
-      // Escape to close search if open
-      if (e.type === 'keydown' && e.key === 'Escape' && searchOpenRef.current) {
-        setSearchOpen(false)
-        return false
-      }
-      return true
-    })
-
-    // Intercept paste events to avoid duplicates
-    const handleTerminalPaste = (e: ClipboardEvent): void => {
-      e.preventDefault()
-      e.stopPropagation()
-      if (keyPasteInFlight) {
-        keyPasteInFlight = false
+    // Capture-phase keydown listener to intercept shortcuts before the browser
+    const containerEl = xtermContainerRef.current!
+    const handleShortcuts = (e: KeyboardEvent) => {
+      // Ctrl+Shift+C = copy
+      if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.code === 'KeyC')) {
+        e.preventDefault()
+        e.stopPropagation()
+        const selection = term.getSelection()
+        if (selection) navigator.clipboard.writeText(selection)
         return
       }
-      const text = e.clipboardData?.getData('text/plain')
-      const tid = terminalIdRef.current
-      if (text && tid) {
-        window.api.terminal.write(tid, `\x1b[200~${text}\x1b[201~`)
+      // Ctrl+F = toggle search
+      if (e.ctrlKey && !e.shiftKey && (e.key === 'f' || e.code === 'KeyF')) {
+        e.preventDefault()
+        e.stopPropagation()
+        setSearchOpen(prev => !prev)
+        return
+      }
+      // Escape = close search
+      if (e.key === 'Escape' && searchOpenRef.current) {
+        e.preventDefault()
+        e.stopPropagation()
+        setSearchOpen(false)
+        return
       }
     }
-    const containerEl = xtermContainerRef.current!
-    containerEl.addEventListener('paste', handleTerminalPaste, true)
+    containerEl.addEventListener('keydown', handleShortcuts, true)
 
     // User keystrokes -> PTY
     const onDataDisposable = term.onData((data: string) => {
@@ -275,7 +276,7 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
 
     return () => {
       clearTimeout(fitTimer)
-      containerEl.removeEventListener('paste', handleTerminalPaste, true)
+      containerEl.removeEventListener('keydown', handleShortcuts, true)
       observer.disconnect()
       onDataDisposable.dispose()
       unsubData()
@@ -283,7 +284,7 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
       term.dispose()
       termRef.current = null
       fitAddonRef.current = null
-      searchAddonRef.current = null
+      bufferSearchRef.current = null
     }
   }, [initialized, sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -293,7 +294,6 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
     if (term) {
       const base = XTERM_THEMES[theme] || XTERM_THEMES.dark
       term.options.theme = base
-      term.refresh(0, term.rows - 1)
     }
   }, [theme])
 
@@ -315,7 +315,6 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
         const tid = terminalIdRef.current
         if (termRef.current && tid) {
           window.api.terminal.resize(tid, termRef.current.cols, termRef.current.rows)
-          termRef.current.refresh(0, termRef.current.rows - 1)
         }
       } catch {
         // Ignore
@@ -392,19 +391,8 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
       requestAnimationFrame(() => searchInputRef.current?.focus())
     } else {
       setSearchQuery('')
-      searchAddonRef.current?.clearDecorations()
     }
   }, [searchOpen])
-
-  // Incremental search on query change
-  useEffect(() => {
-    if (!searchOpen || !searchAddonRef.current) return
-    if (searchQuery) {
-      searchAddonRef.current.findNext(searchQuery)
-    } else {
-      searchAddonRef.current.clearDecorations()
-    }
-  }, [searchQuery, searchOpen])
 
   const handleScreenshot = useCallback(async () => {
     const tid = terminalIdRef.current
@@ -426,9 +414,9 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
       setSearchOpen(false)
     } else if (e.key === 'Enter') {
       if (e.shiftKey) {
-        searchAddonRef.current?.findPrevious(searchQuery)
+        bufferSearchRef.current?.findPrevious(searchQuery)
       } else {
-        searchAddonRef.current?.findNext(searchQuery)
+        bufferSearchRef.current?.findNext(searchQuery)
       }
     }
   }, [searchQuery])
@@ -474,8 +462,8 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
             onKeyDown={handleSearchKeyDown}
             placeholder="Search..."
           />
-          <button onClick={() => searchAddonRef.current?.findPrevious(searchQuery)} title="Previous (Shift+Enter)">&#x25B2;</button>
-          <button onClick={() => searchAddonRef.current?.findNext(searchQuery)} title="Next (Enter)">&#x25BC;</button>
+          <button onClick={() => bufferSearchRef.current?.findPrevious(searchQuery)} title="Previous (Shift+Enter)">&#x25B2;</button>
+          <button onClick={() => bufferSearchRef.current?.findNext(searchQuery)} title="Next (Enter)">&#x25BC;</button>
           <button onClick={() => setSearchOpen(false)} title="Close (Escape)">&times;</button>
         </div>
       )}

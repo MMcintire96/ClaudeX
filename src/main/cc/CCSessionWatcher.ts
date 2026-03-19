@@ -183,6 +183,19 @@ export class CCSessionWatcher {
             is_error: false
           }
         })
+
+        // Trigger title generation on end_turn since CC JSONL may not have a separate 'result' record
+        if (!this.titleGenerated && this.firstUserMessage) {
+          this.titleGenerated = true
+          generateSessionTitle(this.firstUserMessage).then(title => {
+            if (title && this.mainWindow && !this.mainWindow.isDestroyed()) {
+              broadcastSend(this.mainWindow, 'agent:title', {
+                sessionId: this.rendererSessionId,
+                title
+              })
+            }
+          })
+        }
       }
     } else if (type === 'user') {
       const msg = record.message as Record<string, unknown> | undefined
