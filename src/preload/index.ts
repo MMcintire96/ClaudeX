@@ -259,7 +259,30 @@ const api = {
       const handler = (_: unknown, tabs: Array<{ id: string; url: string; title: string }>, activeTabId: string | null) => callback(tabs, activeTabId)
       ipcRenderer.on('browser:tabs-updated', handler)
       return () => ipcRenderer.removeListener('browser:tabs-updated', handler)
-    }
+    },
+    listChromeProfiles: () =>
+      ipcRenderer.invoke('browser:list-chrome-profiles') as Promise<{
+        success: boolean
+        profiles: Array<{ name: string; path: string; displayName: string }>
+        error?: string
+      }>,
+    importChrome: (profilePath: string) =>
+      ipcRenderer.invoke('browser:import-chrome', profilePath) as Promise<{
+        success: boolean
+        imported: number
+        failed: number
+        skipped: number
+        historyImported: number
+        passwordsImported: number
+        errors: string[]
+      }>,
+    onImportProgress: (callback: (progress: { phase: string; total: number; current: number; message: string }) => void) => {
+      const handler = (_: unknown, progress: { phase: string; total: number; current: number; message: string }) => callback(progress)
+      ipcRenderer.on('browser:import-progress', handler)
+      return () => ipcRenderer.removeListener('browser:import-progress', handler)
+    },
+    getHistory: (query: string) =>
+      ipcRenderer.invoke('browser:get-history', query) as Promise<Array<{ url: string; title: string; visitCount: number; lastVisitTime: number }>>
   },
   worktree: {
     create: (opts: { projectPath: string; sessionId: string; baseBranch?: string; includeChanges?: boolean }) =>

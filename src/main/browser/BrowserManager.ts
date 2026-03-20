@@ -1,4 +1,6 @@
-import { BrowserWindow, WebContentsView, Menu, MenuItem, shell } from 'electron'
+import { BrowserWindow, WebContentsView, Menu, MenuItem, shell, app } from 'electron'
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 
 export interface BrowserBounds {
   x: number
@@ -35,19 +37,210 @@ function nextTabId(): string {
  * Each project gets its own set of tabs. Only the active tab's
  * WebContentsView is shown at a time.
  */
+interface SavedPassword {
+  url: string
+  username: string
+  password: string
+}
+
 export class BrowserManager {
   private browsers: Map<string, ProjectBrowser> = new Map()
   private mainWindow: BrowserWindow | null = null
   private activeProject: string | null = null
   private pendingBounds: BrowserBounds | null = null
   private visible = false
+  private savedPasswords: SavedPassword[] = []
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
+    this.loadSavedPasswords()
+  }
+
+  loadSavedPasswords(): void {
+    try {
+      const passwordsFile = join(app.getPath('userData'), 'imported-browser-passwords.json')
+      if (existsSync(passwordsFile)) {
+        this.savedPasswords = JSON.parse(readFileSync(passwordsFile, 'utf-8'))
+        console.log(`[BrowserManager] Loaded ${this.savedPasswords.length} saved passwords`)
+      }
+    } catch (err) {
+      console.error('[BrowserManager] Failed to load passwords:', err)
+    }
+  }
+
+  private getPasswordsForUrl(pageUrl: string): SavedPassword[] {
+    if (!this.savedPasswords.length) return []
+    try {
+      const pageOrigin = new URL(pageUrl).origin
+      return this.savedPasswords.filter(p => {
+        try {
+          return p.password && new URL(p.url).origin === pageOrigin
+        } catch { return false }
+      })
+    } catch { return [] }
+  }
+
+  private injectAutofill(view: WebContentsView, pageUrl: string): void {
+    const matches = this.getPasswordsForUrl(pageUrl)
+    console.log(`[Autofill] Page: ${pageUrl}, matches: ${matches.length}`)
+    if (!matches.length) return
+
+    // Dedupe by username and pass credentials (without logging passwords)
+    const uniqueMatches = matches.filter((m, i, arr) =>
+      arr.findIndex(a => a.username === m.username) === i
+    )
+    console.log(`[Autofill] ${uniqueMatches.length} unique credentials for this origin`)
+
+    // Serialize credentials for injection (usernames visible, passwords hidden in closure)
+    const credsJson = JSON.stringify(uniqueMatches.map(m => ({
+      username: m.username,
+      password: m.password,
+      url: m.url
+    })))
+
+    view.webContents.executeJavaScript(`
+      (function() {
+        if (window.__claudexAutofillInjected) return;
+        window.__claudexAutofillInjected = true;
+
+        const creds = ${credsJson};
+
+        function findFields() {
+          const inputs = document.querySelectorAll('input');
+          let userField = null;
+          let passField = null;
+          for (const input of inputs) {
+            const type = (input.type || '').toLowerCase();
+            if (type === 'hidden' || type === 'submit' || type === 'button' || type === 'checkbox' || type === 'radio') continue;
+            const name = ((input.name || '') + ' ' + (input.id || '') + ' ' + (input.autocomplete || '')).toLowerCase();
+            if (type === 'password') {
+              passField = input;
+            } else if (!userField && (type === 'email' || type === 'text' || type === 'tel' ||
+              name.includes('user') || name.includes('email') || name.includes('login') ||
+              name.includes('account') || input.autocomplete === 'username')) {
+              userField = input;
+            }
+          }
+          return { userField, passField };
+        }
+
+        function fillCredential(cred) {
+          const { userField, passField } = findFields();
+          const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+          if (!nativeSet) return;
+          if (userField) {
+            nativeSet.call(userField, cred.username);
+            userField.dispatchEvent(new Event('input', {bubbles: true}));
+            userField.dispatchEvent(new Event('change', {bubbles: true}));
+          }
+          if (passField) {
+            nativeSet.call(passField, cred.password);
+            passField.dispatchEvent(new Event('input', {bubbles: true}));
+            passField.dispatchEvent(new Event('change', {bubbles: true}));
+          }
+        }
+
+        function removePopup() {
+          const existing = document.getElementById('__claudex-autofill-popup');
+          if (existing) existing.remove();
+        }
+
+        function showPopup(anchorField) {
+          removePopup();
+          const rect = anchorField.getBoundingClientRect();
+
+          const popup = document.createElement('div');
+          popup.id = '__claudex-autofill-popup';
+          popup.style.cssText = 'position:fixed;z-index:2147483647;background:#1e1e2e;border:1px solid #555;border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.4);max-height:200px;overflow-y:auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;min-width:' + Math.max(rect.width, 240) + 'px;';
+          popup.style.left = rect.left + 'px';
+          popup.style.top = (rect.bottom + 4) + 'px';
+
+          // Header
+          const header = document.createElement('div');
+          header.style.cssText = 'padding:6px 10px;font-size:11px;color:#888;border-bottom:1px solid #333;';
+          header.textContent = 'Saved passwords';
+          popup.appendChild(header);
+
+          creds.forEach((cred, i) => {
+            const item = document.createElement('div');
+            item.style.cssText = 'padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:8px;color:#e0e0e0;';
+            item.onmouseenter = () => item.style.background = '#333';
+            item.onmouseleave = () => item.style.background = 'none';
+            item.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              fillCredential(cred);
+              removePopup();
+            };
+
+            const icon = document.createElement('div');
+            icon.style.cssText = 'width:24px;height:24px;border-radius:50%;background:#444;display:flex;align-items:center;justify-content:center;font-size:12px;color:#aaa;flex-shrink:0;';
+            icon.textContent = cred.username.charAt(0).toUpperCase();
+
+            const text = document.createElement('div');
+            text.style.cssText = 'overflow:hidden;';
+            const user = document.createElement('div');
+            user.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;';
+            user.textContent = cred.username;
+            const pw = document.createElement('div');
+            pw.style.cssText = 'font-size:11px;color:#888;letter-spacing:2px;';
+            pw.textContent = '••••••••';
+            text.appendChild(user);
+            text.appendChild(pw);
+
+            item.appendChild(icon);
+            item.appendChild(text);
+            popup.appendChild(item);
+          });
+
+          document.body.appendChild(popup);
+
+          // Close on outside click
+          setTimeout(() => {
+            function closeHandler(e) {
+              if (!popup.contains(e.target)) {
+                removePopup();
+                document.removeEventListener('mousedown', closeHandler, true);
+              }
+            }
+            document.addEventListener('mousedown', closeHandler, true);
+          }, 50);
+        }
+
+        function attachListeners() {
+          const { userField, passField } = findFields();
+          if (!userField && !passField) return false;
+
+          const targets = [userField, passField].filter(Boolean);
+          targets.forEach(field => {
+            if (field.__claudexAutofillBound) return;
+            field.__claudexAutofillBound = true;
+            field.addEventListener('focus', () => showPopup(field));
+            field.addEventListener('click', () => showPopup(field));
+          });
+
+          // Auto-show popup on first load if field is empty
+          const primary = userField || passField;
+          if (primary && !primary.value) {
+            setTimeout(() => showPopup(primary), 300);
+          }
+          return true;
+        }
+
+        // Try attaching immediately and with retries for SPAs
+        if (!attachListeners()) {
+          let retries = 0;
+          const interval = setInterval(() => {
+            retries++;
+            if (attachListeners() || retries > 20) clearInterval(interval);
+          }, 500);
+        }
+      })();
+    `).catch((err) => console.error('[Autofill] injection failed:', err))
   }
 
   /** Send IPC to mainWindow only if it exists and hasn't been destroyed. */
-  private safeSend(channel: string, ...args: unknown[]): void {
+  safeSend(channel: string, ...args: unknown[]): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(channel, ...args)
     }
@@ -71,7 +264,8 @@ export class BrowserManager {
     const view = new WebContentsView({
       webPreferences: {
         sandbox: true,
-        contextIsolation: true
+        contextIsolation: true,
+        partition: 'persist:browser'
       }
     })
 
@@ -89,6 +283,11 @@ export class BrowserManager {
         this.safeSend('browser:url-changed', navUrl)
       }
       this.sendTabsUpdate(projectPath)
+    })
+
+    view.webContents.on('did-finish-load', () => {
+      const pageUrl = view.webContents.getURL()
+      this.injectAutofill(view, pageUrl)
     })
 
     view.webContents.on('did-navigate-in-page', (_event, navUrl) => {

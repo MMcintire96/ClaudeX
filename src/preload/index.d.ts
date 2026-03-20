@@ -138,6 +138,10 @@ export interface ElectronAPI {
     onUrlChanged: (callback: (url: string) => void) => () => void
     onTitleChanged: (callback: (title: string) => void) => () => void
     onTabsUpdated: (callback: (tabs: Array<{ id: string; url: string; title: string }>, activeTabId: string | null) => void) => () => void
+    listChromeProfiles: () => Promise<{ success: boolean; profiles: Array<{ name: string; path: string; displayName: string }>; error?: string }>
+    importChrome: (profilePath: string) => Promise<{ success: boolean; imported: number; failed: number; skipped: number; historyImported: number; passwordsImported: number; errors: string[] }>
+    onImportProgress: (callback: (progress: { phase: string; total: number; current: number; message: string }) => void) => () => void
+    getHistory: (query: string) => Promise<Array<{ url: string; title: string; visitCount: number; lastVisitTime: number }>>
   }
   worktree: {
     create: (opts: { projectPath: string; sessionId: string; baseBranch?: string; includeChanges?: boolean }) => Promise<{ success: boolean; worktree?: WorktreeInfo; error?: string }>
