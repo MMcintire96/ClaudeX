@@ -315,6 +315,8 @@ export default function ClaudeCodeTerminal({ sessionId, projectPath, visible, re
         const tid = terminalIdRef.current
         if (termRef.current && tid) {
           window.api.terminal.resize(tid, termRef.current.cols, termRef.current.rows)
+          // Force full canvas redraw to prevent rendering corruption
+          termRef.current.refresh(0, termRef.current.rows - 1)
         }
       } catch {
         // Ignore

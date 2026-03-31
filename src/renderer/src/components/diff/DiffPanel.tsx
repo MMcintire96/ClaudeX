@@ -4,6 +4,7 @@ import CommitModal from '../git/CommitModal'
 import { useSessionStore, type UIToolUseMessage, type UITextMessage } from '../../stores/sessionStore'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useProjectStore } from '../../stores/projectStore'
 import { createPortal } from 'react-dom'
 
 interface TurnInfo {
@@ -139,6 +140,8 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     const session = s.sessions[sessionId]
     return session?.worktreePath || projectPath
   })
+
+  const isGitRepo = useProjectStore(s => s.isGitRepo)
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null)
@@ -324,10 +327,17 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   }, [diffPath, activeTab])
 
   useEffect(() => {
+    if (!isGitRepo) {
+      setFiles([])
+      setDiff('')
+      setSelectedFile(null)
+      setLoading(false)
+      return
+    }
     loadStatus()
     loadDiff()
     setSelectedFile(null)
-  }, [loadStatus, loadDiff, diffPath])
+  }, [loadStatus, loadDiff, diffPath, isGitRepo])
 
   // When side panel view includes a target file, set search filter to find it
   const sidePanelFile = useUIStore(s => s.sidePanelView?.file ?? null)
@@ -462,6 +472,14 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
           {badge}
         </span>
       </button>
+    )
+  }
+
+  if (!isGitRepo) {
+    return (
+      <div className="diff-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+        <p>Not a git repository</p>
+      </div>
     )
   }
 

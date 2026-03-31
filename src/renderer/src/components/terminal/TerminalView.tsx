@@ -201,6 +201,8 @@ export default function TerminalView({ terminalId, visible, active, background }
           fitAddonRef.current?.fit()
           if (termRef.current) {
             window.api.terminal.resize(terminalId, termRef.current.cols, termRef.current.rows)
+            // Force full canvas redraw to prevent rendering corruption
+            termRef.current.refresh(0, termRef.current.rows - 1)
             termRef.current.scrollToBottom()
             termRef.current.focus()
           }
