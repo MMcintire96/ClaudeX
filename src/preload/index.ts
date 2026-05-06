@@ -73,8 +73,8 @@ const api = {
       ipcRenderer.invoke('project:diff', projectPath, staged),
     gitStatus: (projectPath: string) =>
       ipcRenderer.invoke('project:git-status', projectPath),
-    diffFile: (projectPath: string, filePath: string, untracked?: boolean) =>
-      ipcRenderer.invoke('project:diff-file', projectPath, filePath, untracked),
+    diffFile: (projectPath: string, filePath: string, untracked?: boolean, fullFile?: boolean) =>
+      ipcRenderer.invoke('project:diff-file', projectPath, filePath, untracked, fullFile),
     gitBranch: (projectPath: string) =>
       ipcRenderer.invoke('project:git-branch', projectPath),
     getStartConfig: (projectPath: string) =>
@@ -97,6 +97,8 @@ const api = {
       ipcRenderer.invoke('project:git-commit', projectPath, message),
     gitPush: (projectPath: string) =>
       ipcRenderer.invoke('project:git-push', projectPath),
+    gitPull: (projectPath: string) =>
+      ipcRenderer.invoke('project:git-pull', projectPath),
     gitLog: (projectPath: string, maxCount?: number) =>
       ipcRenderer.invoke('project:git-log', projectPath, maxCount),
     gitRemotes: (projectPath: string) =>
@@ -213,76 +215,6 @@ const api = {
       ipcRenderer.on('popout:init', handler)
       return () => ipcRenderer.removeListener('popout:init', handler)
     }
-  },
-  browser: {
-    navigate: (url: string) =>
-      ipcRenderer.invoke('browser:navigate', url),
-    back: () =>
-      ipcRenderer.invoke('browser:back'),
-    forward: () =>
-      ipcRenderer.invoke('browser:forward'),
-    reload: () =>
-      ipcRenderer.invoke('browser:reload'),
-    openDevTools: () =>
-      ipcRenderer.invoke('browser:open-devtools'),
-    setBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
-      ipcRenderer.invoke('browser:set-bounds', bounds),
-    getUrl: () =>
-      ipcRenderer.invoke('browser:get-url'),
-    show: () =>
-      ipcRenderer.invoke('browser:show'),
-    hide: () =>
-      ipcRenderer.invoke('browser:hide'),
-    switchProject: (projectPath: string) =>
-      ipcRenderer.invoke('browser:switch-project', projectPath),
-    destroy: () =>
-      ipcRenderer.invoke('browser:destroy'),
-    newTab: (url?: string) =>
-      ipcRenderer.invoke('browser:new-tab', url),
-    switchTab: (tabId: string) =>
-      ipcRenderer.invoke('browser:switch-tab', tabId),
-    closeTab: (tabId: string) =>
-      ipcRenderer.invoke('browser:close-tab', tabId),
-    getTabs: () =>
-      ipcRenderer.invoke('browser:get-tabs'),
-    onUrlChanged: (callback: (url: string) => void) => {
-      const handler = (_: unknown, url: string) => callback(url)
-      ipcRenderer.on('browser:url-changed', handler)
-      return () => ipcRenderer.removeListener('browser:url-changed', handler)
-    },
-    onTitleChanged: (callback: (title: string) => void) => {
-      const handler = (_: unknown, title: string) => callback(title)
-      ipcRenderer.on('browser:title-changed', handler)
-      return () => ipcRenderer.removeListener('browser:title-changed', handler)
-    },
-    onTabsUpdated: (callback: (tabs: Array<{ id: string; url: string; title: string }>, activeTabId: string | null) => void) => {
-      const handler = (_: unknown, tabs: Array<{ id: string; url: string; title: string }>, activeTabId: string | null) => callback(tabs, activeTabId)
-      ipcRenderer.on('browser:tabs-updated', handler)
-      return () => ipcRenderer.removeListener('browser:tabs-updated', handler)
-    },
-    listChromeProfiles: () =>
-      ipcRenderer.invoke('browser:list-chrome-profiles') as Promise<{
-        success: boolean
-        profiles: Array<{ name: string; path: string; displayName: string }>
-        error?: string
-      }>,
-    importChrome: (profilePath: string) =>
-      ipcRenderer.invoke('browser:import-chrome', profilePath) as Promise<{
-        success: boolean
-        imported: number
-        failed: number
-        skipped: number
-        historyImported: number
-        passwordsImported: number
-        errors: string[]
-      }>,
-    onImportProgress: (callback: (progress: { phase: string; total: number; current: number; message: string }) => void) => {
-      const handler = (_: unknown, progress: { phase: string; total: number; current: number; message: string }) => callback(progress)
-      ipcRenderer.on('browser:import-progress', handler)
-      return () => ipcRenderer.removeListener('browser:import-progress', handler)
-    },
-    getHistory: (query: string) =>
-      ipcRenderer.invoke('browser:get-history', query) as Promise<Array<{ url: string; title: string; visitCount: number; lastVisitTime: number }>>
   },
   worktree: {
     create: (opts: { projectPath: string; sessionId: string; baseBranch?: string; includeChanges?: boolean }) =>

@@ -517,21 +517,6 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         }
       },
       {
-        id: 'cmd:toggle-browser',
-        category: 'command',
-        label: 'Toggle Browser Panel',
-        shortcut: `${modLabel}+B`,
-        action: () => {
-          if (!currentPath || useUIStore.getState().settingsOpen) return
-          const { sidePanelView, setSidePanelView } = useUIStore.getState()
-          if (sidePanelView?.type === 'browser' && sidePanelView.projectPath === currentPath) {
-            setSidePanelView(null)
-          } else {
-            setSidePanelView({ type: 'browser', projectPath: currentPath })
-          }
-        }
-      },
-      {
         id: 'cmd:toggle-diff',
         category: 'command',
         label: 'Toggle Diff Panel',

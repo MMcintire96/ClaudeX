@@ -11,7 +11,6 @@ const HOTKEYS = [
   { key: 'N', label: 'New Claude terminal' },
   { key: 'T', label: 'New shell terminal' },
   { key: 'O', label: 'Open project' },
-  { key: 'B', label: 'Toggle browser panel' },
   { key: 'D', label: 'Toggle diff panel' },
   { key: 'S', label: 'Toggle sidebar' },
   { key: 'L', label: 'Cycle color scheme' },

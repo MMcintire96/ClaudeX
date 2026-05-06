@@ -2,7 +2,6 @@ import * as http from 'http'
 import * as crypto from 'crypto'
 import { URL } from 'url'
 import type { TerminalManager } from '../terminal/TerminalManager'
-import type { BrowserManager } from '../browser/BrowserManager'
 
 interface SessionMessage {
   from: string
@@ -12,8 +11,8 @@ interface SessionMessage {
 }
 
 /**
- * HTTP bridge server on localhost that exposes terminal and browser
- * operations to the MCP server process (which cannot use Electron IPC).
+ * HTTP bridge server on localhost that exposes terminal operations
+ * to the MCP server process (which cannot use Electron IPC).
  */
 export class ClaudexBridgeServer {
   private server: http.Server | null = null
@@ -21,7 +20,6 @@ export class ClaudexBridgeServer {
   private _token: string
 
   private terminalManager: TerminalManager
-  private browserManager: BrowserManager
 
   // Inter-session messaging: inbox per session ID
   private messageInboxes: Map<string, SessionMessage[]> = new Map()
@@ -37,9 +35,8 @@ export class ClaudexBridgeServer {
     return this._token
   }
 
-  constructor(terminalManager: TerminalManager, browserManager: BrowserManager) {
+  constructor(terminalManager: TerminalManager) {
     this.terminalManager = terminalManager
-    this.browserManager = browserManager
     this._token = crypto.randomBytes(32).toString('hex')
   }
 
@@ -197,48 +194,6 @@ export class ClaudexBridgeServer {
         }
         this.terminalManager.write(terminalId, data)
         this.sendJson(res, { success: true, terminalId })
-      } else if (req.method === 'POST' && path === '/browser/navigate') {
-        const body = JSON.parse(await this.readBody(req))
-        const { url: navUrl } = body as { url: string }
-        if (!navUrl) {
-          this.sendError(res, 'Missing "url" field')
-          return
-        }
-        await this.browserManager.navigate(navUrl)
-        this.sendJson(res, { success: true })
-      } else if (req.method === 'GET' && path === '/browser/url') {
-        const currentUrl = this.browserManager.getCurrentUrl()
-        this.sendJson(res, { url: currentUrl })
-      } else if (req.method === 'GET' && path === '/browser/content') {
-        const content = await this.browserManager.getPageContent()
-        this.sendJson(res, { content })
-      } else if (req.method === 'POST' && path === '/browser/click') {
-        const body = JSON.parse(await this.readBody(req))
-        const { x, y, selector } = body as { x?: number; y?: number; selector?: string }
-        if (selector) {
-          await this.browserManager.clickSelector(selector)
-        } else if (x !== undefined && y !== undefined) {
-          await this.browserManager.click(x, y)
-        } else {
-          this.sendError(res, 'Provide either {x, y} coordinates or {selector}')
-          return
-        }
-        this.sendJson(res, { success: true })
-
-      } else if (req.method === 'POST' && path === '/browser/type') {
-        const body = JSON.parse(await this.readBody(req))
-        const { text } = body as { text: string }
-        if (!text) {
-          this.sendError(res, 'Missing "text" field')
-          return
-        }
-        await this.browserManager.type(text)
-        this.sendJson(res, { success: true })
-
-      } else if (req.method === 'GET' && path === '/browser/screenshot') {
-        const data = await this.browserManager.captureScreenshot()
-        this.sendJson(res, { data })
-
       // --- Inter-session messaging ---
       } else if (req.method === 'GET' && path === '/sessions/list') {
         const projectPath = url.searchParams.get('projectPath') || ''

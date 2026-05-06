@@ -1366,7 +1366,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
         // Skip rendering the latest todo inline if it's pinned above the input area
         // (pinned block hides itself when all tasks are complete, so show inline in that case)
         if (msg.id === latestTodoId) {
-          const todos = (toolMsg.input?.todos as { status: string }[]) || []
+          const todos: { status: string }[] = Array.isArray(toolMsg.input?.todos) ? (toolMsg.input.todos as { status: string }[]) : []
           const allDone = todos.length > 0 && todos.every(t => t.status === 'completed')
           if (!allDone) return null
         }
@@ -1610,7 +1610,7 @@ export default function ChatView({ sessionId, projectPath, reviewerMode }: ChatV
 
       {/* Pinned todo block — sticks above input area */}
       {latestTodoMessage && (() => {
-        const todos = (latestTodoMessage.input?.todos as { status: string }[]) || []
+        const todos: { status: string }[] = Array.isArray(latestTodoMessage.input?.todos) ? (latestTodoMessage.input.todos as { status: string }[]) : []
         const allDone = todos.length > 0 && todos.every(t => t.status === 'completed')
         if (allDone) return null
         return (

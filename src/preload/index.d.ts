@@ -52,11 +52,11 @@ export interface ElectronAPI {
     reorderRecent: (paths: string[]) => Promise<{ success: boolean }>
     diff: (projectPath: string, staged?: boolean) => Promise<{ success: boolean; diff?: string; error?: string }>
     gitStatus: (projectPath: string) => Promise<{ success: boolean; status?: unknown; error?: string }>
-    diffFile: (projectPath: string, filePath: string, untracked?: boolean) => Promise<{ success: boolean; diff?: string; error?: string }>
+    diffFile: (projectPath: string, filePath: string, untracked?: boolean, fullFile?: boolean) => Promise<{ success: boolean; diff?: string; error?: string }>
     gitBranch: (projectPath: string) => Promise<{ success: boolean; branch?: string | null; error?: string }>
-    getStartConfig: (projectPath: string) => Promise<{ browserUrl?: string; actions?: Array<{ name: string; command: string; autoRun?: boolean }>; defaultAction?: string } | null>
-    saveStartConfig: (projectPath: string, config: { browserUrl?: string; actions?: Array<{ name: string; command: string; autoRun?: boolean }>; defaultAction?: string }) => Promise<{ success: boolean }>
-    runStart: (projectPath: string, cwdOverride?: string) => Promise<{ success: boolean; terminalIds?: string[]; browserUrl?: string | null; error?: string }>
+    getStartConfig: (projectPath: string) => Promise<{ actions?: Array<{ name: string; command: string; autoRun?: boolean }>; defaultAction?: string } | null>
+    saveStartConfig: (projectPath: string, config: { actions?: Array<{ name: string; command: string; autoRun?: boolean }>; defaultAction?: string }) => Promise<{ success: boolean }>
+    runStart: (projectPath: string, cwdOverride?: string) => Promise<{ success: boolean; terminalIds?: string[]; error?: string }>
     listFiles: (projectPath: string) => Promise<{ success: boolean; files: string[]; error?: string }>
     openInEditor: (projectPath: string, filePath?: string) => Promise<{ success: boolean; error?: string }>
     gitBranches: (projectPath: string) => Promise<{ success: boolean; current?: string; branches?: string[]; error?: string }>
@@ -64,6 +64,7 @@ export interface ElectronAPI {
     gitAdd: (projectPath: string, files?: string[]) => Promise<{ success: boolean; error?: string }>
     gitCommit: (projectPath: string, message: string) => Promise<{ success: boolean; commit?: string; error?: string }>
     gitPush: (projectPath: string) => Promise<{ success: boolean; error?: string }>
+    gitPull: (projectPath: string) => Promise<{ success: boolean; error?: string }>
     gitLog: (projectPath: string, maxCount?: number) => Promise<{ success: boolean; log?: unknown; error?: string }>
     gitRemotes: (projectPath: string) => Promise<{ success: boolean; remotes?: Array<{ name: string; refs: { fetch: string; push: string } }>; error?: string }>
     gitDiffSummary: (projectPath: string, staged?: boolean) => Promise<{ success: boolean; summary?: { changed: number; insertions: number; deletions: number; files: Array<{ file: string; changes: number; insertions: number; deletions: number }> }; error?: string }>
@@ -118,30 +119,6 @@ export interface ElectronAPI {
     close: () => Promise<{ success: boolean }>
     onClosed: (callback: () => void) => () => void
     onInit: (callback: (data: { session: unknown }) => void) => () => void
-  }
-  browser: {
-    navigate: (url: string) => Promise<{ success: boolean; error?: string }>
-    back: () => Promise<{ success: boolean }>
-    forward: () => Promise<{ success: boolean }>
-    reload: () => Promise<{ success: boolean }>
-    openDevTools: () => Promise<{ success: boolean }>
-    setBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<{ success: boolean }>
-    getUrl: () => Promise<string>
-    show: () => Promise<{ success: boolean }>
-    hide: () => Promise<{ success: boolean }>
-    switchProject: (projectPath: string) => Promise<{ url: string; tabs: Array<{ id: string; url: string; title: string }>; activeTabId: string | null }>
-    destroy: () => Promise<{ success: boolean }>
-    newTab: (url?: string) => Promise<{ id: string; url: string; title: string } | null>
-    switchTab: (tabId: string) => Promise<{ success: boolean }>
-    closeTab: (tabId: string) => Promise<{ success: boolean }>
-    getTabs: () => Promise<{ tabs: Array<{ id: string; url: string; title: string }>; activeTabId: string | null }>
-    onUrlChanged: (callback: (url: string) => void) => () => void
-    onTitleChanged: (callback: (title: string) => void) => () => void
-    onTabsUpdated: (callback: (tabs: Array<{ id: string; url: string; title: string }>, activeTabId: string | null) => void) => () => void
-    listChromeProfiles: () => Promise<{ success: boolean; profiles: Array<{ name: string; path: string; displayName: string }>; error?: string }>
-    importChrome: (profilePath: string) => Promise<{ success: boolean; imported: number; failed: number; skipped: number; historyImported: number; passwordsImported: number; errors: string[] }>
-    onImportProgress: (callback: (progress: { phase: string; total: number; current: number; message: string }) => void) => () => void
-    getHistory: (query: string) => Promise<Array<{ url: string; title: string; visitCount: number; lastVisitTime: number }>>
   }
   worktree: {
     create: (opts: { projectPath: string; sessionId: string; baseBranch?: string; includeChanges?: boolean }) => Promise<{ success: boolean; worktree?: WorktreeInfo; error?: string }>

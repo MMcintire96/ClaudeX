@@ -37,7 +37,10 @@ export class GitService {
     return this.git.log({ maxCount })
   }
 
-  async diffFile(filePath: string): Promise<string> {
+  async diffFile(filePath: string, fullFile = false): Promise<string> {
+    if (fullFile) {
+      return this.git.diff(['-U1000000', '--', filePath])
+    }
     return this.git.diff([filePath])
   }
 
@@ -77,6 +80,13 @@ export class GitService {
     if (remote) args.push(remote)
     if (branch) args.push(branch)
     await this.git.push(args)
+  }
+
+  async pull(remote?: string, branch?: string): Promise<void> {
+    const args: string[] = []
+    if (remote) args.push(remote)
+    if (branch) args.push(branch)
+    await this.git.pull(args)
   }
 
   async getRemotes(): Promise<Array<{ name: string; refs: { fetch: string; push: string } }>> {

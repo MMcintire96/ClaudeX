@@ -11,7 +11,6 @@ function resetStore(): void {
     sidebarWidth: 240,
     sidePanelWidth: 480,
     projectSidePanelMemory: {},
-    pendingBrowserUrl: null,
     chatDetached: false,
     splitView: false,
     splitSessionId: null,
@@ -100,13 +99,13 @@ describe('toggleSidebar', () => {
 
 describe('setSidePanelView', () => {
   it('sets the view', () => {
-    store.getState().setSidePanelView({ type: 'browser', projectPath: '/p' })
-    expect(store.getState().sidePanelView).toEqual({ type: 'browser', projectPath: '/p' })
+    store.getState().setSidePanelView({ type: 'diff', projectPath: '/p' })
+    expect(store.getState().sidePanelView).toEqual({ type: 'diff', projectPath: '/p' })
   })
 
   it('toggles off when same view clicked again without file', () => {
-    store.getState().setSidePanelView({ type: 'browser', projectPath: '/p' })
-    store.getState().setSidePanelView({ type: 'browser', projectPath: '/p' })
+    store.getState().setSidePanelView({ type: 'diff', projectPath: '/p' })
+    store.getState().setSidePanelView({ type: 'diff', projectPath: '/p' })
     expect(store.getState().sidePanelView).toBeNull()
   })
 
@@ -223,39 +222,19 @@ describe('setSettingsOpen', () => {
   })
 })
 
-describe('setPendingBrowserUrl', () => {
-  it('sets a pending URL', () => {
-    store.getState().setPendingBrowserUrl('https://example.com')
-    expect(store.getState().pendingBrowserUrl).toBe('https://example.com')
-  })
-
-  it('clears with null', () => {
-    store.getState().setPendingBrowserUrl('https://example.com')
-    store.getState().setPendingBrowserUrl(null)
-    expect(store.getState().pendingBrowserUrl).toBeNull()
-  })
-})
-
 describe('setSidePanelView - null', () => {
   it('clears view and preserves memory', () => {
-    store.getState().setSidePanelView({ type: 'browser', projectPath: '/p' })
+    store.getState().setSidePanelView({ type: 'diff', projectPath: '/p' })
     store.getState().setSidePanelView(null)
     expect(store.getState().sidePanelView).toBeNull()
     // Memory from before should still be there
-    expect(store.getState().projectSidePanelMemory['/p']).toBe('browser')
-  })
-
-  it('switches between different view types', () => {
-    store.getState().setSidePanelView({ type: 'browser', projectPath: '/p' })
-    store.getState().setSidePanelView({ type: 'diff', projectPath: '/p' })
-    expect(store.getState().sidePanelView!.type).toBe('diff')
     expect(store.getState().projectSidePanelMemory['/p']).toBe('diff')
   })
 
   it('does not toggle off when different project', () => {
-    store.getState().setSidePanelView({ type: 'browser', projectPath: '/p1' })
-    store.getState().setSidePanelView({ type: 'browser', projectPath: '/p2' })
-    expect(store.getState().sidePanelView).toEqual({ type: 'browser', projectPath: '/p2' })
+    store.getState().setSidePanelView({ type: 'diff', projectPath: '/p1' })
+    store.getState().setSidePanelView({ type: 'diff', projectPath: '/p2' })
+    expect(store.getState().sidePanelView).toEqual({ type: 'diff', projectPath: '/p2' })
   })
 })
 

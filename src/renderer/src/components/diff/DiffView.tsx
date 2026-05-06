@@ -7,6 +7,7 @@ interface Props {
   diff: string
   onAddToClaude?: (filePath: string) => void
   onOpenInEditor?: (filePath: string) => void
+  onShowFullFile?: (filePath: string) => void
 }
 
 // Safety cap: truncate per-file lines to prevent DOM explosion
@@ -14,7 +15,7 @@ const MAX_LINES_PER_FILE = 2000
 // Auto-collapse file bodies when diff has more files than this
 const AUTO_COLLAPSE_THRESHOLD = 10
 
-export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props) {
+export default function DiffView({ diff, onAddToClaude, onOpenInEditor, onShowFullFile }: Props) {
   const sideBySide = useSettingsStore(s => s.sideBySideDiffs)
   const [files, setFiles] = useState<ReturnType<typeof diffParse>>([])
 
@@ -55,6 +56,7 @@ export default function DiffView({ diff, onAddToClaude, onOpenInEditor }: Props)
           file={file}
           onAddToClaude={onAddToClaude}
           onOpenInEditor={onOpenInEditor}
+          onShowFullFile={onShowFullFile}
           sideBySide={sideBySide}
           defaultCollapsed={autoCollapse}
         />
@@ -77,12 +79,14 @@ const DiffFileBlock = memo(function DiffFileBlock({
   file,
   onAddToClaude,
   onOpenInEditor,
+  onShowFullFile,
   sideBySide,
   defaultCollapsed = false
 }: {
   file: ReturnType<typeof diffParse>[number]
   onAddToClaude?: (filePath: string) => void
   onOpenInEditor?: (filePath: string) => void
+  onShowFullFile?: (filePath: string) => void
   sideBySide: boolean
   defaultCollapsed?: boolean
 }) {
@@ -161,7 +165,7 @@ const DiffFileBlock = memo(function DiffFileBlock({
         onClick={() => setCollapsed(c => !c)}
         style={{ cursor: 'pointer' }}
         onContextMenu={(e) => {
-          if (!onAddToClaude && !onOpenInEditor) return
+          if (!onAddToClaude && !onOpenInEditor && !onShowFullFile) return
           e.preventDefault()
           setContextMenu(getMenuPosition(e.clientX, e.clientY))
         }}
@@ -345,6 +349,17 @@ const DiffFileBlock = memo(function DiffFileBlock({
               }}
             >
               Open in editor
+            </button>
+          )}
+          {onShowFullFile && (
+            <button
+              className="context-menu-item"
+              onClick={() => {
+                onShowFullFile(fileName)
+                setContextMenu(null)
+              }}
+            >
+              Show full file
             </button>
           )}
           {onAddToClaude && (

@@ -78,6 +78,9 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   const [files, setFiles] = useState<FileStatus[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [selectedFileUntracked, setSelectedFileUntracked] = useState(false)
+  const [selectedFileFull, setSelectedFileFull] = useState(false)
+  const selectedFileFullRef = useRef(false)
+  selectedFileFullRef.current = selectedFileFull
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'unstaged' | 'staged'>('unstaged')
   const [searchFilter, setSearchFilter] = useState('')
@@ -89,6 +92,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [showCommitModal, setShowCommitModal] = useState(false)
+  const [pulling, setPulling] = useState(false)
 
   const toggleSidebar = useCallback(() => setSidebarCollapsed(prev => !prev), [])
   const [selectedTurn, setSelectedTurn] = useState<number | null>(null) // null = All turns
@@ -144,7 +148,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
   const isGitRepo = useProjectStore(s => s.isGitRepo)
 
   // Context menu state
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filePath: string } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; filePath: string; untracked?: boolean } | null>(null)
   const [turnContextMenu, setTurnContextMenu] = useState<{ x: number; y: number; turnNumber: number } | null>(null)
 
   useEffect(() => {
@@ -286,7 +290,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
       const file = selectedFileRef.current
       const staged = activeTab === 'staged'
       const diffResult = file
-        ? await window.api.project.diffFile(diffPath, file, selectedFileUntrackedRef.current)
+        ? await window.api.project.diffFile(diffPath, file, selectedFileUntrackedRef.current, selectedFileFullRef.current)
         : await window.api.project.diff(diffPath, staged)
       if (diffResult.success) {
         const newDiff = diffResult.diff || ''
@@ -308,13 +312,13 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     setLoading(false)
   }, [diffPath])
 
-  const loadDiff = useCallback(async (filePath?: string, untracked?: boolean) => {
+  const loadDiff = useCallback(async (filePath?: string, untracked?: boolean, fullFile?: boolean) => {
     if (!diffPath) return
     setLoading(true)
     try {
       let result
       if (filePath) {
-        result = await window.api.project.diffFile(diffPath, filePath, untracked)
+        result = await window.api.project.diffFile(diffPath, filePath, untracked, fullFile)
       } else {
         const staged = activeTab === 'staged'
         result = await window.api.project.diff(diffPath, staged)
@@ -371,18 +375,28 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     if (selectedFile === path) {
       setSelectedFile(null)
       setSelectedFileUntracked(false)
+      setSelectedFileFull(false)
       loadDiff()
     } else {
       setSelectedFile(path)
       setSelectedFileUntracked(!!isUntracked)
-      loadDiff(path, isUntracked)
+      setSelectedFileFull(false)
+      loadDiff(path, isUntracked, false)
     }
   }, [loadDiff, selectedFile])
+
+  const handleShowFullFile = useCallback((path: string, isUntracked?: boolean) => {
+    setSelectedFile(path)
+    setSelectedFileUntracked(!!isUntracked)
+    setSelectedFileFull(true)
+    loadDiff(path, isUntracked, true)
+  }, [loadDiff])
 
   const handleTabChange = useCallback((tab: 'unstaged' | 'staged') => {
     setActiveTab(tab)
     setSelectedFile(null)
     setSelectedFileUntracked(false)
+    setSelectedFileFull(false)
     setSearchFilter('')
   }, [])
 
@@ -394,6 +408,21 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
       loadDiff()
     }
   }, [loadStatus, loadDiff, selectedFile])
+
+  const handlePull = useCallback(async () => {
+    if (!diffPath || pulling) return
+    setPulling(true)
+    try {
+      const result = await window.api.project.gitPull(diffPath)
+      if (!result.success) {
+        alert(`Git pull failed: ${result.error || 'Unknown error'}`)
+      } else {
+        handleRefresh()
+      }
+    } finally {
+      setPulling(false)
+    }
+  }, [diffPath, pulling, handleRefresh])
 
   const toggleDir = useCallback((dirPath: string) => {
     setExpandedDirs(prev => {
@@ -458,7 +487,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
         onClick={() => handleFileClick(f.path, f.index === '?')}
         onContextMenu={(e) => {
           e.preventDefault()
-          setContextMenu({ ...getMenuPosition(e.clientX, e.clientY), filePath: f.path })
+          setContextMenu({ ...getMenuPosition(e.clientX, e.clientY), filePath: f.path, untracked: f.index === '?' })
         }}
       >
         <span className="diff-tree-file-icon">
@@ -511,6 +540,9 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
           </svg>
         </button>
         <button className="btn btn-sm" onClick={handleRefresh}>Refresh</button>
+        <button className="btn btn-sm" onClick={handlePull} disabled={pulling} title="git pull">
+          {pulling ? 'Pulling...' : 'Pull'}
+        </button>
         <button className="btn btn-sm btn-primary" onClick={() => setShowCommitModal(true)}>Commit</button>
         <button
           className={`btn btn-sm btn-icon diff-sidebar-toggle ${!sidebarCollapsed ? 'active' : ''}`}
@@ -579,7 +611,7 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
           {loading ? (
             <div className="diff-loading">Loading...</div>
           ) : (
-            <DiffView diff={displayDiff} onAddToClaude={handleAddToClaude} onOpenInEditor={async (filePath) => {
+            <DiffView diff={displayDiff} onAddToClaude={handleAddToClaude} onShowFullFile={(filePath) => handleShowFullFile(filePath.replace(/^[ab]\//, ''))} onOpenInEditor={async (filePath) => {
               const running = await window.api.neovim.isRunning(diffPath)
               if (!running) await window.api.neovim.create(diffPath, filePath)
               else await window.api.neovim.openFile(diffPath, filePath)
@@ -633,6 +665,15 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
             }}
           >
             Open in editor
+          </button>
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              handleShowFullFile(contextMenu.filePath, contextMenu.untracked)
+              setContextMenu(null)
+            }}
+          >
+            Show full file
           </button>
           <button
             className="context-menu-item"

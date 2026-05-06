@@ -437,19 +437,6 @@ export default function App() {
         return
       }
 
-      // Mod+B — Toggle browser
-      if (key === 'b' && currentPath) {
-        e.preventDefault()
-        if (useUIStore.getState().settingsOpen) return
-        const { sidePanelView, setSidePanelView } = useUIStore.getState()
-        if (sidePanelView?.type === 'browser' && sidePanelView.projectPath === currentPath) {
-          setSidePanelView(null)
-        } else {
-          setSidePanelView({ type: 'browser', projectPath: currentPath })
-        }
-        return
-      }
-
       // Mod+D — Toggle diff
       if (key === 'd' && currentPath) {
         e.preventDefault()

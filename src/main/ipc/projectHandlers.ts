@@ -92,14 +92,14 @@ export function registerProjectHandlers(
     }
   })
 
-  ipcMain.handle('project:diff-file', async (_event, projectPath: string, filePath: string, untracked?: boolean) => {
+  ipcMain.handle('project:diff-file', async (_event, projectPath: string, filePath: string, untracked?: boolean, fullFile?: boolean) => {
     try {
       const git = new GitService(projectPath)
       if (untracked) {
         const diff = await git.diffUntrackedFile(filePath)
         return { success: true, diff }
       }
-      const diff = await git.diffFile(filePath)
+      const diff = await git.diffFile(filePath, fullFile)
       return { success: true, diff }
     } catch (err) {
       return { success: false, error: (err as Error).message }
@@ -162,7 +162,7 @@ export function registerProjectHandlers(
       terminals.push({ id: info.id, projectPath: info.projectPath, pid: info.pid, name: action.name })
     }
 
-    return { success: true, terminals, terminalIds: terminals.map(t => t.id), browserUrl: config.browserUrl || null }
+    return { success: true, terminals, terminalIds: terminals.map(t => t.id) }
   })
 
   ipcMain.handle('project:open-in-editor', (_event, projectPath: string, filePath?: string) => {
@@ -221,6 +221,16 @@ export function registerProjectHandlers(
     try {
       const git = new GitService(projectPath)
       await git.push()
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('project:git-pull', async (_event, projectPath: string) => {
+    try {
+      const git = new GitService(projectPath)
+      await git.pull()
       return { success: true }
     } catch (err) {
       return { success: false, error: (err as Error).message }

@@ -2,7 +2,6 @@ import { app, BrowserWindow, shell, globalShortcut, session, Menu, MenuItem, ipc
 import { join } from 'path'
 import { AgentManager } from './agent/AgentManager'
 import { ProjectManager } from './project/ProjectManager'
-import { BrowserManager } from './browser/BrowserManager'
 import { TerminalManager } from './terminal/TerminalManager'
 import { SettingsManager } from './settings/SettingsManager'
 import { VoiceManager } from './voice/VoiceManager'
@@ -36,7 +35,6 @@ if (!app.isPackaged) {
 
 const agentManager = new AgentManager()
 const projectManager = new ProjectManager()
-const browserManager = new BrowserManager()
 const terminalManager = new TerminalManager()
 const settingsManager = new SettingsManager()
 const voiceManager = new VoiceManager()
@@ -47,7 +45,7 @@ const neovimManager = new NeovimManager()
 const mcpManager = new McpManager()
 const checkpointManager = new CheckpointManager()
 const automationManager = new AutomationManager()
-const bridgeServer = new ClaudexBridgeServer(terminalManager, browserManager)
+const bridgeServer = new ClaudexBridgeServer(terminalManager)
 
 let mainWindow: BrowserWindow | null = null
 
@@ -139,7 +137,6 @@ function createWindow(): void {
   })
 
   agentManager.setMainWindow(mainWindow)
-  browserManager.setMainWindow(mainWindow)
   terminalManager.setMainWindow(mainWindow)
   neovimManager.setMainWindow(mainWindow)
   mcpManager.setMainWindow(mainWindow)
@@ -191,7 +188,6 @@ function createWindow(): void {
       agentManager.stopAgent()
       terminalManager.destroy()
       neovimManager.destroy()
-      browserManager.destroy()
       mainWindow?.destroy()
     }
   })
@@ -225,7 +221,6 @@ function createWindow(): void {
       agentManager.stopAgent()
       terminalManager.destroy()
       neovimManager.destroy()
-      browserManager.destroy()
       mainWindow?.destroy()
     }, 300)
   })
@@ -377,7 +372,7 @@ app.whenReady().then(async () => {
   automationManager.setMcpManager(mcpManager)
   automationManager.setBridgeServer(bridgeServer)
 
-  registerAllHandlers(agentManager, projectManager, browserManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager, bridgeServer, checkpointManager, automationManager)
+  registerAllHandlers(agentManager, projectManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager, bridgeServer, checkpointManager, automationManager)
 
   createWindow()
 

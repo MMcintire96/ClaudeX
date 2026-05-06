@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { ThemeName, THEME_LIST, DEFAULT_THEME } from '../lib/themes'
 
 interface SidePanelView {
-  type: 'browser' | 'diff'
+  type: 'diff'
   projectPath: string
   file?: string
 }
@@ -15,10 +15,7 @@ interface UIState {
   sidePanelWidth: number
 
   // Per-project memory: remembers last side panel per project
-  projectSidePanelMemory: Record<string, 'browser' | 'diff'>
-
-  // Pending URL for browser panel to navigate to after mount
-  pendingBrowserUrl: string | null
+  projectSidePanelMemory: Record<string, 'diff'>
 
   // Chat popped out to separate window
   chatDetached: boolean
@@ -34,7 +31,6 @@ interface UIState {
 
   toggleSidebar: () => void
   setSidePanelView: (view: SidePanelView | null) => void
-  setPendingBrowserUrl: (url: string | null) => void
   cycleTheme: () => void
   setTheme: (theme: ThemeName) => void
   setSidebarWidth: (w: number) => void
@@ -66,7 +62,6 @@ export const useUIStore = create<UIState>((set) => ({
   sidebarWidth: 240,
   sidePanelWidth: 480,
   projectSidePanelMemory: {},
-  pendingBrowserUrl: null,
   chatDetached: false,
   splitView: false,
   splitSessionId: null,
@@ -87,10 +82,6 @@ export const useUIStore = create<UIState>((set) => ({
 
   setAutomationsOpen: (open: boolean): void => {
     set({ automationsOpen: open, ...(open ? { settingsOpen: false, sidePanelView: null, chatDetached: false } : {}) })
-  },
-
-  setPendingBrowserUrl: (url: string | null): void => {
-    set({ pendingBrowserUrl: url })
   },
 
   toggleSidebar: (): void => {

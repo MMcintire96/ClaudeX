@@ -46,7 +46,7 @@ function computeTimings(allTodoMessages: UIToolUseMessage[]): Map<string, ItemTi
   const timings = new Map<string, ItemTiming>()
 
   for (const msg of allTodoMessages) {
-    const todos = (msg.input?.todos as TodoItem[]) || []
+    const todos: TodoItem[] = Array.isArray(msg.input?.todos) ? (msg.input.todos as TodoItem[]) : []
     for (const todo of todos) {
       const key = todo.content
       let timing = timings.get(key)
@@ -71,7 +71,7 @@ function computeTimings(allTodoMessages: UIToolUseMessage[]): Map<string, ItemTi
 }
 
 export default function TodoBlock({ message, isLatest, allTodoMessages }: Props) {
-  const todos: TodoItem[] = (message.input?.todos as TodoItem[]) || []
+  const todos: TodoItem[] = Array.isArray(message.input?.todos) ? (message.input.todos as TodoItem[]) : []
   const [collapsed, setCollapsed] = useState(!isLatest)
   const [now, setNow] = useState(Date.now())
 

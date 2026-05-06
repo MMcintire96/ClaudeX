@@ -16,10 +16,9 @@ import type { ClaudexBridgeServer } from '../bridge/ClaudexBridgeServer'
 import type { CheckpointManager } from '../checkpoint/CheckpointManager'
 
 const SYSTEM_PROMPT_APPEND =
-  'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal and browser panels. ' +
-  'Terminal commands and browser navigation are visible to the user in real-time. ' +
-  'Use terminal_execute to run commands and terminal_read to check output. ' +
-  'Use browser_navigate, browser_content, and browser_screenshot to interact with web pages.'
+  'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal panels. ' +
+  'Terminal commands are visible to the user in real-time. ' +
+  'Use terminal_execute to run commands and terminal_read to check output.'
 
 /**
  * Manages multiple agent sessions, keyed by sessionId.

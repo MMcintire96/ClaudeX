@@ -10,7 +10,6 @@ export interface ProjectAction {
 }
 
 export interface ProjectStartConfig {
-  browserUrl?: string
   actions?: ProjectAction[]
   defaultAction?: string
 }

@@ -8,7 +8,6 @@ interface ProjectAction {
 }
 
 interface StartConfig {
-  browserUrl?: string
   actions?: ProjectAction[]
   defaultAction?: string
 }
@@ -20,7 +19,6 @@ interface StartConfigModalProps {
 }
 
 export default function StartConfigModal({ projectPath, onClose, onSaved }: StartConfigModalProps) {
-  const [browserUrl, setBrowserUrl] = useState('')
   const [actions, setActions] = useState<ProjectAction[]>([{ name: '', command: '' }])
   const [defaultAction, setDefaultAction] = useState('')
   const [loading, setLoading] = useState(true)
@@ -28,7 +26,6 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
   useEffect(() => {
     window.api.project.getStartConfig(projectPath).then(config => {
       if (config) {
-        setBrowserUrl(config.browserUrl || '')
         if (config.actions && config.actions.length > 0) {
           setActions(config.actions)
           setDefaultAction(config.defaultAction || '')
@@ -41,7 +38,6 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
   const handleSave = async () => {
     const validActions = actions.filter(a => a.name.trim() && a.command.trim())
     const config: StartConfig = {
-      browserUrl: browserUrl.trim() || undefined,
       actions: validActions.length > 0 ? validActions : undefined,
       defaultAction: defaultAction && validActions.some(a => a.name === defaultAction) ? defaultAction : undefined
     }
@@ -120,15 +116,6 @@ export default function StartConfigModal({ projectPath, onClose, onSaved }: Star
             <button className="btn btn-sm" onClick={addAction} style={{ marginTop: '4px' }}>
               + Add action
             </button>
-          </div>
-          <div className="start-config-section">
-            <label className="start-config-label">Browser URL (optional)</label>
-            <input
-              className="start-config-input"
-              placeholder="http://localhost:3000"
-              value={browserUrl}
-              onChange={e => setBrowserUrl(e.target.value)}
-            />
           </div>
           <div className="start-config-actions">
             <button className="btn" onClick={onClose}>Cancel</button>
