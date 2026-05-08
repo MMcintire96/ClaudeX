@@ -10,7 +10,6 @@ import SidePanel from './SidePanel'
 import AppHeader from './AppHeader'
 import TerminalPanel from '../terminal/TerminalPanel'
 import SettingsPanel from '../settings/SettingsPanel'
-import AutomationPanel from '../automation/AutomationPanel'
 
 function ResizeHandle({
   side,
@@ -58,7 +57,6 @@ function ResizeHandle({
 
 export default function AppLayout() {
   const settingsOpen = useUIStore(s => s.settingsOpen)
-  const automationsOpen = useUIStore(s => s.automationsOpen)
   const sidebarVisible = useUIStore(s => s.sidebarVisible)
   const sidePanelView = useUIStore(s => s.sidePanelView)
   const sidebarWidth = useUIStore(s => s.sidebarWidth)
@@ -110,26 +108,20 @@ export default function AppLayout() {
                 <ResizeHandle side="left" onResize={handleSidebarResize} />
               </div>
             )}
-            {automationsOpen ? (
-              <div className="automation-page-container">
-                <AutomationPanel />
-              </div>
-            ) : (
-              <MainPanel />
-            )}
-            {sidePanelView && !automationsOpen && (
+            <MainPanel />
+            {sidePanelView && (
               <div className="panel-wrapper">
                 <ResizeHandle side="right" onResize={handleSidePanelResize} />
                 <SidePanel />
               </div>
             )}
           </div>
-          {!automationsOpen && hasAnyTerminals && (
+          {hasAnyTerminals && (
             <div style={{ display: showTerminal ? undefined : 'none' }}>
               <TerminalPanel />
             </div>
           )}
-          {!automationsOpen && !terminalPanelVisible && hasShellTerminals && (
+          {!terminalPanelVisible && hasShellTerminals && (
             <button className="terminal-collapsed-bar" onClick={togglePanel} title="Show terminal">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="6 15 12 9 18 15"/>

@@ -20,9 +20,9 @@ import { McpManager } from '../mcp/McpManager'
 import { registerMcpHandlers } from './mcpHandlers'
 import { CheckpointManager } from '../checkpoint/CheckpointManager'
 import { registerCheckpointHandlers } from './checkpointHandlers'
-import { AutomationManager } from '../automation/AutomationManager'
-import { registerAutomationHandlers } from './automationHandlers'
 import { registerCCHandlers, setCCMainWindow } from './ccHandlers'
+import type { RemoteServer } from '../remote/RemoteServer'
+import { registerRemoteHandlers } from './remoteHandlers'
 
 export function registerAllHandlers(
   agentManager: AgentManager,
@@ -37,7 +37,7 @@ export function registerAllHandlers(
   mcpManager?: McpManager,
   bridgeServer?: ClaudexBridgeServer,
   checkpointManager?: CheckpointManager,
-  automationManager?: AutomationManager
+  remoteServer?: RemoteServer
 ): void {
   registerAgentHandlers(agentManager, worktreeManager, sessionPersistence, bridgeServer)
   registerProjectHandlers(projectManager, projectConfigManager, terminalManager)
@@ -57,8 +57,8 @@ export function registerAllHandlers(
   if (checkpointManager) {
     registerCheckpointHandlers(checkpointManager)
   }
-  if (automationManager) {
-    registerAutomationHandlers(automationManager)
+  if (remoteServer) {
+    registerRemoteHandlers(remoteServer)
   }
   registerCCHandlers()
 }

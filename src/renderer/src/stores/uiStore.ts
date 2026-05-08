@@ -48,9 +48,6 @@ interface UIState {
   settingsOpen: boolean
   setSettingsOpen: (open: boolean) => void
 
-  automationsOpen: boolean
-  setAutomationsOpen: (open: boolean) => void
-
   suspendSplitView: () => void
   restoreSplitView: (splitSessionId: string) => void
 }
@@ -70,18 +67,13 @@ export const useUIStore = create<UIState>((set) => ({
   projectPairMemory: {},
   chatZoom: 1,
   settingsOpen: false,
-  automationsOpen: false,
 
   setChatZoom: (zoom: number): void => {
     set({ chatZoom: Math.max(0.5, Math.min(2, zoom)) })
   },
 
   setSettingsOpen: (open: boolean): void => {
-    set({ settingsOpen: open, ...(open ? { automationsOpen: false } : {}) })
-  },
-
-  setAutomationsOpen: (open: boolean): void => {
-    set({ automationsOpen: open, ...(open ? { settingsOpen: false, sidePanelView: null, chatDetached: false } : {}) })
+    set({ settingsOpen: open })
   },
 
   toggleSidebar: (): void => {

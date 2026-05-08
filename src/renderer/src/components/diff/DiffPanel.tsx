@@ -272,6 +272,20 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
     return result
   }, [diff, selectedFile, searchFilter, filteredFiles, selectedTurn, turnFiles])
 
+  // Total +/- line counts across the currently visible diff
+  const diffStats = useMemo(() => {
+    let added = 0
+    let removed = 0
+    if (!displayDiff) return { added, removed }
+    const lines = displayDiff.split('\n')
+    for (const line of lines) {
+      if (line.startsWith('+++') || line.startsWith('---')) continue
+      if (line.startsWith('+')) added++
+      else if (line.startsWith('-')) removed++
+    }
+    return { added, removed }
+  }, [displayDiff])
+
   /** Quiet refresh */
   const quietRefresh = useCallback(async () => {
     if (!diffPath) return
@@ -586,6 +600,12 @@ export default function DiffPanel({ projectPath }: DiffPanelProps) {
       {/* Sub-header with title and tabs */}
       <div className="diff-panel-sub-header">
         <h3>Uncommitted changes</h3>
+        {(diffStats.added > 0 || diffStats.removed > 0) && (
+          <span className="diff-stats-chip" title={`${diffStats.added} additions, ${diffStats.removed} deletions`}>
+            <span className="diff-stats-add">+{diffStats.added}</span>
+            <span className="diff-stats-del">-{diffStats.removed}</span>
+          </span>
+        )}
         <div className="diff-tab-row">
           <button
             className={`diff-tab ${activeTab === 'unstaged' ? 'active' : ''}`}

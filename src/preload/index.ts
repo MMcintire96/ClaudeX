@@ -57,6 +57,11 @@ const api = {
       ipcRenderer.on('agent:forwarded-review', handler)
       return () => ipcRenderer.removeListener('agent:forwarded-review', handler)
     },
+    onUserMessage: (callback: (data: { sessionId: string; content: string }) => void) => {
+      const handler = (_: unknown, data: { sessionId: string; content: string }) => callback(data)
+      ipcRenderer.on('agent:user-message', handler)
+      return () => ipcRenderer.removeListener('agent:user-message', handler)
+    },
   },
   project: {
     open: () =>
@@ -335,66 +340,28 @@ const api = {
       return () => ipcRenderer.removeListener('cc:session-event', handler)
     }
   },
-  automation: {
-    list: () =>
-      ipcRenderer.invoke('automation:list'),
-    get: (id: string) =>
-      ipcRenderer.invoke('automation:get', id),
-    create: (input: { name: string; prompt: string; projectPaths: string[]; schedule: unknown; sandboxMode?: string; model?: string | null; effort?: string | null; enabled?: boolean }) =>
-      ipcRenderer.invoke('automation:create', input),
-    update: (id: string, partial: Record<string, unknown>) =>
-      ipcRenderer.invoke('automation:update', id, partial),
-    delete: (id: string) =>
-      ipcRenderer.invoke('automation:delete', id),
-    trigger: (automationId: string, projectPath: string | null) =>
-      ipcRenderer.invoke('automation:trigger', automationId, projectPath),
-    cancelRun: (runId: string) =>
-      ipcRenderer.invoke('automation:cancel-run', runId),
-    runs: (automationId: string, limit?: number) =>
-      ipcRenderer.invoke('automation:runs', automationId, limit),
-    run: (automationId: string, runId: string) =>
-      ipcRenderer.invoke('automation:run', automationId, runId),
-    triage: () =>
-      ipcRenderer.invoke('automation:triage'),
-    setTriageStatus: (automationId: string, runId: string, status: string) =>
-      ipcRenderer.invoke('automation:set-triage-status', automationId, runId, status),
-    applyRun: (automationId: string, runId: string) =>
-      ipcRenderer.invoke('automation:apply-run', automationId, runId),
-    onRunStarted: (callback: (data: unknown) => void) => {
-      const handler = (_: unknown, data: unknown) => callback(data)
-      ipcRenderer.on('automation:run-started', handler)
-      return () => ipcRenderer.removeListener('automation:run-started', handler)
-    },
-    onRunCompleted: (callback: (data: unknown) => void) => {
-      const handler = (_: unknown, data: unknown) => callback(data)
-      ipcRenderer.on('automation:run-completed', handler)
-      return () => ipcRenderer.removeListener('automation:run-completed', handler)
-    },
-    onRunFailed: (callback: (data: unknown) => void) => {
-      const handler = (_: unknown, data: unknown) => callback(data)
-      ipcRenderer.on('automation:run-failed', handler)
-      return () => ipcRenderer.removeListener('automation:run-failed', handler)
-    },
-    onRunUpdated: (callback: (data: unknown) => void) => {
-      const handler = (_: unknown, data: unknown) => callback(data)
-      ipcRenderer.on('automation:run-updated', handler)
-      return () => ipcRenderer.removeListener('automation:run-updated', handler)
-    },
-    onCreated: (callback: (data: unknown) => void) => {
-      const handler = (_: unknown, data: unknown) => callback(data)
-      ipcRenderer.on('automation:created', handler)
-      return () => ipcRenderer.removeListener('automation:created', handler)
-    },
-    onUpdated: (callback: (data: unknown) => void) => {
-      const handler = (_: unknown, data: unknown) => callback(data)
-      ipcRenderer.on('automation:updated', handler)
-      return () => ipcRenderer.removeListener('automation:updated', handler)
-    },
-    onDeleted: (callback: (data: unknown) => void) => {
-      const handler = (_: unknown, data: unknown) => callback(data)
-      ipcRenderer.on('automation:deleted', handler)
-      return () => ipcRenderer.removeListener('automation:deleted', handler)
-    }
+  remote: {
+    status: () =>
+      ipcRenderer.invoke('remote:status') as Promise<{
+        bindHost: string
+        bindSource: 'env' | 'tailscale' | 'localhost'
+        port: number
+        devices: Array<{ id: string; label: string; pairedAt: number; lastSeenAt: number; hasPush: boolean }>
+      }>,
+    pairStart: (label?: string) =>
+      ipcRenderer.invoke('remote:pair-start', label) as Promise<{
+        code: string
+        expiresAt: number
+        url: string
+        qrDataUrl: string
+        bindHost: string
+        bindSource: 'env' | 'tailscale' | 'localhost'
+        port: number
+      }>,
+    pairRevoke: (deviceId: string) =>
+      ipcRenderer.invoke('remote:pair-revoke', deviceId) as Promise<{ ok: boolean }>,
+    setKeepAwake: (on: boolean) =>
+      ipcRenderer.invoke('remote:set-keep-awake', on) as Promise<{ ok: boolean }>
   }
 }
 

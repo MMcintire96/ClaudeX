@@ -8,6 +8,8 @@ extraResources:
     to: ./
     filter:
       - 'claudex-mcp-server.js'
+  - from: mobile/dist/
+    to: mobile/
 files:
   - '!**/.vscode/*'
   - '!src/*'

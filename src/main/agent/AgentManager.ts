@@ -14,6 +14,7 @@ import type { NeovimManager } from '../neovim/NeovimManager'
 import type { McpManager } from '../mcp/McpManager'
 import type { ClaudexBridgeServer } from '../bridge/ClaudexBridgeServer'
 import type { CheckpointManager } from '../checkpoint/CheckpointManager'
+import type { RemoteServer } from '../remote/RemoteServer'
 
 const SYSTEM_PROMPT_APPEND =
   'You are running inside ClaudeX, a desktop IDE. You have MCP tools for the IDE\'s terminal panels. ' +
@@ -42,6 +43,7 @@ export class AgentManager {
   private mcpManager: McpManager | null = null
   private bridgeServer: ClaudexBridgeServer | null = null
   private checkpointManager: CheckpointManager | null = null
+  private remoteServer: RemoteServer | null = null
 
   // Session pairing for split-view collaboration
   private sessionPartners: Map<string, string> = new Map()
@@ -72,6 +74,10 @@ export class AgentManager {
 
   setCheckpointManager(manager: CheckpointManager): void {
     this.checkpointManager = manager
+  }
+
+  setRemoteServer(server: RemoteServer): void {
+    this.remoteServer = server
   }
 
   pairSessions(a: string, b: string): void {
@@ -218,6 +224,13 @@ export class AgentManager {
                   files.add(String(toolBlock.input.file_path))
                   this.pendingModifiedFiles.set(sessionId, files)
                 }
+                // Push to phone when the agent asks a question or hits plan mode.
+                if (toolBlock.name === 'AskUserQuestion' || toolBlock.name === 'ExitPlanMode') {
+                  const projectName = this.agents.get(sessionId)?.projectPath
+                    ? basename(this.agents.get(sessionId)!.projectPath!)
+                    : null
+                  this.remoteServer?.pushNeedsInput(sessionId, projectName).catch(() => {})
+                }
               }
             }
           }
@@ -282,6 +295,7 @@ export class AgentManager {
       execFile('pw-play', [soundFile], (err) => {
         if (err) execFile('paplay', [soundFile], () => {})
       })
+      this.remoteServer?.pushAgentFinished(sessionId, body).catch(() => {})
 
       // Generate title after first successful turn
       const prompt = this.initialPrompts.get(sessionId)

@@ -282,11 +282,14 @@ export class WorktreeManager {
   }
 
   async cleanupAll(): Promise<void> {
-    // Prune git worktree references
+    // Prune git worktree references — skip paths that are no longer git repos
+    // (e.g. project moved/deleted) so we don't spam the console at quit time.
     const projectPaths = new Set(this.registry.worktrees.map(w => w.projectPath))
     for (const pp of projectPaths) {
       try {
         const git = simpleGit(pp)
+        const isRepo = await git.checkIsRepo().catch(() => false)
+        if (!isRepo) continue
         await git.raw(['worktree', 'prune'])
       } catch (err) {
         console.warn(`[WorktreeManager] Failed to prune worktrees for ${pp}:`, err)

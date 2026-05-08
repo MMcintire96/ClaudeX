@@ -9,7 +9,6 @@ import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import ProjectTree from './ProjectTree'
 import { useSessionPreview } from '../../hooks/useSessionPreview'
 import SessionPreviewCard from './SessionPreviewCard'
-import AutomationSidebarSection from '../automation/AutomationSidebarSection'
 
 export default function Sidebar() {
   const [creatingThread, setCreatingThread] = useState(false)
@@ -518,7 +517,7 @@ export default function Sidebar() {
         {/* Quick Chat sessions */}
         {(() => {
           const scratchSessions = Object.values(sessions)
-            .filter(s => s.projectPath === SCRATCH_PROJECT_PATH && !s.sessionId.startsWith('automation-'))
+            .filter(s => s.projectPath === SCRATCH_PROJECT_PATH)
             .sort((a, b) => b.createdAt - a.createdAt)
           const scratchHistory = historyByProject[SCRATCH_PROJECT_PATH] || []
           return (
@@ -611,11 +610,6 @@ export default function Sidebar() {
           )
         })()}
 
-        {/* Automations section */}
-        <AutomationSidebarSection
-          collapsed={!!sectionsCollapsed.automations}
-          onToggleCollapse={() => toggleSection('automations')}
-        />
       </div>
 
       {sessionPreview.previewTarget && (

@@ -6,10 +6,28 @@ import { BrowserWindow } from 'electron'
  *
  * Events sent before the main window's renderer has finished loading
  * are queued and replayed once the window fires 'did-finish-load'.
+ *
+ * Also fans out to remote subscribers (e.g. WebSocket clients on the
+ * mobile PWA), via a callback registry so this module stays free of
+ * transport-specific deps (no `ws` import here).
  */
 const extraWindows: Set<BrowserWindow> = new Set()
 const readyWindows: WeakSet<BrowserWindow> = new WeakSet()
 const pendingQueues: WeakMap<BrowserWindow, Array<{ channel: string; args: unknown[] }>> = new WeakMap()
+
+/** Callback signature for non-Electron subscribers (e.g. RemoteServer WS clients). */
+export type RemoteSubscriber = (channel: string, args: unknown[]) => void
+const remoteSubscribers: Set<RemoteSubscriber> = new Set()
+
+/** Add a non-window subscriber (e.g. WebSocket sink). Returns an unsubscribe fn. */
+export function addRemoteSubscriber(sub: RemoteSubscriber): () => void {
+  remoteSubscribers.add(sub)
+  return () => { remoteSubscribers.delete(sub) }
+}
+
+export function removeRemoteSubscriber(sub: RemoteSubscriber): void {
+  remoteSubscribers.delete(sub)
+}
 
 export function addBroadcastWindow(win: BrowserWindow): void {
   extraWindows.add(win)
@@ -63,6 +81,17 @@ export function broadcastSend(
   for (const win of extraWindows) {
     if (!win.isDestroyed()) {
       win.webContents.send(channel, ...args)
+    }
+  }
+  // Fan out to remote subscribers (mobile WS clients, etc.).
+  // Channels not relevant to remote clients are filtered server-side.
+  if (remoteSubscribers.size > 0) {
+    for (const sub of remoteSubscribers) {
+      try {
+        sub(channel, args)
+      } catch (err) {
+        console.warn('[broadcast] remote subscriber threw:', err)
+      }
     }
   }
 }

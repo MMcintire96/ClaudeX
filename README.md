@@ -18,29 +18,6 @@ Command palette — commands, files, sessions, projects, branches, themes:
 
 ![Command Palette](screenshots/command-palette.png)
 
-## Automatons
-
-The headline feature. Automatons let you schedule Claude agents to run tasks on their own — no babysitting required. Set up a prompt, pick a schedule, and ClaudeX handles the rest in the background.
-
-**How it works:**
-
-1. Create an automaton with a prompt describing what you want done
-2. Choose a schedule — interval, daily, weekly, cron expression, or manual trigger
-3. Pick a sandbox mode to control how much access the agent gets:
-   - **Read-only** — agent can analyze but not modify anything
-   - **Workspace-write** — agent works in an isolated git worktree; you review and apply changes
-   - **Full-access** — agent runs directly in your project (use carefully)
-4. Results land in a triage inbox where you can review diffs, apply changes, pin important findings, or archive
-
-**Use cases:**
-- Nightly code reviews or dependency audits
-- Scheduled test analysis and bug triage
-- Recurring refactoring or cleanup tasks
-- Periodic codebase health checks
-- Anything you'd otherwise remember to ask Claude about every few days
-
-Each run tracks cost, duration, turns, and the full agent conversation. Automations that produce changes show up with diffs you can apply in one click. The scheduler ticks every 60 seconds, supports everything from "every 5 minutes" to full cron expressions, and won't double-run the same automation.
-
 ## ALERT
 - It is unaware if this is legal with your Claude Code subscription. Under the hood you are calling the agent-sdk. anthropic 
 has been very hard to understand here if thats legal.
@@ -175,7 +152,6 @@ ClaudeX uses Electron's three-process model:
 src/
 ├── main/              # Main process — lifecycle, native APIs, agent/terminal management
 │   ├── agent/         #   AgentManager → AgentProcess → Claude Agent SDK
-│   ├── automation/    #   AutomationManager, scheduler, persistence
 │   ├── bridge/        #   ClaudexBridgeServer (MCP tool bridge)
 │   ├── browser/       #   Embedded browser tabs
 │   ├── terminal/      #   PTY terminal management
@@ -189,9 +165,8 @@ src/
     │   ├── layout/        # App shell, sidebar, panels
     │   ├── terminal/      # xterm.js terminal views
     │   ├── diff/          # Diff panel with diff2html
-    │   ├── automation/    # Automaton panel, editor, triage inbox
     │   └── settings/      # Settings panel
-    └── stores/            # Zustand state (session, project, terminal, ui, settings, automation)
+    └── stores/            # Zustand state (session, project, terminal, ui, settings)
 ```
 
 ### How agents work

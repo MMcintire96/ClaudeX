@@ -13,9 +13,9 @@ import { WorktreeManager } from './worktree/WorktreeManager'
 import { NeovimManager } from './neovim/NeovimManager'
 import { McpManager } from './mcp/McpManager'
 import { CheckpointManager } from './checkpoint/CheckpointManager'
-import { AutomationManager } from './automation/AutomationManager'
 import { addBroadcastWindow, removeBroadcastWindow, markWindowReady } from './broadcast'
 import { setCCMainWindow } from './ipc/ccHandlers'
+import { RemoteServer, defaultPwaDistDir } from './remote/RemoteServer'
 
 // Auto-grant media permissions (Electron has no native permission dialog)
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream')
@@ -44,8 +44,26 @@ const worktreeManager = new WorktreeManager()
 const neovimManager = new NeovimManager()
 const mcpManager = new McpManager()
 const checkpointManager = new CheckpointManager()
-const automationManager = new AutomationManager()
 const bridgeServer = new ClaudexBridgeServer(terminalManager)
+const remoteServer = new RemoteServer({
+  agentManager,
+  sessionPersistence,
+  pwaDistDir: defaultPwaDistDir(),
+  // In dev, pin to a known port so the mobile PWA's vite dev server can proxy
+  // /api/* and /api/events (WS) to it. Random port in production.
+  port: app.isPackaged ? undefined : (Number(process.env.CLAUDEX_REMOTE_PORT) || 4790),
+  rpcManagers: {
+    projectManager,
+    projectConfigManager,
+    settingsManager,
+    mcpManager,
+    checkpointManager,
+    worktreeManager,
+    terminalManager,
+    sessionPersistence
+  }
+})
+agentManager.setRemoteServer(remoteServer)
 
 let mainWindow: BrowserWindow | null = null
 
@@ -140,6 +158,7 @@ function createWindow(): void {
   terminalManager.setMainWindow(mainWindow)
   neovimManager.setMainWindow(mainWindow)
   mcpManager.setMainWindow(mainWindow)
+  remoteServer.setMainWindow(mainWindow)
   setCCMainWindow(mainWindow)
 
   // Prevent the window from navigating away
@@ -351,6 +370,11 @@ app.whenReady().then(async () => {
   await settingsManager.init()
   await terminalManager.init()
   await bridgeServer.start()
+  try {
+    await remoteServer.start()
+  } catch (err) {
+    console.error('[Main] failed to start RemoteServer:', err)
+  }
   
   // Initialize MCP manager with saved configs and bridge info
   mcpManager.loadConfigs(settingsManager.getMcpServers())
@@ -367,17 +391,9 @@ app.whenReady().then(async () => {
   agentManager.setMcpManager(mcpManager)
   agentManager.setCheckpointManager(checkpointManager)
 
-  automationManager.setWorktreeManager(worktreeManager)
-  automationManager.setSettingsManager(settingsManager)
-  automationManager.setMcpManager(mcpManager)
-  automationManager.setBridgeServer(bridgeServer)
-
-  registerAllHandlers(agentManager, projectManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager, bridgeServer, checkpointManager, automationManager)
+  registerAllHandlers(agentManager, projectManager, terminalManager, settingsManager, voiceManager, sessionPersistence, projectConfigManager, worktreeManager, neovimManager, mcpManager, bridgeServer, checkpointManager, remoteServer)
 
   createWindow()
-
-  automationManager.setMainWindow(mainWindow!)
-  automationManager.startScheduler()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -398,11 +414,11 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   agentManager.stopAgent()
-  automationManager.destroy()
   terminalManager.destroy()
   neovimManager.destroy()
   voiceManager.destroy()
   mcpManager.stopAll()
   bridgeServer.stop()
+  remoteServer.stop()
   worktreeManager.cleanupAll().catch(() => {})
 })

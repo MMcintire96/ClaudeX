@@ -43,6 +43,7 @@ export interface ElectronAPI {
       forkB?: { sessionId: string; worktreePath: string; worktreeSessionId: string }
       error?: string
     }>
+    onUserMessage: (callback: (data: { sessionId: string; content: string }) => void) => () => void
   }
   project: {
     open: () => Promise<{ success: boolean; path?: string; isGitRepo?: boolean; canceled?: boolean }>
@@ -161,6 +162,25 @@ export interface ElectronAPI {
     revert: (sessionId: string, turnNumber: number) => Promise<{ success: boolean; error?: string; messageCount?: number }>
     cleanup: (sessionId: string) => Promise<{ success: boolean; error?: string }>
     onFilesModified: (callback: (data: { sessionId: string; projectPath: string; filesModified: string[]; sdkSessionId: string | null }) => void) => () => void
+  }
+  remote: {
+    status: () => Promise<{
+      bindHost: string
+      bindSource: 'env' | 'tailscale' | 'localhost'
+      port: number
+      devices: Array<{ id: string; label: string; pairedAt: number; lastSeenAt: number; hasPush: boolean }>
+    }>
+    pairStart: (label?: string) => Promise<{
+      code: string
+      expiresAt: number
+      url: string
+      qrDataUrl: string
+      bindHost: string
+      bindSource: 'env' | 'tailscale' | 'localhost'
+      port: number
+    }>
+    pairRevoke: (deviceId: string) => Promise<{ ok: boolean }>
+    setKeepAwake: (on: boolean) => Promise<{ ok: boolean }>
   }
   mcp: {
     list: () => Promise<Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; claudeReported?: boolean; source?: string; tools?: string[] }>>

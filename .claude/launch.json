@@ -18,6 +18,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "test:watch"],
       "port": null
+    },
+    {
+      "name": "Mobile PWA Dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "mobile:dev"],
+      "port": 5180
     }
   ]
 }

@@ -33,8 +33,7 @@ export default function AppHeader() {
   // Use worktree path if the active session is in a worktree, otherwise project path
   const effectiveCwd = activeSession?.worktreePath || currentPath
 
-  const isAutomationSession = activeSessionId?.startsWith('automation-') ?? false
-  const isScratchSession = activeSession?.projectPath === SCRATCH_PROJECT_PATH && !isAutomationSession
+  const isScratchSession = activeSession?.projectPath === SCRATCH_PROJECT_PATH
   const isDiffActive = sidePanelView?.type === 'diff' && sidePanelView?.projectPath === currentPath
 
   // Close diff panel when switching to a scratch session
@@ -46,7 +45,6 @@ export default function AppHeader() {
 
   const settingsOpen = useUIStore(s => s.settingsOpen)
   const setSettingsOpen = useUIStore(s => s.setSettingsOpen)
-  const automationsOpen = useUIStore(s => s.automationsOpen)
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
   const ctxMenuRef = useRef<HTMLDivElement>(null)
@@ -144,7 +142,7 @@ export default function AppHeader() {
       </div>
       <div className="main-header-center">
         <span className="main-header-title">
-          {isScratchSession ? 'Quick Chat' : isAutomationSession ? 'Automation' : (projectName ?? 'No project')}
+          {isScratchSession ? 'Quick Chat' : (projectName ?? 'No project')}
         </span>
         {activeSession?.name && (
           <span className="main-header-thread">{activeSession.name}</span>
@@ -156,7 +154,7 @@ export default function AppHeader() {
           className="btn-header-icon"
           onClick={handleOpenTerminal}
           title="Terminal"
-          disabled={settingsOpen || automationsOpen || (!currentPath && !isScratchSession)}
+          disabled={settingsOpen || (!currentPath && !isScratchSession)}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="4 17 10 11 4 5"/>
@@ -182,7 +180,7 @@ export default function AppHeader() {
               if (currentPath) setRunMenuOpen(o => !o)
             }}
             title={defaultAction ? `Run ${defaultAction}` : 'Run (right-click for options)'}
-            disabled={settingsOpen || automationsOpen || !currentPath || isScratchSession}
+            disabled={settingsOpen || !currentPath || isScratchSession}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="5 3 19 12 5 21 5 3"/>
@@ -191,7 +189,7 @@ export default function AppHeader() {
           <button
             className="btn-header-caret"
             onClick={() => currentPath && setRunMenuOpen(o => !o)}
-            disabled={settingsOpen || automationsOpen || !currentPath || isScratchSession}
+            disabled={settingsOpen || !currentPath || isScratchSession}
             title="Run options"
           >
             <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -230,7 +228,7 @@ export default function AppHeader() {
           className={`btn-header-icon ${isDiffActive ? 'active' : ''}`}
           onClick={handleToggleDiff}
           title="Diff"
-          disabled={settingsOpen || automationsOpen || !currentPath || isScratchSession}
+          disabled={settingsOpen || !currentPath || isScratchSession}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 3v18"/>
@@ -242,7 +240,7 @@ export default function AppHeader() {
             className={`btn-header-icon ${chatDetached ? 'active' : ''}`}
             onClick={toggleChatDetached}
             title={chatDetached ? 'Dock chat' : 'Pop out chat'}
-            disabled={settingsOpen || automationsOpen || splitView}
+            disabled={settingsOpen || splitView}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               {chatDetached ? (

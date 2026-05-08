@@ -7,6 +7,7 @@ import type { ThemeName } from '../../lib/themes'
 import { AVAILABLE_MODELS } from '../../constants/models'
 import type { EffortLevel } from '../../constants/models'
 import MCPConfigPanel from './MCPConfigPanel'
+import RemotePairingSection from './RemotePairingSection'
 
 const MOD_KEY_LABELS: Record<string, string> = {
   Ctrl: 'Ctrl',
@@ -31,7 +32,7 @@ const EFFORT_LABELS: Record<string, string> = {
   max: 'Max',
 }
 
-type SettingsTab = 'general' | 'mcp'
+type SettingsTab = 'general' | 'mcp' | 'remote'
 
 export default function SettingsPanel() {
   const {
@@ -93,10 +94,18 @@ export default function SettingsPanel() {
             >
               MCP Servers
             </button>
+            <button
+              className={`settings-tab${activeTab === 'remote' ? ' active' : ''}`}
+              onClick={() => setActiveTab('remote')}
+            >
+              Remote
+            </button>
           </div>
 
           {activeTab === 'mcp' ? (
             <MCPConfigPanel />
+          ) : activeTab === 'remote' ? (
+            <RemotePairingSection />
           ) : (
             <>
               {/* Models */}
