@@ -5,6 +5,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useSessionStore, sessionNeedsInput } from '../../stores/sessionStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useEditorStore } from '../../stores/editorStore'
 import { SCRATCH_PROJECT_PATH } from '../../constants/scratch'
 import ProjectTree from './ProjectTree'
 import { useSessionPreview } from '../../hooks/useSessionPreview'
@@ -206,6 +207,16 @@ export default function Sidebar() {
         }
       }
     }
+
+    // Save current session's tab before switching, then restore target session's tab
+    const editorState = useEditorStore.getState()
+    const currentActive = useSessionStore.getState().activeSessionId
+    if (currentActive && currentActive !== sessionId) {
+      editorState.setSessionTab(currentActive, editorState.mainPanelTab)
+    }
+    // Restore target session's tab — default to 'chat' if never explicitly set
+    const rememberedTab = editorState.sessionTabMemory[sessionId] ?? 'chat'
+    editorState.setMainPanelTab(rememberedTab)
 
     if (uiState.splitView && uiState.focusedSplitPane === 'right') {
       uiState.setSplitSessionId(sessionId)

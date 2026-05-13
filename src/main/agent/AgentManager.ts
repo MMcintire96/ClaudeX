@@ -518,6 +518,13 @@ export class AgentManager {
     }
   }
 
+  hasAnyRunningAgent(): boolean {
+    for (const [, agent] of this.agents) {
+      if (agent.isRunning) return true
+    }
+    return false
+  }
+
   // --- Session pairing: file change forwarding ---
 
   private async computeDiffForFiles(projectPath: string, files: Set<string>): Promise<string> {

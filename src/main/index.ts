@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, globalShortcut, session, Menu, MenuItem, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, globalShortcut, session, Menu, MenuItem, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { AgentManager } from './agent/AgentManager'
 import { ProjectManager } from './project/ProjectManager'
@@ -189,6 +189,7 @@ function createWindow(): void {
 
   // Deferred close: request UI snapshot from renderer before saving
   let isClosing = false
+  let isShowingCloseDialog = false
   ipcMain.on('app:ui-snapshot', (_event, snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; sessions?: unknown[] }) => {
     try {
       sessionPersistence.saveState({
@@ -210,9 +211,7 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('close', (e) => {
-    if (isClosing) return
-    e.preventDefault()
+  function proceedWithClose(): void {
     isClosing = true
 
     try {
@@ -241,6 +240,31 @@ function createWindow(): void {
       neovimManager.destroy()
       mainWindow?.destroy()
     }, 300)
+  }
+
+  mainWindow.on('close', (e) => {
+    if (isClosing || isShowingCloseDialog) return
+    e.preventDefault()
+
+    if (agentManager.hasAnyRunningAgent()) {
+      isShowingCloseDialog = true
+      dialog.showMessageBox(mainWindow!, {
+        type: 'warning',
+        buttons: ['Quit', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        title: 'Quit ClaudeX?',
+        message: 'Active sessions are still running.',
+        detail: 'Are you sure you want to quit? Active sessions will be terminated.'
+      }).then(({ response }) => {
+        isShowingCloseDialog = false
+        if (response === 0) {
+          proceedWithClose()
+        }
+      })
+    } else {
+      proceedWithClose()
+    }
   })
 
   mainWindow.on('closed', () => {

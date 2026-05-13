@@ -20,6 +20,10 @@ interface EditorState {
   ccResumeId: string | null // set when Chat→CC handoff needs --resume
   setCCResumeId: (id: string | null) => void
 
+  // Per-session tab memory: remembers which tab each session was last viewed on
+  sessionTabMemory: Record<string, 'chat' | 'editor' | 'cc'>
+  setSessionTab: (sessionId: string, tab: 'chat' | 'editor' | 'cc') => void
+
   // Editor lifecycle
   setEditorActive: (projectPath: string, pid: number) => void
   removeEditor: (projectPath: string) => void
@@ -30,6 +34,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   mainPanelTab: 'chat',
   ccSessionIds: {},
   ccResumeId: null,
+  sessionTabMemory: {},
 
   setMainPanelTab: (tab: 'chat' | 'editor' | 'cc'): void => {
     set({ mainPanelTab: tab })
@@ -49,6 +54,10 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   setCCResumeId: (id: string | null): void => {
     set({ ccResumeId: id })
+  },
+
+  setSessionTab: (sessionId: string, tab: 'chat' | 'editor' | 'cc'): void => {
+    set(state => ({ sessionTabMemory: { ...state.sessionTabMemory, [sessionId]: tab } }))
   },
 
   setEditorActive: (projectPath: string, pid: number): void => {

@@ -34,7 +34,12 @@ export default function MainPanel() {
   const setFocusedSplitPane = useUIStore(s => s.setFocusedSplitPane)
   const splitSession = useSessionStore(s => splitSessionId ? s.sessions[splitSessionId] ?? null : null)
   const mainPanelTab = useEditorStore(s => s.mainPanelTab)
-  const setMainPanelTab = useEditorStore(s => s.setMainPanelTab)
+  const setMainPanelTabRaw = useEditorStore(s => s.setMainPanelTab)
+  const setSessionTab = useEditorStore(s => s.setSessionTab)
+  const setMainPanelTab = useCallback((tab: 'chat' | 'editor' | 'cc') => {
+    setMainPanelTabRaw(tab)
+    if (activeSessionId) setSessionTab(activeSessionId, tab)
+  }, [setMainPanelTabRaw, setSessionTab, activeSessionId])
   const setCCSessionId = useEditorStore(s => s.setCCSessionId)
   const ccResumeId = useEditorStore(s => s.ccResumeId)
   const setCCResumeId = useEditorStore(s => s.setCCResumeId)
