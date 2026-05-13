@@ -45,25 +45,24 @@ const neovimManager = new NeovimManager()
 const mcpManager = new McpManager()
 const checkpointManager = new CheckpointManager()
 const bridgeServer = new ClaudexBridgeServer(terminalManager)
-const remoteServer = new RemoteServer({
-  agentManager,
-  sessionPersistence,
-  pwaDistDir: defaultPwaDistDir(),
-  // In dev, pin to a known port so the mobile PWA's vite dev server can proxy
-  // /api/* and /api/events (WS) to it. Random port in production.
-  port: app.isPackaged ? undefined : (Number(process.env.CLAUDEX_REMOTE_PORT) || 4790),
-  rpcManagers: {
-    projectManager,
-    projectConfigManager,
-    settingsManager,
-    mcpManager,
-    checkpointManager,
-    worktreeManager,
-    terminalManager,
-    sessionPersistence
+// RemoteServer is constructed below in app.whenReady() after
+// settingsManager.init() has loaded the persisted port.
+let remoteServer!: RemoteServer
+
+/**
+ * Resolve the bind port for the remote server.
+ * - Dev: pin to a known port so the mobile PWA's vite dev server can proxy
+ *   /api/* and /api/events (WS) to it.
+ * - Packaged: honour the user's persisted `remoteServerPort` setting if any,
+ *   else `undefined` (OS picks a random port).
+ */
+function resolveRemoteServerPort(): number | undefined {
+  if (!app.isPackaged) {
+    return Number(process.env.CLAUDEX_REMOTE_PORT) || 4790
   }
-})
-agentManager.setRemoteServer(remoteServer)
+  const configured = settingsManager.get().remoteServerPort
+  return typeof configured === 'number' ? configured : undefined
+}
 
 let mainWindow: BrowserWindow | null = null
 
@@ -370,10 +369,32 @@ app.whenReady().then(async () => {
   await settingsManager.init()
   await terminalManager.init()
   await bridgeServer.start()
+
+  // Now that settings are loaded, build the remote server with the configured port.
+  remoteServer = new RemoteServer({
+    agentManager,
+    sessionPersistence,
+    pwaDistDir: defaultPwaDistDir(),
+    port: resolveRemoteServerPort(),
+    rpcManagers: {
+      projectManager,
+      projectConfigManager,
+      settingsManager,
+      mcpManager,
+      checkpointManager,
+      worktreeManager,
+      terminalManager,
+      sessionPersistence
+    }
+  })
+  agentManager.setRemoteServer(remoteServer)
+
   try {
     await remoteServer.start()
   } catch (err) {
     console.error('[Main] failed to start RemoteServer:', err)
+    // RemoteServer.start() already recorded lastError; the renderer will
+    // fetch it via remote:status and offer a Retry button.
   }
   
   // Initialize MCP manager with saved configs and bridge info
@@ -419,6 +440,6 @@ app.on('will-quit', () => {
   voiceManager.destroy()
   mcpManager.stopAll()
   bridgeServer.stop()
-  remoteServer.stop()
+  if (remoteServer) void remoteServer.stop().catch(() => { /* ignore on shutdown */ })
   worktreeManager.cleanupAll().catch(() => {})
 })

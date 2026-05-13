@@ -58,7 +58,7 @@ export function registerAllHandlers(
     registerCheckpointHandlers(checkpointManager)
   }
   if (remoteServer) {
-    registerRemoteHandlers(remoteServer)
+    registerRemoteHandlers(remoteServer, settingsManager)
   }
   registerCCHandlers()
 }

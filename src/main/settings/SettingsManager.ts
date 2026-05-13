@@ -26,6 +26,12 @@ export interface AppSettings {
   mcpServers: McpServerConfig[]
   disabledRemoteMcpServers: string[] // Remote MCP server names that are disabled
   knownRemoteMcpServers: Record<string, string[]> // Persisted tool names per remote server
+  /**
+   * Bind port for the mobile/remote PWA HTTP+WS server. `null` = OS-assigned
+   * (random) port. Honoured in packaged builds; dev mode still uses
+   * CLAUDEX_REMOTE_PORT/4790 so the mobile vite proxy keeps working.
+   */
+  remoteServerPort: number | null
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -50,6 +56,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   mcpServers: [],
   disabledRemoteMcpServers: [],
   knownRemoteMcpServers: {},
+  remoteServerPort: null,
 }
 
 /**
@@ -88,6 +95,7 @@ export class SettingsManager {
         mcpServers: Array.isArray(loaded.mcpServers) ? loaded.mcpServers : [],
         disabledRemoteMcpServers: Array.isArray(loaded.disabledRemoteMcpServers) ? loaded.disabledRemoteMcpServers : [],
         knownRemoteMcpServers: (loaded.knownRemoteMcpServers && typeof loaded.knownRemoteMcpServers === 'object') ? loaded.knownRemoteMcpServers : {},
+        remoteServerPort: typeof loaded.remoteServerPort === 'number' ? loaded.remoteServerPort : DEFAULT_SETTINGS.remoteServerPort,
       }
     } catch {
       this.settings = structuredClone(DEFAULT_SETTINGS)
@@ -155,6 +163,15 @@ export class SettingsManager {
     }
     if (partial.knownRemoteMcpServers !== undefined) {
       this.settings.knownRemoteMcpServers = partial.knownRemoteMcpServers
+    }
+    if (partial.remoteServerPort !== undefined) {
+      // Accept null (auto) or a sane TCP port. Anything else is silently dropped.
+      const v = partial.remoteServerPort
+      if (v === null) {
+        this.settings.remoteServerPort = null
+      } else if (typeof v === 'number' && Number.isInteger(v) && v >= 1024 && v <= 65535) {
+        this.settings.remoteServerPort = v
+      }
     }
     await this.persist()
     return this.settings

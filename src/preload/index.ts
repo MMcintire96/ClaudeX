@@ -343,9 +343,12 @@ const api = {
   remote: {
     status: () =>
       ipcRenderer.invoke('remote:status') as Promise<{
+        running: boolean
         bindHost: string
         bindSource: 'env' | 'tailscale' | 'localhost'
         port: number
+        configuredPort: number | null
+        lastError: string | null
         devices: Array<{ id: string; label: string; pairedAt: number; lastSeenAt: number; hasPush: boolean }>
       }>,
     pairStart: (label?: string) =>
@@ -361,7 +364,27 @@ const api = {
     pairRevoke: (deviceId: string) =>
       ipcRenderer.invoke('remote:pair-revoke', deviceId) as Promise<{ ok: boolean }>,
     setKeepAwake: (on: boolean) =>
-      ipcRenderer.invoke('remote:set-keep-awake', on) as Promise<{ ok: boolean }>
+      ipcRenderer.invoke('remote:set-keep-awake', on) as Promise<{ ok: boolean }>,
+    start: () =>
+      ipcRenderer.invoke('remote:start') as Promise<{ ok: boolean; port?: number; error?: string }>,
+    stop: () =>
+      ipcRenderer.invoke('remote:stop') as Promise<{ ok: boolean; error?: string }>,
+    restart: (port?: number | null) =>
+      ipcRenderer.invoke('remote:restart', port) as Promise<{ ok: boolean; port?: number; error?: string }>,
+    onStatusChanged: (
+      callback: (status: {
+        running: boolean
+        bindHost: string
+        bindSource: 'env' | 'tailscale' | 'localhost'
+        port: number
+        configuredPort: number | null
+        lastError: string | null
+      }) => void
+    ) => {
+      const handler = (_e: unknown, status: Parameters<typeof callback>[0]): void => callback(status)
+      ipcRenderer.on('remote:status-changed', handler)
+      return () => { ipcRenderer.removeListener('remote:status-changed', handler) }
+    }
   }
 }
 

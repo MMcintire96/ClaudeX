@@ -88,6 +88,8 @@ export class RemoteServer {
   private wss: WebSocketServer | null = null
   private _bind: BindResult = { host: '127.0.0.1', source: 'localhost' }
   private _port = 0
+  private _running = false
+  private _lastError: string | null = null
   pairing: DevicePairing
   push: PushNotifier
   private caffeinate = new Caffeinate()
@@ -106,26 +108,71 @@ export class RemoteServer {
   get bindHost(): string { return this._bind.host }
   get bindSource(): BindResult['source'] { return this._bind.source }
   get port(): number { return this._port }
+  get running(): boolean { return this._running }
+  get lastError(): string | null { return this._lastError }
+  get configuredPort(): number | null { return this.opts.port ?? null }
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
   }
 
-  async start(): Promise<void> {
-    this._bind = pickBindHost()
-    this.server = http.createServer((req, res) => this.handleHttp(req, res))
-    this.wss = new WebSocketServer({ noServer: true })
-    this.server.on('upgrade', (req, socket, head) => this.handleUpgrade(req, socket, head))
+  /** Update the configured port. Takes effect on next start()/restart(). */
+  setConfiguredPort(port: number | null | undefined): void {
+    this.opts.port = port == null ? undefined : port
+  }
 
-    await new Promise<void>((resolve, reject) => {
-      this.server!.once('error', reject)
-      this.server!.listen(this.opts.port ?? 0, this._bind.host, () => {
-        const addr = this.server!.address()
-        if (addr && typeof addr === 'object') this._port = addr.port
-        console.log(`[RemoteServer] listening on http://${this._bind.host}:${this._port} (source=${this._bind.source})`)
-        resolve()
-      })
+  /**
+   * Emit a `remote:status-changed` event so the renderer can update without
+   * polling. Safe to call before mainWindow is set.
+   */
+  private emitStatus(): void {
+    broadcastSend(this.mainWindow, 'remote:status-changed', {
+      running: this._running,
+      bindHost: this._bind.host,
+      bindSource: this._bind.source,
+      port: this._port,
+      configuredPort: this.opts.port ?? null,
+      lastError: this._lastError
     })
+  }
+
+  async start(): Promise<void> {
+    if (this._running) return
+    this._lastError = null
+    this._bind = pickBindHost()
+    const server = http.createServer((req, res) => this.handleHttp(req, res))
+    const wss = new WebSocketServer({ noServer: true })
+    server.on('upgrade', (req, socket, head) => this.handleUpgrade(req, socket, head))
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onError = (err: Error): void => {
+          server.removeListener('listening', onListening)
+          reject(err)
+        }
+        const onListening = (): void => {
+          server.removeListener('error', onError)
+          const addr = server.address()
+          if (addr && typeof addr === 'object') this._port = addr.port
+          console.log(`[RemoteServer] listening on http://${this._bind.host}:${this._port} (source=${this._bind.source})`)
+          resolve()
+        }
+        server.once('error', onError)
+        server.once('listening', onListening)
+        server.listen(this.opts.port ?? 0, this._bind.host)
+      })
+    } catch (err) {
+      this._lastError = (err as Error).message || String(err)
+      this._running = false
+      try { server.close() } catch { /* ignore */ }
+      try { wss.close() } catch { /* ignore */ }
+      this.emitStatus()
+      throw err
+    }
+
+    this.server = server
+    this.wss = wss
+    this._running = true
 
     // Subscribe to broadcasted IPC events; fan out to WS clients + ring buffer.
     const sink: RemoteSubscriber = (channel, args) => {
@@ -133,9 +180,10 @@ export class RemoteServer {
       this.handleBroadcast(channel, args)
     }
     this.unsubscribeBroadcast = addRemoteSubscriber(sink)
+    this.emitStatus()
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.caffeinate.destroy()
     if (this.unsubscribeBroadcast) {
       this.unsubscribeBroadcast()
@@ -146,13 +194,33 @@ export class RemoteServer {
     }
     this.sockets.clear()
     if (this.wss) {
-      this.wss.close()
+      try { this.wss.close() } catch { /* ignore */ }
       this.wss = null
     }
     if (this.server) {
-      this.server.close()
+      const srv = this.server
       this.server = null
+      await new Promise<void>((resolve) => {
+        try {
+          srv.close(() => resolve())
+        } catch {
+          resolve()
+        }
+      })
     }
+    this._running = false
+    this._port = 0
+    this.emitStatus()
+  }
+
+  /**
+   * Stop and start with optional new port. If the new start fails, the
+   * server is left in stopped+lastError state and the error re-thrown.
+   */
+  async restart(port?: number | null): Promise<void> {
+    if (port !== undefined) this.setConfiguredPort(port)
+    await this.stop()
+    await this.start()
   }
 
   // --- HTTP routing ---
@@ -219,21 +287,34 @@ export class RemoteServer {
     }
 
     if (pathname === '/api/agent/send' && req.method === 'POST') {
-      return this.readJson(req, res, (body) => {
+      return this.readJson(req, res, async (body) => {
         const { sessionId, content } = body as { sessionId?: string; content?: string }
         if (!sessionId || typeof content !== 'string') {
           return this.json(res, 400, { error: 'sessionId and content required' })
         }
         try {
           this.opts.agentManager.sendMessage(sessionId, content)
-          // Mirror remote-originated user messages into the desktop renderer
-          // so the chat shows what the phone typed. Channel is not in
-          // REMOTE_CHANNELS so it won't echo back to phone WS clients.
-          broadcastSend(this.mainWindow, 'agent:user-message', { sessionId, content })
-          return this.json(res, 200, { ok: true })
-        } catch (err) {
-          return this.json(res, 400, { error: (err as Error).message })
+        } catch {
+          // Agent not in memory — resume it from persisted state (mirrors
+          // the desktop's isRestored → agent.resume() path).
+          const state = this.opts.sessionPersistence.loadState()
+          const session = (state.sessions ?? []).find(s => s.id === sessionId)
+          if (!session) return this.json(res, 404, { error: 'session not found' })
+          try {
+            const effectivePath = session.worktreePath || session.projectPath
+            await this.opts.agentManager.resumeAgent(
+              sessionId,
+              effectivePath,
+              session.model ?? null,
+              content,
+              null
+            )
+          } catch (resumeErr) {
+            return this.json(res, 400, { error: (resumeErr as Error).message })
+          }
         }
+        broadcastSend(this.mainWindow, 'agent:user-message', { sessionId, content })
+        return this.json(res, 200, { ok: true })
       })
     }
 

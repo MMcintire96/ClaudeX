@@ -165,9 +165,12 @@ export interface ElectronAPI {
   }
   remote: {
     status: () => Promise<{
+      running: boolean
       bindHost: string
       bindSource: 'env' | 'tailscale' | 'localhost'
       port: number
+      configuredPort: number | null
+      lastError: string | null
       devices: Array<{ id: string; label: string; pairedAt: number; lastSeenAt: number; hasPush: boolean }>
     }>
     pairStart: (label?: string) => Promise<{
@@ -181,6 +184,17 @@ export interface ElectronAPI {
     }>
     pairRevoke: (deviceId: string) => Promise<{ ok: boolean }>
     setKeepAwake: (on: boolean) => Promise<{ ok: boolean }>
+    start: () => Promise<{ ok: boolean; port?: number; error?: string }>
+    stop: () => Promise<{ ok: boolean; error?: string }>
+    restart: (port?: number | null) => Promise<{ ok: boolean; port?: number; error?: string }>
+    onStatusChanged: (callback: (status: {
+      running: boolean
+      bindHost: string
+      bindSource: 'env' | 'tailscale' | 'localhost'
+      port: number
+      configuredPort: number | null
+      lastError: string | null
+    }) => void) => () => void
   }
   mcp: {
     list: () => Promise<Array<{ id: string; name: string; running: boolean; pid?: number; error?: string; enabled: boolean; builtin?: boolean; external?: boolean; claudeReported?: boolean; source?: string; tools?: string[] }>>
