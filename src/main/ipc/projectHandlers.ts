@@ -27,7 +27,7 @@ export function registerProjectHandlers(
   })
 
   ipcMain.handle('project:recent', () => {
-    return projectManager.getRecent()
+    return projectManager.getRecentWithGroups()
   })
 
   ipcMain.handle('project:reorder-recent', async (_event, paths: string[]) => {
@@ -37,6 +37,37 @@ export function registerProjectHandlers(
 
   ipcMain.handle('project:remove-recent', async (_event, path: string) => {
     await projectManager.removeRecent(path)
+    return { success: true }
+  })
+
+  // --- Group management ---
+  ipcMain.handle('project:create-group', async (_event, name: string) => {
+    const group = await projectManager.createGroup(name)
+    return { success: true, group }
+  })
+
+  ipcMain.handle('project:rename-group', async (_event, groupId: string, name: string) => {
+    await projectManager.renameGroup(groupId, name)
+    return { success: true }
+  })
+
+  ipcMain.handle('project:delete-group', async (_event, groupId: string) => {
+    await projectManager.deleteGroup(groupId)
+    return { success: true }
+  })
+
+  ipcMain.handle('project:move-to-group', async (_event, projectPath: string, groupId: string | null) => {
+    await projectManager.moveToGroup(projectPath, groupId)
+    return { success: true }
+  })
+
+  ipcMain.handle('project:reorder-all', async (_event, groupOrder: string[]) => {
+    await projectManager.reorderAll(groupOrder)
+    return { success: true }
+  })
+
+  ipcMain.handle('project:reorder-within-group', async (_event, groupId: string, paths: string[]) => {
+    await projectManager.reorderWithinGroup(groupId, paths)
     return { success: true }
   })
 

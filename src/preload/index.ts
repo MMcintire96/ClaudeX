@@ -74,6 +74,18 @@ const api = {
       ipcRenderer.invoke('project:remove-recent', path),
     reorderRecent: (paths: string[]) =>
       ipcRenderer.invoke('project:reorder-recent', paths),
+    createGroup: (name: string) =>
+      ipcRenderer.invoke('project:create-group', name),
+    renameGroup: (groupId: string, name: string) =>
+      ipcRenderer.invoke('project:rename-group', groupId, name),
+    deleteGroup: (groupId: string) =>
+      ipcRenderer.invoke('project:delete-group', groupId),
+    moveToGroup: (projectPath: string, groupId: string | null) =>
+      ipcRenderer.invoke('project:move-to-group', projectPath, groupId),
+    reorderAll: (groupOrder: string[]) =>
+      ipcRenderer.invoke('project:reorder-all', groupOrder),
+    reorderWithinGroup: (groupId: string, paths: string[]) =>
+      ipcRenderer.invoke('project:reorder-within-group', groupId, paths),
     diff: (projectPath: string, staged?: boolean) =>
       ipcRenderer.invoke('project:diff', projectPath, staged),
     gitStatus: (projectPath: string) =>
@@ -202,7 +214,7 @@ const api = {
       ipcRenderer.on('app:before-close', handler)
       return () => ipcRenderer.removeListener('app:before-close', handler)
     },
-    sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; sessions?: unknown[] }) =>
+    sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; collapsedGroups?: string[]; sessions?: unknown[] }) =>
       ipcRenderer.send('app:ui-snapshot', snapshot)
   },
   popout: {

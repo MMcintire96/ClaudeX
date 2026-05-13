@@ -197,6 +197,7 @@ export default function App() {
         sidebarWidth?: number
         activeProjectPath?: string | null
         expandedProjects?: string[]
+        collapsedGroups?: string[]
         sessions?: Array<{ id: string; projectPath: string; name: string; messages?: unknown[]; model?: string | null; totalCostUsd?: number; numTurns?: number; selectedModel?: string | null; createdAt: number; worktreePath?: string | null; isWorktree?: boolean; worktreeSessionId?: string | null }>
       }
 
@@ -210,6 +211,9 @@ export default function App() {
         for (const path of s.expandedProjects) {
           useProjectStore.getState().setProjectExpanded(path, true)
         }
+      }
+      if (s.collapsedGroups && s.collapsedGroups.length > 0) {
+        useProjectStore.getState().setCollapsedGroups(s.collapsedGroups)
       }
       if (s.activeProjectPath) {
         useProjectStore.getState().setProject(s.activeProjectPath, false)
@@ -243,6 +247,7 @@ export default function App() {
         sidebarWidth: uiState.sidebarWidth,
         activeProjectPath: projectState.currentPath,
         expandedProjects: projectState.expandedProjects,
+        collapsedGroups: projectState.collapsedGroups,
         sessions
       })
     })
@@ -260,6 +265,7 @@ export default function App() {
         sidebarWidth: uiState.sidebarWidth,
         activeProjectPath: projectState.currentPath,
         expandedProjects: projectState.expandedProjects,
+        collapsedGroups: projectState.collapsedGroups,
         sessions
       })
     }, 30_000)

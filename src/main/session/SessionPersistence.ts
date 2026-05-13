@@ -27,6 +27,7 @@ interface PersistedAppState {
   version: 1
   activeProjectPath: string | null
   expandedProjects: string[]
+  collapsedGroups?: string[]
   sessions: PersistedSession[]
   theme: string
   sidebarWidth: number

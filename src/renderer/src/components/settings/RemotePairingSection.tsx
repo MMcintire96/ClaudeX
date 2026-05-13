@@ -233,13 +233,14 @@ export default function RemotePairingSection(): JSX.Element {
           <label className="settings-field-label">Port</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
+              className="settings-input"
               type="number"
               min={1024}
               max={65535}
               placeholder="auto"
               value={portInput}
               onChange={(e) => { setPortInput(e.target.value); setPortDirty(true) }}
-              style={{ width: 110 }}
+              style={{ width: 120 }}
             />
             <button
               className="settings-btn"
@@ -293,9 +294,16 @@ export default function RemotePairingSection(): JSX.Element {
               />
               <div>
                 <div className="settings-pair-label">Code</div>
-                <div className="settings-pair-code">{pair.code}</div>
+                <a
+                  href={pair.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="settings-pair-code"
+                  style={{ textDecoration: 'none', color: 'inherit' }}
+                  title="Open pairing URL"
+                >{pair.code}</a>
                 <div className="settings-pair-label" style={{ marginTop: 12 }}>URL</div>
-                <code style={{ fontSize: 12, wordBreak: 'break-all' }}>{pair.url}</code>
+                <a href={pair.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, wordBreak: 'break-all' }}>{pair.url}</a>
                 <div className="settings-pair-label" style={{ marginTop: 12 }}>
                   Expires in {remainingSec}s
                 </div>

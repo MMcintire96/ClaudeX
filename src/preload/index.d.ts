@@ -22,6 +22,12 @@ export interface CheckpointInfo {
   sdkSessionId: string | null
 }
 
+export interface ProjectGroup {
+  id: string
+  name: string
+  projectPaths: string[]
+}
+
 export interface ElectronAPI {
   agent: {
     start: (projectPath: string, prompt: string, model?: string | null, worktreeOptions?: { useWorktree: boolean; baseBranch?: string; includeChanges?: boolean }, effort?: string | null) => Promise<{ success: boolean; sessionId?: string; worktreePath?: string; worktreeSessionId?: string; error?: string }>
@@ -47,10 +53,16 @@ export interface ElectronAPI {
   }
   project: {
     open: () => Promise<{ success: boolean; path?: string; isGitRepo?: boolean; canceled?: boolean }>
-    recent: () => Promise<Array<{ path: string; name: string; lastOpened: number }>>
+    recent: () => Promise<{ version: 2; projects: Array<{ path: string; name: string; lastOpened: number }>; groups: ProjectGroup[]; groupOrder: string[] }>
     selectRecent: (path: string) => Promise<{ success: boolean; path: string; isGitRepo: boolean }>
     removeRecent: (path: string) => Promise<{ success: boolean }>
     reorderRecent: (paths: string[]) => Promise<{ success: boolean }>
+    createGroup: (name: string) => Promise<{ success: boolean; group?: ProjectGroup }>
+    renameGroup: (groupId: string, name: string) => Promise<{ success: boolean }>
+    deleteGroup: (groupId: string) => Promise<{ success: boolean }>
+    moveToGroup: (projectPath: string, groupId: string | null) => Promise<{ success: boolean }>
+    reorderAll: (groupOrder: string[]) => Promise<{ success: boolean }>
+    reorderWithinGroup: (groupId: string, paths: string[]) => Promise<{ success: boolean }>
     diff: (projectPath: string, staged?: boolean) => Promise<{ success: boolean; diff?: string; error?: string }>
     gitStatus: (projectPath: string) => Promise<{ success: boolean; status?: unknown; error?: string }>
     diffFile: (projectPath: string, filePath: string, untracked?: boolean, fullFile?: boolean) => Promise<{ success: boolean; diff?: string; error?: string }>
@@ -113,7 +125,7 @@ export interface ElectronAPI {
   }
   app: {
     onBeforeClose: (callback: () => void) => () => void
-    sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; sessions?: unknown[] }) => void
+    sendUiSnapshot: (snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; collapsedGroups?: string[]; sessions?: unknown[] }) => void
   }
   popout: {
     create: (terminalId: string, projectPath: string, theme?: string, sessionSnapshot?: unknown) => Promise<{ success: boolean }>

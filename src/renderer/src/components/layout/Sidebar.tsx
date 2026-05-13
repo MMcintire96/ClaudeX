@@ -1,6 +1,6 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useProjectStore } from '../../stores/projectStore'
+import { useProjectStore, ProjectGroup } from '../../stores/projectStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useTerminalStore } from '../../stores/terminalStore'
 import { useSessionStore, sessionNeedsInput } from '../../stores/sessionStore'
@@ -32,7 +32,11 @@ export default function Sidebar() {
     currentPath, isGitRepo, recentProjects,
     setProject, setRecent, removeProject, reorderProjects,
     gitBranches, setGitBranch,
-    expandedProjects, toggleProjectExpanded
+    expandedProjects, toggleProjectExpanded,
+    groups, groupOrder, collapsedGroups,
+    setGroups, toggleGroupCollapsed,
+    addGroupLocally, updateGroupLocally, removeGroupLocally,
+    moveProjectToGroupLocally, reorderGroupOrder, reorderWithinGroupLocally
   } = useProjectStore()
   const {
     setSidePanelView, projectSidePanelMemory
@@ -55,9 +59,18 @@ export default function Sidebar() {
   const removeSession = useSessionStore(s => s.removeSession)
 
   useEffect(() => {
-    window.api.project.recent().then(setRecent)
+    window.api.project.recent().then((data: any) => {
+      // Handle both old array format and new object format
+      if (Array.isArray(data)) {
+        setRecent(data)
+        setGroups([], data.map((p: any) => p.path))
+      } else if (data && data.version === 2) {
+        setRecent(data.projects)
+        setGroups(data.groups || [], data.groupOrder || data.projects.map((p: any) => p.path))
+      }
+    })
     loadSettings()
-  }, [setRecent, loadSettings])
+  }, [setRecent, setGroups, loadSettings])
 
   // Fetch git branches for projects
   const fetchBranches = useCallback(() => {
@@ -232,13 +245,20 @@ export default function Sidebar() {
     const result = await window.api.project.open()
     if (result.success && result.path) {
       setProject(result.path, result.isGitRepo ?? false)
-      window.api.project.recent().then(setRecent)
+      window.api.project.recent().then((data: any) => {
+        if (Array.isArray(data)) {
+          setRecent(data)
+        } else if (data && data.version === 2) {
+          setRecent(data.projects)
+          setGroups(data.groups || [], data.groupOrder || data.projects.map((p: any) => p.path))
+        }
+      })
       const lastPanel = projectSidePanelMemory[result.path]
       setSidePanelView(lastPanel ? { type: lastPanel, projectPath: result.path } : null)
       switchToProjectTerminals(result.path)
       ensureSession(result.path)
     }
-  }, [setProject, setRecent, projectSidePanelMemory, setSidePanelView, switchToProjectTerminals, ensureSession])
+  }, [setProject, setRecent, setGroups, projectSidePanelMemory, setSidePanelView, switchToProjectTerminals, ensureSession])
 
   const switchToProject = useCallback(async (path: string) => {
     if (path === currentPath) return
@@ -382,6 +402,49 @@ export default function Sidebar() {
     setSidePanelView(null)
   }, [terminals, sessions, removeTerminal, removeSession, removeProject, setSidePanelView])
 
+  // --- Group management ---
+  const handleMoveToGroup = useCallback(async (projectPath: string, groupId: string | null) => {
+    moveProjectToGroupLocally(projectPath, groupId)
+    await window.api.project.moveToGroup(projectPath, groupId)
+  }, [moveProjectToGroupLocally])
+
+  const handleCreateGroup = useCallback(async (name: string, initialProjectPath?: string) => {
+    const result = await window.api.project.createGroup(name)
+    if (result.success && result.group) {
+      addGroupLocally(result.group)
+      if (initialProjectPath) {
+        moveProjectToGroupLocally(initialProjectPath, result.group.id)
+        await window.api.project.moveToGroup(initialProjectPath, result.group.id)
+      }
+    }
+  }, [addGroupLocally, moveProjectToGroupLocally])
+
+  const handleRenameGroup = useCallback(async (groupId: string, name: string) => {
+    updateGroupLocally(groupId, { name })
+    await window.api.project.renameGroup(groupId, name)
+  }, [updateGroupLocally])
+
+  const handleDeleteGroup = useCallback(async (groupId: string) => {
+    removeGroupLocally(groupId)
+    await window.api.project.deleteGroup(groupId)
+  }, [removeGroupLocally])
+
+  // Group context menu state
+  const [groupContextMenu, setGroupContextMenu] = useState<{ x: number; y: number; groupId: string } | null>(null)
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
+  const [newGroupInput, setNewGroupInput] = useState<string | null>(null) // projectPath that triggered "New group..."
+
+  useEffect(() => {
+    if (!groupContextMenu) return
+    const dismiss = () => setGroupContextMenu(null)
+    window.addEventListener('click', dismiss)
+    window.addEventListener('contextmenu', dismiss)
+    return () => {
+      window.removeEventListener('click', dismiss)
+      window.removeEventListener('contextmenu', dismiss)
+    }
+  }, [groupContextMenu])
+
   const projectList = recentProjects.map(p => ({
     path: p.path,
     name: p.name,
@@ -398,6 +461,8 @@ export default function Sidebar() {
       isGitRepo
     })
   }
+
+  const projectByPath = new Map(projectList.map(p => [p.path, p]))
 
   // --- Drag-to-reorder state ---
   const [dragIndex, setDragIndex] = useState<number | null>(null)
@@ -421,20 +486,64 @@ export default function Sidebar() {
 
   const handleDragEnd = useCallback(() => {
     if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
-      const reordered = [...projectList]
+      const reordered = [...groupOrder]
       const [moved] = reordered.splice(dragIndex, 1)
       reordered.splice(dragOverIndex, 0, moved)
-      const newPaths = reordered.map(p => p.path)
-      reorderProjects(newPaths)
-      window.api.project.reorderRecent(newPaths)
+      reorderGroupOrder(reordered)
+      window.api.project.reorderAll(reordered)
     }
     setDragIndex(null)
     setDragOverIndex(null)
-  }, [dragIndex, dragOverIndex, projectList, reorderProjects])
+  }, [dragIndex, dragOverIndex, groupOrder, reorderGroupOrder])
 
   const handleDragLeave = useCallback(() => {
     setDragOverIndex(null)
   }, [])
+
+  // Helper to render a project tree for a given path
+  const renderProjectTree = (projPath: string, inGroup?: boolean) => {
+    const proj = projectByPath.get(projPath)
+    if (!proj) return null
+    return (
+      <ProjectTree
+        projectPath={proj.path}
+        projectName={proj.name}
+        isCurrentProject={proj.isCurrent}
+        isGitRepo={proj.isGitRepo}
+        sdkSessions={getSessionsForProject(proj.path)}
+        activeSessionId={activeSessionId}
+        collapsed={!expandedProjects.includes(proj.path)}
+        onToggleCollapse={() => toggleProjectExpanded(proj.path)}
+        onSwitchToProject={() => switchToProject(proj.path)}
+        onSelectSession={handleSelectSession}
+        onRenameSession={(id, name) => useSessionStore.getState().renameSession(id, name)}
+        onCloseSession={handleCloseSession}
+        onNewThread={() => handleNewThread(proj.path)}
+        onRemoveProject={() => handleRemoveProject(proj.path)}
+        onClearOldSessions={() => handleClearOldSessions(proj.path)}
+        onClearAllSessions={() => handleClearAllSessions(proj.path)}
+        onForkSession={handleForkSession}
+        historyEntries={historyByProject[proj.path] || []}
+        onResumeHistory={handleResumeHistory}
+        sessionPreview={sessionPreview}
+        pairedWriterId={projectPairMemory[proj.path]?.writerId ?? null}
+        pairedReviewerId={projectPairMemory[proj.path]?.reviewerId ?? null}
+        groups={groups}
+        currentGroupId={inGroup ? groups.find(g => g.projectPaths.includes(proj.path))?.id ?? null : null}
+        onMoveToGroup={handleMoveToGroup}
+        onCreateGroup={handleCreateGroup}
+      />
+    )
+  }
+
+  // Compute effective groupOrder — include currentPath if missing
+  const effectiveGroupOrder = [...groupOrder]
+  if (currentPath && !recentProjects.some(p => p.path === currentPath)) {
+    // currentPath is not in recentProjects, add it to top if not already in groupOrder
+    if (!effectiveGroupOrder.includes(currentPath)) {
+      effectiveGroupOrder.unshift(currentPath)
+    }
+  }
 
   return (
     <aside className="sidebar">
@@ -481,48 +590,176 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {!sectionsCollapsed.projects && projectList.map((proj, index) => (
-          <div
-            key={proj.path}
-            className={`sidebar-project-drag-wrapper${dragOverIndex === index && dragIndex !== index ? ' drag-over' : ''}${dragIndex === index ? ' dragging' : ''}`}
-            draggable
-            onDragStart={(e) => handleDragStart(e, index)}
-            onDragOver={(e) => handleDragOver(e, index)}
-            onDragEnd={handleDragEnd}
-            onDragLeave={handleDragLeave}
-            ref={dragIndex === index ? dragNodeRef : undefined}
-          >
-            <ProjectTree
-              projectPath={proj.path}
-              projectName={proj.name}
-              isCurrentProject={proj.isCurrent}
-              isGitRepo={proj.isGitRepo}
-              sdkSessions={getSessionsForProject(proj.path)}
-              activeSessionId={activeSessionId}
-              collapsed={!expandedProjects.includes(proj.path)}
-              onToggleCollapse={() => toggleProjectExpanded(proj.path)}
-              onSwitchToProject={() => switchToProject(proj.path)}
-              onSelectSession={handleSelectSession}
-              onRenameSession={(id, name) => useSessionStore.getState().renameSession(id, name)}
-              onCloseSession={handleCloseSession}
-              onNewThread={() => handleNewThread(proj.path)}
-              onRemoveProject={() => handleRemoveProject(proj.path)}
-              onClearOldSessions={() => handleClearOldSessions(proj.path)}
-              onClearAllSessions={() => handleClearAllSessions(proj.path)}
-              onForkSession={handleForkSession}
-              historyEntries={historyByProject[proj.path] || []}
-              onResumeHistory={handleResumeHistory}
-              sessionPreview={sessionPreview}
-              pairedWriterId={projectPairMemory[proj.path]?.writerId ?? null}
-              pairedReviewerId={projectPairMemory[proj.path]?.reviewerId ?? null}
+        {/* New group name input (shown when user clicks "New group...") */}
+        {newGroupInput !== null && (
+          <div className="sidebar-group-new-input" style={{ padding: '2px 8px' }}>
+            <input
+              autoFocus
+              placeholder="Group name..."
+              style={{
+                width: '100%',
+                fontSize: '11px',
+                padding: '3px 6px',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--accent)',
+                borderRadius: '3px',
+                color: 'var(--text-primary)',
+                outline: 'none'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const name = (e.target as HTMLInputElement).value.trim()
+                  if (name) {
+                    handleCreateGroup(name, newGroupInput)
+                  }
+                  setNewGroupInput(null)
+                } else if (e.key === 'Escape') {
+                  setNewGroupInput(null)
+                }
+              }}
+              onBlur={(e) => {
+                const name = e.target.value.trim()
+                if (name) {
+                  handleCreateGroup(name, newGroupInput)
+                }
+                setNewGroupInput(null)
+              }}
             />
           </div>
-        ))}
+        )}
 
-        {!sectionsCollapsed.projects && projectList.length === 0 && (
+        {!sectionsCollapsed.projects && effectiveGroupOrder.map((entry, index) => {
+          const group = groups.find(g => g.id === entry)
+
+          if (group) {
+            // Render a group
+            const isGroupCollapsed = collapsedGroups.includes(group.id)
+            return (
+              <div
+                key={group.id}
+                className={`sidebar-group-drag-wrapper${dragOverIndex === index && dragIndex !== index ? ' drag-over' : ''}${dragIndex === index ? ' dragging' : ''}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
+                onDragLeave={handleDragLeave}
+                ref={dragIndex === index ? dragNodeRef : undefined}
+              >
+                <div
+                  className="sidebar-group-header"
+                  onClick={() => toggleGroupCollapsed(group.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setGroupContextMenu({ x: e.clientX, y: e.clientY, groupId: group.id })
+                  }}
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', flexShrink: 0 }}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                  {renamingGroupId === group.id ? (
+                    <input
+                      autoFocus
+                      defaultValue={group.name}
+                      className="sidebar-group-rename-input"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const name = (e.target as HTMLInputElement).value.trim()
+                          if (name) handleRenameGroup(group.id, name)
+                          setRenamingGroupId(null)
+                        } else if (e.key === 'Escape') {
+                          setRenamingGroupId(null)
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const name = e.target.value.trim()
+                        if (name && name !== group.name) handleRenameGroup(group.id, name)
+                        setRenamingGroupId(null)
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="sidebar-group-name"
+                      onDoubleClick={(e) => {
+                        e.stopPropagation()
+                        setRenamingGroupId(group.id)
+                      }}
+                    >
+                      {group.name}
+                    </span>
+                  )}
+                </div>
+                {!isGroupCollapsed && group.projectPaths.map(projPath => (
+                  <div key={projPath} className="sidebar-project-in-group">
+                    {renderProjectTree(projPath, true)}
+                  </div>
+                ))}
+                {!isGroupCollapsed && group.projectPaths.length === 0 && (
+                  <div style={{ padding: '4px 8px 4px 20px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    No projects in group
+                  </div>
+                )}
+              </div>
+            )
+          } else {
+            // entry is a project path (ungrouped)
+            const proj = projectByPath.get(entry)
+            if (!proj) return null
+            return (
+              <div
+                key={proj.path}
+                className={`sidebar-project-drag-wrapper${dragOverIndex === index && dragIndex !== index ? ' drag-over' : ''}${dragIndex === index ? ' dragging' : ''}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
+                onDragLeave={handleDragLeave}
+                ref={dragIndex === index ? dragNodeRef : undefined}
+              >
+                {renderProjectTree(proj.path)}
+              </div>
+            )
+          }
+        })}
+
+        {!sectionsCollapsed.projects && effectiveGroupOrder.length === 0 && projectList.length === 0 && (
           <div style={{ padding: '8px 10px', fontSize: '12px', color: 'var(--text-muted)' }}>
             No projects yet
           </div>
+        )}
+
+        {/* Group context menu */}
+        {groupContextMenu && createPortal(
+          <div
+            className="thread-context-menu"
+            style={{
+              left: Math.min(groupContextMenu.x, window.innerWidth - 180),
+              ...(groupContextMenu.y + 100 > window.innerHeight
+                ? { bottom: window.innerHeight - groupContextMenu.y }
+                : { top: groupContextMenu.y })
+            }}
+          >
+            <button
+              className="thread-context-menu-item"
+              onClick={() => {
+                setRenamingGroupId(groupContextMenu.groupId)
+                setGroupContextMenu(null)
+              }}
+            >
+              Rename group
+            </button>
+            <button
+              className="thread-context-menu-item thread-context-menu-danger"
+              onClick={() => {
+                handleDeleteGroup(groupContextMenu.groupId)
+                setGroupContextMenu(null)
+              }}
+            >
+              Delete group
+            </button>
+          </div>,
+          document.body
         )}
 
         {/* Quick Chat sessions */}

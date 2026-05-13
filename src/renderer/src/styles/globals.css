@@ -4534,6 +4534,93 @@ body {
   margin-top: -2px;
 }
 
+/* ===== PROJECT GROUPS ===== */
+.sidebar-group-drag-wrapper {
+  transition: transform 0.1s ease;
+  border-radius: 6px;
+}
+
+.sidebar-group-drag-wrapper.dragging {
+  opacity: 0.4;
+}
+
+.sidebar-group-drag-wrapper.drag-over {
+  border-top: 2px solid var(--accent, #6366f1);
+  margin-top: -2px;
+}
+
+.sidebar-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, var(--text-muted));
+  cursor: pointer;
+  border-radius: 4px;
+  user-select: none;
+}
+
+.sidebar-group-header:hover {
+  background: var(--sidebar-hover, var(--bg-secondary));
+}
+
+.sidebar-group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.sidebar-group-rename-input {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+}
+
+.sidebar-project-in-group {
+  padding-left: 12px;
+}
+
+/* Context menu submenu for "Move to group" */
+.thread-context-menu-submenu-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.thread-context-submenu {
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  min-width: 140px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+}
+
+.thread-context-menu-separator {
+  height: 1px;
+  background: var(--border-light);
+  margin: 4px 0;
+}
+
+.thread-context-menu-item-active {
+  color: var(--accent);
+}
+
 /* ===== PROJECT TREE (ClaudeX-style) ===== */
 .project-tree {
   margin-bottom: 2px;

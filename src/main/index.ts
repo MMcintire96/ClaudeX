@@ -190,12 +190,13 @@ function createWindow(): void {
   // Deferred close: request UI snapshot from renderer before saving
   let isClosing = false
   let isShowingCloseDialog = false
-  ipcMain.on('app:ui-snapshot', (_event, snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; sessions?: unknown[] }) => {
+  ipcMain.on('app:ui-snapshot', (_event, snapshot: { theme: string; sidebarWidth: number; activeProjectPath: string | null; expandedProjects: string[]; collapsedGroups?: string[]; sessions?: unknown[] }) => {
     try {
       sessionPersistence.saveState({
         version: 1,
         activeProjectPath: snapshot.activeProjectPath,
         expandedProjects: snapshot.expandedProjects,
+        collapsedGroups: snapshot.collapsedGroups || [],
         sessions: (snapshot.sessions ?? []) as any[],
         theme: snapshot.theme || 'dark',
         sidebarWidth: snapshot.sidebarWidth || 240

@@ -2,6 +2,7 @@ import React, { useCallback, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { sessionNeedsInput, type SessionState } from '../../stores/sessionStore'
 import type { UseSessionPreviewReturn } from '../../hooks/useSessionPreview'
+import type { ProjectGroup } from '../../stores/projectStore'
 
 interface InlineRenameProps {
   value: string
@@ -83,6 +84,10 @@ interface ProjectTreeProps {
   sessionPreview?: UseSessionPreviewReturn
   pairedWriterId?: string | null
   pairedReviewerId?: string | null
+  groups?: ProjectGroup[]
+  currentGroupId?: string | null
+  onMoveToGroup?: (projectPath: string, groupId: string | null) => void
+  onCreateGroup?: (name: string, initialProjectPath?: string) => void
 }
 
 interface ContextMenuState {
@@ -115,11 +120,17 @@ export default function ProjectTree({
   sessionPreview,
   pairedWriterId,
   pairedReviewerId,
+  groups,
+  currentGroupId,
+  onMoveToGroup,
+  onCreateGroup,
 }: ProjectTreeProps) {
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
   const [diffStats, setDiffStats] = useState<DiffStats | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [historyExpanded, setHistoryExpanded] = useState(false)
+  const [showGroupSubmenu, setShowGroupSubmenu] = useState(false)
+  const [newGroupName, setNewGroupName] = useState<string | null>(null)
 
   // Close context menu on outside click
   useEffect(() => {
@@ -398,6 +409,101 @@ export default function ProjectTree({
               >
                 New thread
               </button>
+              {/* Move to group submenu */}
+              {onMoveToGroup && groups && (
+                <div
+                  className="thread-context-menu-item thread-context-menu-submenu-trigger"
+                  onMouseEnter={() => setShowGroupSubmenu(true)}
+                  onMouseLeave={() => { setShowGroupSubmenu(false); setNewGroupName(null) }}
+                >
+                  Move to group
+                  <span style={{ marginLeft: 'auto', opacity: 0.5 }}>{'\u25B8'}</span>
+                  {showGroupSubmenu && (
+                    <div className="thread-context-submenu" onClick={(e) => e.stopPropagation()}>
+                      {newGroupName !== null ? (
+                        <div className="thread-context-menu-item" style={{ padding: '2px 8px' }}>
+                          <input
+                            autoFocus
+                            placeholder="Group name..."
+                            style={{
+                              width: '100%',
+                              fontSize: '12px',
+                              padding: '2px 4px',
+                              background: 'var(--bg-secondary)',
+                              border: '1px solid var(--accent)',
+                              borderRadius: '3px',
+                              color: 'var(--text-primary)',
+                              outline: 'none'
+                            }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation()
+                              if (e.key === 'Enter') {
+                                const name = (e.target as HTMLInputElement).value.trim()
+                                if (name && onCreateGroup) {
+                                  onCreateGroup(name, projectPath)
+                                }
+                                setNewGroupName(null)
+                                setContextMenu(null)
+                              } else if (e.key === 'Escape') {
+                                setNewGroupName(null)
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const name = e.target.value.trim()
+                              if (name && onCreateGroup) {
+                                onCreateGroup(name, projectPath)
+                              }
+                              setNewGroupName(null)
+                              setContextMenu(null)
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            className="thread-context-menu-item"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setNewGroupName('')
+                            }}
+                          >
+                            New group...
+                          </button>
+                          {groups.length > 0 && <div className="thread-context-menu-separator" />}
+                          {groups.map(g => (
+                            <button
+                              key={g.id}
+                              className={`thread-context-menu-item${g.id === currentGroupId ? ' thread-context-menu-item-active' : ''}`}
+                              onClick={() => {
+                                onMoveToGroup(projectPath, g.id)
+                                setContextMenu(null)
+                              }}
+                            >
+                              {g.name}
+                              {g.id === currentGroupId && <span style={{ marginLeft: 'auto', opacity: 0.5 }}>{'\u2713'}</span>}
+                            </button>
+                          ))}
+                          {currentGroupId && (
+                            <>
+                              <div className="thread-context-menu-separator" />
+                              <button
+                                className="thread-context-menu-item"
+                                onClick={() => {
+                                  onMoveToGroup(projectPath, null)
+                                  setContextMenu(null)
+                                }}
+                              >
+                                Remove from group
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               {historyEntries.length > 0 && (
                 <button
                   className="thread-context-menu-item"
